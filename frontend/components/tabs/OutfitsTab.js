@@ -1,13 +1,17 @@
-export default function OutfitsTab({
-  wardrobe,
-  wardrobeLoading,
-  wardrobeMessage,
-  loadWardrobe,
-  deleteWardrobeEntry,
-  openOriginalPhoto,
-  originalPhotoUrl,
-  closeOriginalPhoto
-}) {
+import { useWardrobeContext } from "../../context/DashboardContext";
+
+export default function OutfitsTab() {
+  const {
+    wardrobe,
+    wardrobeLoading,
+    wardrobeMessage,
+    loadWardrobe,
+    deleteWardrobeEntry,
+    openOriginalPhoto,
+    originalPhotoUrl,
+    closeOriginalPhoto
+  } = useWardrobeContext();
+
   return (
     <section>
       <div className="toolbar-row">

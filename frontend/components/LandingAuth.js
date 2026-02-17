@@ -1,12 +1,16 @@
-export default function LandingAuth({
-  authTab,
-  setAuthTab,
-  email,
-  password,
-  setEmail,
-  setPassword,
-  submitAuth
-}) {
+import { useAuthContext } from "../context/DashboardContext";
+
+export default function LandingAuth() {
+  const {
+    authTab,
+    setAuthTab,
+    email,
+    password,
+    setEmail,
+    setPassword,
+    submitAuth
+  } = useAuthContext();
+
   return (
     <main className="landing">
       <header className="topbar">

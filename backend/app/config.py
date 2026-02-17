@@ -26,6 +26,8 @@ class Settings:
         "gemini-2.5-flash-image"
     )
     ITEM_IMAGE_MAX = int(_clean_env(os.getenv("ITEM_IMAGE_MAX", "3"), "3") or "3")
+    SETTINGS_ENCRYPTION_KEY = _clean_env(os.getenv("SETTINGS_ENCRYPTION_KEY", ""))
+    DEFAULT_ANALYSIS_MODEL = _clean_env(os.getenv("DEFAULT_ANALYSIS_MODEL", "gemini-2.5-flash"), "gemini-2.5-flash")
 
 
 settings = Settings()

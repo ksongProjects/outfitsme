@@ -7,6 +7,7 @@ from uuid import uuid4
 from supabase import Client, create_client
 
 from app.config import settings
+from app.services.secrets_service import decrypt_secret, encrypt_secret, mask_secret
 
 
 class SupabaseNotConfiguredError(RuntimeError):
@@ -251,3 +252,97 @@ def get_dashboard_stats(user_id: str) -> dict:
         "analyses_count": len(analyses),
         "items_count": len(items)
     }
+
+
+def _empty_model_settings() -> dict:
+    return {
+        "preferred_model": settings.DEFAULT_ANALYSIS_MODEL,
+        "gemini_api_key": "",
+        "aws_access_key_id": "",
+        "aws_secret_access_key": "",
+        "aws_session_token": "",
+        "aws_region": "",
+        "aws_bedrock_model_id": ""
+    }
+
+
+def get_user_model_settings(user_id: str) -> dict:
+    client = get_supabase_client()
+    response = (
+        client.table("user_settings")
+        .select(
+            "preferred_model,gemini_api_key_enc,aws_access_key_id_enc,aws_secret_access_key_enc,"
+            "aws_session_token_enc,aws_region,aws_bedrock_model_id"
+        )
+        .eq("user_id", user_id)
+        .limit(1)
+        .execute()
+    )
+    row = (response.data or [None])[0]
+    if not row:
+        return _empty_model_settings()
+
+    return {
+        "preferred_model": row.get("preferred_model") or settings.DEFAULT_ANALYSIS_MODEL,
+        "gemini_api_key": decrypt_secret(row.get("gemini_api_key_enc") or ""),
+        "aws_access_key_id": decrypt_secret(row.get("aws_access_key_id_enc") or ""),
+        "aws_secret_access_key": decrypt_secret(row.get("aws_secret_access_key_enc") or ""),
+        "aws_session_token": decrypt_secret(row.get("aws_session_token_enc") or ""),
+        "aws_region": row.get("aws_region") or "",
+        "aws_bedrock_model_id": row.get("aws_bedrock_model_id") or ""
+    }
+
+
+def get_user_model_settings_masked(user_id: str) -> dict:
+    settings_row = get_user_model_settings(user_id)
+    return {
+        "preferred_model": settings_row.get("preferred_model") or settings.DEFAULT_ANALYSIS_MODEL,
+        "gemini_api_key_masked": mask_secret(settings_row.get("gemini_api_key", "")),
+        "aws_access_key_id_masked": mask_secret(settings_row.get("aws_access_key_id", "")),
+        "aws_secret_access_key_masked": mask_secret(settings_row.get("aws_secret_access_key", "")),
+        "aws_session_token_masked": mask_secret(settings_row.get("aws_session_token", "")),
+        "aws_region": settings_row.get("aws_region", ""),
+        "aws_bedrock_model_id": settings_row.get("aws_bedrock_model_id", "")
+    }
+
+
+def upsert_user_model_settings(user_id: str, payload: dict) -> dict:
+    client = get_supabase_client()
+    current = get_user_model_settings(user_id)
+
+    preferred_model = str(payload.get("preferred_model", current.get("preferred_model", ""))).strip()
+
+    gemini_api_key = payload.get("gemini_api_key")
+    aws_access_key_id = payload.get("aws_access_key_id")
+    aws_secret_access_key = payload.get("aws_secret_access_key")
+    aws_session_token = payload.get("aws_session_token")
+    aws_region = payload.get("aws_region")
+    aws_bedrock_model_id = payload.get("aws_bedrock_model_id")
+
+    def _next_secret(incoming, existing):
+        if incoming is None:
+            return existing
+        return str(incoming).strip()
+
+    row = {
+        "user_id": user_id,
+        "preferred_model": preferred_model or settings.DEFAULT_ANALYSIS_MODEL,
+        "gemini_api_key_enc": encrypt_secret(_next_secret(gemini_api_key, current.get("gemini_api_key", ""))),
+        "aws_access_key_id_enc": encrypt_secret(_next_secret(aws_access_key_id, current.get("aws_access_key_id", ""))),
+        "aws_secret_access_key_enc": encrypt_secret(
+            _next_secret(aws_secret_access_key, current.get("aws_secret_access_key", ""))
+        ),
+        "aws_session_token_enc": encrypt_secret(_next_secret(aws_session_token, current.get("aws_session_token", ""))),
+        "aws_region": str(aws_region).strip() if aws_region is not None else current.get("aws_region", ""),
+        "aws_bedrock_model_id": (
+            str(aws_bedrock_model_id).strip() if aws_bedrock_model_id is not None else current.get("aws_bedrock_model_id", "")
+        ),
+        "updated_at": datetime.now(timezone.utc).isoformat()
+    }
+
+    (
+        client.table("user_settings")
+        .upsert(row, on_conflict="user_id")
+        .execute()
+    )
+    return get_user_model_settings_masked(user_id)

@@ -3,21 +3,27 @@ from flask import Blueprint, jsonify, request
 from gotrue.errors import AuthApiError
 
 from app.config import settings
+from app.services.bedrock_service import BedrockNotConfiguredError, analyze_outfit_with_bedrock
 from app.services.gemini_service import (
     GeminiNotConfiguredError,
     analyze_outfit_with_gemini,
     probe_gemini_connectivity,
 )
+from app.services.models_service import build_model_availability, get_preferred_model
+from app.services.secrets_service import SettingsEncryptionError
 from app.services.supabase_service import (
     delete_wardrobe_photo,
     get_dashboard_stats,
     get_original_photo_url,
+    get_user_model_settings,
+    get_user_model_settings_masked,
     list_user_items,
     SupabaseNotConfiguredError,
     get_supabase_client,
     get_user_id_from_token,
     list_wardrobe,
     persist_analysis,
+    upsert_user_model_settings,
     upload_photo_for_user,
 )
 
@@ -58,11 +64,43 @@ def analyze_outfit():
             return jsonify({"error": "Image file is empty."}), 400
 
         mime_type = image.mimetype or "image/jpeg"
-        analysis = analyze_outfit_with_gemini(image_bytes, mime_type)
+
+        requested_model = (request.form.get("analysis_model") or "").strip()
+        user_settings = get_user_model_settings(user_id)
+        available_models = build_model_availability(user_settings)
+        chosen_model_id = requested_model or get_preferred_model(user_settings)
+        model_entry = next((model for model in available_models if model["id"] == chosen_model_id), None)
+        if not model_entry:
+            return jsonify({"error": f"Unknown analysis model: {chosen_model_id}"}), 400
+        if not model_entry.get("available"):
+            return jsonify({"error": model_entry.get("unavailable_reason") or "Selected model is unavailable."}), 400
+
+        if model_entry["provider"] == "gemini":
+            gemini_key = user_settings.get("gemini_api_key") or settings.GEMINI_API_KEY
+            analysis = analyze_outfit_with_gemini(
+                image_bytes,
+                mime_type,
+                model=chosen_model_id,
+                api_key=gemini_key
+            )
+        else:
+            bedrock_model = user_settings.get("aws_bedrock_model_id") or chosen_model_id
+            analysis = analyze_outfit_with_bedrock(
+                image_bytes=image_bytes,
+                mime_type=mime_type,
+                model_id=bedrock_model,
+                aws_access_key_id=user_settings.get("aws_access_key_id", ""),
+                aws_secret_access_key=user_settings.get("aws_secret_access_key", ""),
+                aws_region=user_settings.get("aws_region", ""),
+                aws_session_token=user_settings.get("aws_session_token", "")
+            )
         analysis_items = analysis.get("items", [])
+        analysis_outfits = analysis.get("outfits", [])
         analysis_response = {
             "style": analysis.get("style"),
-            "items": [dict(item) for item in analysis_items]
+            "items": [dict(item) for item in analysis_items],
+            "outfits": [dict(outfit) for outfit in analysis_outfits],
+            "analysis_model": chosen_model_id
         }
 
         # Persist core analysis only (avoid storing large base64 image strings in DB).
@@ -86,6 +124,10 @@ def analyze_outfit():
     except SupabaseNotConfiguredError as exc:
         return jsonify({"error": str(exc)}), 500
     except GeminiNotConfiguredError as exc:
+        return jsonify({"error": str(exc)}), 500
+    except BedrockNotConfiguredError as exc:
+        return jsonify({"error": str(exc)}), 500
+    except SettingsEncryptionError as exc:
         return jsonify({"error": str(exc)}), 500
     except requests.HTTPError as exc:
         error_text = str(exc)
@@ -315,3 +357,87 @@ def diagnostics():
             "env": env_summary
         }
     ), status_code
+
+
+@api_bp.get("/models")
+def get_models():
+    access_token = _extract_access_token()
+    if not access_token:
+        return jsonify({"error": "Missing bearer token."}), 401
+
+    try:
+        user_id = get_user_id_from_token(access_token)
+        if not user_id:
+            return jsonify({"error": "Invalid or expired token."}), 401
+
+        model_settings = get_user_model_settings(user_id)
+        models = build_model_availability(model_settings)
+        preferred_model = get_preferred_model(model_settings)
+        image_ready = [model for model in models if model.get("supports_image") and model.get("available")]
+        return jsonify(
+            {
+                "models": models,
+                "preferred_model": preferred_model,
+                "image_ready_models": image_ready
+            }
+        ), 200
+    except SupabaseNotConfiguredError as exc:
+        return jsonify({"error": str(exc)}), 500
+    except SettingsEncryptionError as exc:
+        return jsonify({"error": str(exc)}), 500
+    except AuthApiError:
+        return jsonify({"error": "Invalid or expired token."}), 401
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"error": f"Model lookup failed: {exc}"}), 500
+
+
+@api_bp.get("/settings/model-keys")
+def get_model_keys():
+    access_token = _extract_access_token()
+    if not access_token:
+        return jsonify({"error": "Missing bearer token."}), 401
+
+    try:
+        user_id = get_user_id_from_token(access_token)
+        if not user_id:
+            return jsonify({"error": "Invalid or expired token."}), 401
+
+        masked_settings = get_user_model_settings_masked(user_id)
+        return jsonify({"settings": masked_settings}), 200
+    except SupabaseNotConfiguredError as exc:
+        return jsonify({"error": str(exc)}), 500
+    except SettingsEncryptionError as exc:
+        return jsonify({"error": str(exc)}), 500
+    except AuthApiError:
+        return jsonify({"error": "Invalid or expired token."}), 401
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"error": f"Settings lookup failed: {exc}"}), 500
+
+
+@api_bp.put("/settings/model-keys")
+def update_model_keys():
+    access_token = _extract_access_token()
+    if not access_token:
+        return jsonify({"error": "Missing bearer token."}), 401
+
+    payload = request.get_json(silent=True) or {}
+    if not isinstance(payload, dict):
+        return jsonify({"error": "Invalid payload."}), 400
+
+    try:
+        user_id = get_user_id_from_token(access_token)
+        if not user_id:
+            return jsonify({"error": "Invalid or expired token."}), 401
+
+        masked = upsert_user_model_settings(user_id, payload)
+        model_settings = get_user_model_settings(user_id)
+        models = build_model_availability(model_settings)
+        return jsonify({"settings": masked, "models": models}), 200
+    except SupabaseNotConfiguredError as exc:
+        return jsonify({"error": str(exc)}), 500
+    except SettingsEncryptionError as exc:
+        return jsonify({"error": str(exc)}), 500
+    except AuthApiError:
+        return jsonify({"error": "Invalid or expired token."}), 401
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"error": f"Settings update failed: {exc}"}), 500

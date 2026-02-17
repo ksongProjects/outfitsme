@@ -1,14 +1,17 @@
 import { formatItemLabel, getItemIcon } from "../../utils/formatters";
+import { useItemsContext } from "../../context/DashboardContext";
 
-export default function ItemsTab({
-  items,
-  itemsLoading,
-  itemsMessage,
-  loadItems,
-  selectedItemIds,
-  toggleSelectItem,
-  selectedItems
-}) {
+export default function ItemsTab() {
+  const {
+    items,
+    itemsLoading,
+    itemsMessage,
+    loadItems,
+    selectedItemIds,
+    toggleSelectItem,
+    selectedItems
+  } = useItemsContext();
+
   return (
     <section>
       <div className="toolbar-row">

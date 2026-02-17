@@ -5,10 +5,10 @@ OutfitMe is a web app where users upload outfit photos, identify clothing items,
 ## Current Local MVP
 
 Implemented in this repo:
-- `frontend/`: Next.js UI with landing page auth flow and a tabbed dashboard (`Analyze outfit`, `Wardrobe`)
-- `backend/`: Flask API with authenticated endpoints, Gemini outfit analysis, Supabase token verification, private bucket upload, and DB persistence
+- `frontend/`: Next.js UI with landing page auth flow and a tabbed dashboard (`Analyze photo`, `Outfits`, `Items`, `Settings`)
+- `backend/`: Flask API with authenticated endpoints, Gemini + Bedrock analysis routing, Supabase token verification, private bucket upload, and DB persistence
 
-Gemini powers outfit analysis. Similar-item results are still mocked for now.
+Gemini and Amazon Nova (Bedrock) are supported for analysis. Similar-item results are still mocked for now.
 
 ## Prerequisites
 
@@ -19,10 +19,12 @@ Gemini powers outfit analysis. Similar-item results are still mocked for now.
 ## Supabase Setup
 
 1. Create a private storage bucket named `outfit-images`.
-2. Create tables (`photos`, `outfit_analyses`, `items`) from the project spec SQL.
+2. Create tables (`photos`, `outfit_analyses`, `items`, `user_settings`) from migrations.
 3. Enable RLS and add owner-based policies by `user_id`.
 4. Enable email/password auth in Supabase Auth.
-5. Run `supabase/migrations/20260217_000001_initial_schema.sql` in Supabase SQL editor.
+5. Run:
+   - `supabase/migrations/20260217_000001_initial_schema.sql`
+   - `supabase/migrations/20260217_000002_user_settings.sql`
 
 ## Environment Variables
 
@@ -46,6 +48,14 @@ GEMINI_API_KEY=
 GEMINI_MODEL=gemini-2.5-flash
 GEMINI_IMAGE_MODEL=gemini-2.5-flash-image
 ITEM_IMAGE_MAX=3
+SETTINGS_ENCRYPTION_KEY=
+DEFAULT_ANALYSIS_MODEL=gemini-2.5-flash
+```
+
+Generate `SETTINGS_ENCRYPTION_KEY` once (Fernet key) and keep it private:
+
+```bash
+python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 ```
 
 ## Run Locally
@@ -86,6 +96,9 @@ Frontend: `http://localhost:3000`
 - `GET /api/items` (requires Bearer token; returns items-only list for item selection/combining)
 - `GET /api/stats` (requires Bearer token; returns dashboard counts for outfits, analyses, and items)
 - `DELETE /api/wardrobe/:photo_id` (requires Bearer token; deletes wardrobe entry + stored image)
+- `GET /api/models` (requires Bearer token; returns model capability + per-user availability)
+- `GET /api/settings/model-keys` (requires Bearer token; returns masked model settings)
+- `PUT /api/settings/model-keys` (requires Bearer token; saves encrypted model credentials/preferences)
 
 ## Testing
 
@@ -108,6 +121,7 @@ npm test
 
 - Frontend uses only `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`.
 - Backend uses `SUPABASE_SECRET_KEY` only on server.
+- Model keys are stored encrypted in `user_settings` with `SETTINGS_ENCRYPTION_KEY`.
 - Keep `.env` and `.env.local` out of git.
 - Use private bucket + RLS policies for user data isolation.
 

@@ -1,19 +1,25 @@
 import { formatItemLabel, getItemIcon } from "../../utils/formatters";
 import { useState } from "react";
+import { useAnalysisContext } from "../../context/DashboardContext";
 
-export default function AnalyzeTab({
-  previewUrl,
-  onFileChange,
-  onFileDrop,
-  fileName,
-  clearSelectedFile,
-  runAnalysis,
-  disabled,
-  loading,
-  analysis,
-  similarResults
-}) {
+export default function AnalyzeTab() {
   const [isDragOver, setIsDragOver] = useState(false);
+  const {
+    previewUrl,
+    onFileChange,
+    onFileDrop,
+    fileName,
+    clearSelectedFile,
+    runAnalysis,
+    disabled,
+    loading,
+    analysis,
+    similarResults,
+    selectedModel,
+    setSelectedModel,
+    modelOptions
+  } = useAnalysisContext();
+  const detectedOutfits = analysis?.outfits || [];
 
   const handleDragOver = (event) => {
     event.preventDefault();
@@ -39,6 +45,27 @@ export default function AnalyzeTab({
     <div className="analysis-layout">
       <section>
         <label htmlFor="image-upload">Photo</label>
+        <label htmlFor="analysis-model">Analysis model</label>
+        <select
+          id="analysis-model"
+          className="text-input"
+          value={selectedModel}
+          onChange={(event) => setSelectedModel(event.target.value)}
+        >
+          {(modelOptions || []).filter((model) => model.supports_image).map((model) => (
+            <option key={model.id} value={model.id} disabled={!model.available}>
+              {model.label}{model.available ? "" : " (Unavailable)"}
+            </option>
+          ))}
+        </select>
+        {(modelOptions || []).some((model) => model.supports_image && !model.available) ? (
+          <p className="subtext">
+            Unavailable models: {(modelOptions || [])
+              .filter((model) => model.supports_image && !model.available)
+              .map((model) => `${model.label} - ${model.unavailable_reason}`)
+              .join(" | ")}
+          </p>
+        ) : null}
         <label
           htmlFor="image-upload"
           className={`dropzone ${isDragOver ? "is-dragover" : ""}`}
@@ -69,17 +96,39 @@ export default function AnalyzeTab({
         {!analysis ? <p className="subtext">Analyze a photo to view detected style and items.</p> : null}
         {analysis ? (
           <>
-            <p>
-              <strong>Style:</strong> {analysis.style}
-            </p>
-            <ul className="analysis-items">
-              {analysis.items.map((item) => (
-                <li key={item.name} className="analysis-item">
-                  <span className="item-icon" aria-hidden="true">{getItemIcon(item)}</span>
-                  <span>{formatItemLabel(item)}</span>
-                </li>
-              ))}
-            </ul>
+            {detectedOutfits.length > 0 ? (
+              <>
+                {detectedOutfits.map((outfit, index) => (
+                  <div key={`outfit-${index}`} className="outfit-group">
+                    <p>
+                      <strong>Outfit {index + 1}:</strong> {outfit.style}
+                    </p>
+                    <ul className="analysis-items">
+                      {(outfit.items || []).map((item, itemIndex) => (
+                        <li key={`${index}-${item.name}-${itemIndex}`} className="analysis-item">
+                          <span className="item-icon" aria-hidden="true">{getItemIcon(item)}</span>
+                          <span>{formatItemLabel(item)}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ))}
+              </>
+            ) : (
+              <>
+                <p>
+                  <strong>Style:</strong> {analysis.style}
+                </p>
+                <ul className="analysis-items">
+                  {analysis.items.map((item, itemIndex) => (
+                    <li key={`${item.name}-${itemIndex}`} className="analysis-item">
+                      <span className="item-icon" aria-hidden="true">{getItemIcon(item)}</span>
+                      <span>{formatItemLabel(item)}</span>
+                    </li>
+                  ))}
+                </ul>
+              </>
+            )}
           </>
         ) : null}
 
