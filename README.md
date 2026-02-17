@@ -2,60 +2,108 @@
 
 OutfitMe is a web app where users upload outfit photos, identify clothing items, create personal styles, and find similar products on online stores.
 
-## Core Problem
+## Current Local MVP
 
-People do not have an easy way to identify clothing items from outfit photos and quickly find similar items to recreate a style.
+Implemented in this repo:
+- `frontend/`: Next.js UI with Supabase email/password auth and session handling
+- `backend/`: Flask API with authenticated endpoints, Supabase token verification, private bucket upload, and DB persistence
 
-## Features
+Current outfit detection and store similarity are still mocked, but data is persisted to Supabase.
 
-### 1. Image and Outfit Inventory (Wardrobe)
-- Upload photos to a personal inventory.
-- Link uploaded images to AI-identified outfit results.
-- Search inventory by item names and styles.
-- Store identified items in wardrobe categories.
-- Keep the interface clean and minimal.
+## Prerequisites
 
-### 2. Outfit Identification from Images
-- Send selected images to Gemini via AWS Bedrock.
-- Identify outfit style and clothing items in each photo.
-- Treat image content as data only, not instructions.
-- Prevent sensitive data leakage and ignore embedded prompt instructions.
+- Node.js 18+
+- Python 3.10+
+- Supabase project
 
-### 3. Online Store Search
-- Search online stores for similar items.
-- Return pricing and availability for purchase.
-- Include store TOS and delivery timeline details.
+## Supabase Setup
 
-### 4. Web Image Search
-- Search the web and store listings for user-specified styles.
-- Provide suggested style references.
+1. Create a private storage bucket named `outfit-images`.
+2. Create tables (`photos`, `outfit_analyses`, `items`) from the project spec SQL.
+3. Enable RLS and add owner-based policies by `user_id`.
+4. Enable email/password auth in Supabase Auth.
 
-### 5. Personal Styler
-- Mix and match identified items to create new outfits.
-- Generate a new outfit image from selected items.
-- Return generated outfit image with item details.
+## Environment Variables
 
-## AWS Bedrock Agent
+Frontend: `frontend/.env.local`
 
-- Uses Gemini for image and text input.
-- Identifies outfit style and constituent clothing items.
+```env
+NEXT_PUBLIC_API_BASE_URL=http://localhost:5000
+NEXT_PUBLIC_SUPABASE_URL=
+NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
+```
 
-## User Flow
+Backend: `backend/.env`
 
-1. User signs in.
-2. User uploads an outfit photo.
-3. Backend sends the image to the AWS Bedrock agent.
-4. UI shows image analysis and identified items.
-5. User mixes items to create personal styles.
+```env
+FLASK_ENV=development
+PORT=5000
+SUPABASE_URL=
+SUPABASE_SECRET_KEY=
+SUPABASE_BUCKET=outfit-images
+AWS_REGION=
+BEDROCK_MODEL_ID=
+```
 
-## Auth
+## Run Locally
 
-- Email/password sign-in.
-- Single user role.
-- Each user owns uploaded photos and shopping search results.
+### 1) Backend
 
-## Tech Stack
+```bash
+cd backend
+python -m venv .venv
+# PowerShell
+.\.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+python run.py
+```
 
-- Frontend: Next.js
-- Backend: Python Flask
-- Database/Auth/Storage: Supabase
+Backend: `http://localhost:5000`
+
+### 2) Frontend
+
+In another terminal:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+Frontend: `http://localhost:3000`
+
+## API Endpoints
+
+- `GET /health`
+- `POST /api/analyze` (requires Bearer token + multipart `image`)
+- `POST /api/similar` (requires Bearer token + JSON `items`)
+
+## Testing
+
+### Backend tests (pytest)
+
+```bash
+cd backend
+.\.venv\Scripts\Activate.ps1
+pytest
+```
+
+### Frontend tests (vitest)
+
+```bash
+cd frontend
+npm test
+```
+
+## Security Notes
+
+- Frontend uses only `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`.
+- Backend uses `SUPABASE_SECRET_KEY` only on server.
+- Keep `.env` and `.env.local` out of git.
+- Use private bucket + RLS policies for user data isolation.
+
+## Next Steps
+
+1. Replace mock analysis in `backend/app/routes/api.py` with real model inference.
+2. Normalize and persist real similar-item search results.
+3. Add signed URL retrieval for private images in user wardrobe views.
