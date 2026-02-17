@@ -97,6 +97,13 @@ input {
   gap: 8px;
 }
 
+.button-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
 .card,
 .feature-card,
 .wardrobe-card {
@@ -201,6 +208,49 @@ input {
 
 input[type="file"] {
   margin: 10px 0 12px;
+}
+
+.file-input-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  border: 0;
+}
+
+.dropzone {
+  margin: 10px 0 12px;
+  border: 1px dashed var(--line);
+  border-radius: 12px;
+  padding: 16px;
+  background: #fff;
+  display: block;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background-color 0.2s ease;
+}
+
+.dropzone.is-dragover {
+  border-color: var(--accent);
+  background: #f4fbf9;
+}
+
+.dropzone-title {
+  margin: 0 0 4px;
+  font-weight: 700;
+}
+
+.dropzone-subtext {
+  margin: 0;
+  color: var(--muted);
+}
+
+.dropzone-file {
+  margin: 8px 0 0;
+  color: var(--ink);
+  font-size: 0.92rem;
 }
 
 .preview,

@@ -1,5 +1,11 @@
 import "../styles/globals.css";
+import { Toaster } from "sonner";
 
 export default function App({ Component, pageProps }) {
-  return <Component {...pageProps} />;
+  return (
+    <>
+      <Toaster richColors position="top-center" />
+      <Component {...pageProps} />
+    </>
+  );
 }

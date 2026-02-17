@@ -5,9 +5,7 @@ export default function LandingAuth({
   password,
   setEmail,
   setPassword,
-  submitAuth,
-  info,
-  error
+  submitAuth
 }) {
   return (
     <main className="landing">
@@ -66,8 +64,6 @@ export default function LandingAuth({
             <button type="submit" className="primary-btn">Create account</button>
           )}
 
-          {info ? <p className="info">{info}</p> : null}
-          {error ? <p className="error">{error}</p> : null}
         </form>
       </section>
 

@@ -5,6 +5,7 @@ import AnalyzeTab from "../components/tabs/AnalyzeTab";
 import OutfitsTab from "../components/tabs/OutfitsTab";
 import ItemsTab from "../components/tabs/ItemsTab";
 import { supabase } from "../lib/supabaseClient";
+import { toast } from "sonner";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
 
@@ -134,10 +135,12 @@ export default function HomePage() {
     const { error: authError } = await supabase.auth.signUp({ email, password });
     if (authError) {
       setError(authError.message);
+      toast.error(authError.message);
       return;
     }
 
     setInfo("Signup successful. Check your email if confirmation is enabled, then sign in.");
+    toast.success("Signup successful. Check your email if confirmation is enabled.");
   };
 
   const signIn = async () => {
@@ -148,10 +151,12 @@ export default function HomePage() {
     const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
     if (authError) {
       setError(authError.message);
+      toast.error(authError.message);
       return;
     }
 
     setInfo("Signed in successfully.");
+    toast.success("Signed in successfully.");
   };
 
   const submitAuth = async (event) => {
@@ -177,10 +182,15 @@ export default function HomePage() {
     setPreviewUrl("");
     setDashboardTab("analyze");
     setOriginalPhotoUrl("");
+    toast.info("Signed out.");
   };
 
   const onFileChange = async (event) => {
     const selected = event.target.files?.[0];
+    await processSelectedFile(selected);
+  };
+
+  const processSelectedFile = async (selected) => {
     setError("");
     setWardrobeMessage("");
     setInfo("");
@@ -198,6 +208,7 @@ export default function HomePage() {
       setFile(null);
       setPreviewUrl("");
       setError(validationError);
+      toast.error(validationError);
       return;
     }
 
@@ -208,14 +219,32 @@ export default function HomePage() {
     setPreviewUrl(URL.createObjectURL(selected));
   };
 
+  const onFileDrop = async (selected) => {
+    await processSelectedFile(selected);
+  };
+
+  const clearSelectedFile = () => {
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+    }
+    setFile(null);
+    setPreviewUrl("");
+    setAnalysis(null);
+    setSimilarResults([]);
+    setError("");
+    setInfo("");
+  };
+
   const runAnalysis = async () => {
     if (!file) {
       setError("Please select an image first.");
+      toast.error("Please select an image first.");
       return;
     }
 
     if (!session?.access_token) {
       setError("Please sign in first.");
+      toast.error("Please sign in first.");
       return;
     }
 
@@ -261,8 +290,11 @@ export default function HomePage() {
       const similarJson = await similarRes.json();
       setSimilarResults(similarJson.results || []);
       setInfo("Analysis complete and saved to your wardrobe.");
+      toast.success("Outfit analyzed and saved.");
     } catch (err) {
-      setError(toUserFriendlyAnalyzeError(err.message));
+      const friendly = toUserFriendlyAnalyzeError(err.message);
+      setError(friendly);
+      toast.error(friendly);
     } finally {
       setLoading(false);
     }
@@ -293,9 +325,15 @@ export default function HomePage() {
       const entries = wardrobeJson.wardrobe || [];
       setWardrobe(entries);
       setWardrobeMessage(entries.length === 0 ? "No wardrobe entries yet. Analyze your first outfit photo." : "");
+      if (entries.length === 0) {
+        toast.info("No outfits yet. Analyze your first photo.");
+      } else {
+        toast.success("Outfits loaded.");
+      }
     } catch (_err) {
       setWardrobe([]);
       setWardrobeMessage("Couldn't load your wardrobe right now. You can still analyze a new outfit.");
+      toast.error("Couldn't load outfits right now.");
     } finally {
       setWardrobeLoading(false);
     }
@@ -327,8 +365,10 @@ export default function HomePage() {
 
       setWardrobe((prev) => prev.filter((entry) => entry.photo_id !== photoId));
       setWardrobeMessage("Outfit removed from wardrobe.");
+      toast.success("Outfit deleted.");
     } catch (_err) {
       setWardrobeMessage("Could not delete this outfit right now. Please try again.");
+      toast.error("Could not delete outfit right now.");
     }
   };
 
@@ -352,8 +392,12 @@ export default function HomePage() {
 
       const payload = await response.json();
       setOriginalPhotoUrl(payload.image_url || "");
+      if (!payload.image_url) {
+        toast.error("Original photo is unavailable.");
+      }
     } catch (_err) {
       setWardrobeMessage("Could not load original photo right now.");
+      toast.error("Could not load original photo.");
     }
   };
 
@@ -384,9 +428,13 @@ export default function HomePage() {
       const rows = itemsJson.items || [];
       setItems(rows);
       setItemsMessage(rows.length === 0 ? "No items yet. Analyze an outfit to populate your item catalog." : "");
+      if (rows.length === 0) {
+        toast.info("No items yet.");
+      }
     } catch (_err) {
       setItems([]);
       setItemsMessage("Couldn't load item catalog right now.");
+      toast.error("Couldn't load item catalog.");
     } finally {
       setItemsLoading(false);
     }
@@ -413,8 +461,6 @@ export default function HomePage() {
         setEmail={setEmail}
         setPassword={setPassword}
         submitAuth={submitAuth}
-        info={info}
-        error={error}
       />
     );
   }
@@ -456,6 +502,9 @@ export default function HomePage() {
           <AnalyzeTab
             previewUrl={previewUrl}
             onFileChange={onFileChange}
+            onFileDrop={onFileDrop}
+            fileName={file?.name || ""}
+            clearSelectedFile={clearSelectedFile}
             runAnalysis={runAnalysis}
             disabled={disabled}
             loading={loading}
@@ -489,8 +538,6 @@ export default function HomePage() {
           />
         ) : null}
 
-        {info ? <p className="info">{info}</p> : null}
-        {dashboardTab === "analyze" && error ? <p className="error">{error}</p> : null}
       </section>
     </main>
   );
