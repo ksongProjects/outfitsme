@@ -3,7 +3,10 @@ from flask import Blueprint, jsonify, request
 from gotrue.errors import AuthApiError
 
 from app.config import settings
-from app.services.bedrock_service import BedrockNotConfiguredError, analyze_outfit_with_bedrock
+from app.services.bedrock_service import (
+    BedrockNotConfiguredError,
+    analyze_outfit_with_bedrock_agent,
+)
 from app.services.gemini_service import (
     GeminiNotConfiguredError,
     analyze_outfit_with_gemini,
@@ -14,7 +17,7 @@ from app.services.secrets_service import SettingsEncryptionError
 from app.services.supabase_service import (
     delete_wardrobe_photo,
     get_dashboard_stats,
-    get_original_photo_url,
+    get_wardrobe_photo_details,
     get_user_model_settings,
     get_user_model_settings_masked,
     list_user_items,
@@ -83,17 +86,19 @@ def analyze_outfit():
                 model=chosen_model_id,
                 api_key=gemini_key
             )
-        else:
-            bedrock_model = user_settings.get("aws_bedrock_model_id") or chosen_model_id
-            analysis = analyze_outfit_with_bedrock(
+        elif model_entry["provider"] == "bedrock_agent":
+            analysis = analyze_outfit_with_bedrock_agent(
                 image_bytes=image_bytes,
                 mime_type=mime_type,
-                model_id=bedrock_model,
+                agent_id=user_settings.get("aws_bedrock_agent_id", ""),
+                agent_alias_id=user_settings.get("aws_bedrock_agent_alias_id", ""),
                 aws_access_key_id=user_settings.get("aws_access_key_id", ""),
                 aws_secret_access_key=user_settings.get("aws_secret_access_key", ""),
                 aws_region=user_settings.get("aws_region", ""),
                 aws_session_token=user_settings.get("aws_session_token", "")
             )
+        else:
+            return jsonify({"error": f"Unsupported model provider: {model_entry['provider']}"}), 400
         analysis_items = analysis.get("items", [])
         analysis_outfits = analysis.get("outfits", [])
         analysis_response = {
@@ -145,9 +150,9 @@ def analyze_outfit():
             )
         if "429" in error_text or "quota" in error_text.lower():
             return jsonify({"error": "AI service quota/rate limit reached. Please try again shortly."}), 429
-        return jsonify({"error": f"Gemini request failed: {exc}"}), 502
+        return jsonify({"error": f"Model request failed: {exc}"}), 502
     except ValueError as exc:
-        return jsonify({"error": f"Gemini response parse failed: {exc}"}), 502
+        return jsonify({"error": f"Model response parse failed: {exc}"}), 502
     except AuthApiError:
         return jsonify({"error": "Invalid or expired token."}), 401
     except Exception as exc:  # noqa: BLE001
@@ -236,8 +241,8 @@ def delete_wardrobe_entry(photo_id: str):
         return jsonify({"error": f"Wardrobe delete failed: {exc}"}), 500
 
 
-@api_bp.get("/wardrobe/<photo_id>/original")
-def get_wardrobe_original(photo_id: str):
+@api_bp.get("/wardrobe/<photo_id>/details")
+def get_wardrobe_details(photo_id: str):
     access_token = _extract_access_token()
     if not access_token:
         return jsonify({"error": "Missing bearer token."}), 401
@@ -247,17 +252,17 @@ def get_wardrobe_original(photo_id: str):
         if not user_id:
             return jsonify({"error": "Invalid or expired token."}), 401
 
-        image_url = get_original_photo_url(user_id, photo_id)
-        if not image_url:
-            return jsonify({"error": "Outfit photo not found."}), 404
+        details = get_wardrobe_photo_details(user_id, photo_id)
+        if not details:
+            return jsonify({"error": "Outfit details not found."}), 404
 
-        return jsonify({"photo_id": photo_id, "image_url": image_url}), 200
+        return jsonify({"photo_id": photo_id, "details": details}), 200
     except SupabaseNotConfiguredError as exc:
         return jsonify({"error": str(exc)}), 500
     except AuthApiError:
         return jsonify({"error": "Invalid or expired token."}), 401
     except Exception as exc:  # noqa: BLE001
-        return jsonify({"error": f"Original photo lookup failed: {exc}"}), 500
+        return jsonify({"error": f"Wardrobe details lookup failed: {exc}"}), 500
 
 
 @api_bp.get("/items")

@@ -15,7 +15,8 @@ export function useSettingsState({ session, accessToken, onModelSettingsUpdated 
     aws_secret_access_key: "",
     aws_session_token: "",
     aws_region: "",
-    aws_bedrock_model_id: ""
+    aws_bedrock_agent_id: "",
+    aws_bedrock_agent_alias_id: ""
   });
 
   useEffect(() => {
@@ -43,7 +44,8 @@ export function useSettingsState({ session, accessToken, onModelSettingsUpdated 
         ...prev,
         preferred_model: current.preferred_model || prev.preferred_model,
         aws_region: current.aws_region || "",
-        aws_bedrock_model_id: current.aws_bedrock_model_id || ""
+        aws_bedrock_agent_id: current.aws_bedrock_agent_id || "",
+        aws_bedrock_agent_alias_id: current.aws_bedrock_agent_alias_id || ""
       }));
     } catch (_err) {
       // Optional UI helper only.

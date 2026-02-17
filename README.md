@@ -8,7 +8,7 @@ Implemented in this repo:
 - `frontend/`: Next.js UI with landing page auth flow and a tabbed dashboard (`Analyze photo`, `Outfits`, `Items`, `Settings`)
 - `backend/`: Flask API with authenticated endpoints, Gemini + Bedrock analysis routing, Supabase token verification, private bucket upload, and DB persistence
 
-Gemini and Amazon Nova (Bedrock) are supported for analysis. Similar-item results are still mocked for now.
+Gemini and AWS Bedrock Agent are supported for analysis. Similar-item results are still mocked for now.
 
 ## Prerequisites
 
@@ -25,6 +25,8 @@ Gemini and Amazon Nova (Bedrock) are supported for analysis. Similar-item result
 5. Run:
    - `supabase/migrations/20260217_000001_initial_schema.sql`
    - `supabase/migrations/20260217_000002_user_settings.sql`
+   - `supabase/migrations/20260217_000003_bedrock_agent_settings.sql`
+   - `supabase/migrations/20260217_000004_drop_unused_bedrock_model_id.sql`
 
 ## Environment Variables
 
@@ -92,7 +94,7 @@ Frontend: `http://localhost:3000`
 - `POST /api/analyze` (requires Bearer token + multipart `image`)
 - `POST /api/similar` (requires Bearer token + JSON `items`)
 - `GET /api/wardrobe` (requires Bearer token; returns minimal outfit list for fast loading)
-- `GET /api/wardrobe/:photo_id/original` (requires Bearer token; returns signed URL for original photo preview)
+- `GET /api/wardrobe/:photo_id/details` (requires Bearer token; returns signed original photo URL + outfit-specific items)
 - `GET /api/items` (requires Bearer token; returns items-only list for item selection/combining)
 - `GET /api/stats` (requires Bearer token; returns dashboard counts for outfits, analyses, and items)
 - `DELETE /api/wardrobe/:photo_id` (requires Bearer token; deletes wardrobe entry + stored image)

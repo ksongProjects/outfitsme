@@ -125,13 +125,22 @@ export default function SettingsTab() {
           placeholder="us-east-1"
         />
 
-        <label htmlFor="aws-bedrock-model">Bedrock model ID override (optional)</label>
+        <label htmlFor="aws-bedrock-agent-id">Bedrock agent ID</label>
         <input
-          id="aws-bedrock-model"
+          id="aws-bedrock-agent-id"
           className="text-input"
-          value={settingsForm.aws_bedrock_model_id}
-          onChange={(event) => setSettingsForm((prev) => ({ ...prev, aws_bedrock_model_id: event.target.value }))}
-          placeholder="amazon.nova-lite-v1:0"
+          value={settingsForm.aws_bedrock_agent_id}
+          onChange={(event) => setSettingsForm((prev) => ({ ...prev, aws_bedrock_agent_id: event.target.value }))}
+          placeholder="ABCDEFGHIJ"
+        />
+
+        <label htmlFor="aws-bedrock-agent-alias-id">Bedrock agent alias ID</label>
+        <input
+          id="aws-bedrock-agent-alias-id"
+          className="text-input"
+          value={settingsForm.aws_bedrock_agent_alias_id}
+          onChange={(event) => setSettingsForm((prev) => ({ ...prev, aws_bedrock_agent_alias_id: event.target.value }))}
+          placeholder="TSTALIASID"
         />
 
         <div className="button-row">

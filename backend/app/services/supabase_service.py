@@ -202,11 +202,12 @@ def delete_wardrobe_photo(user_id: str, photo_id: str) -> bool:
     return True
 
 
-def get_original_photo_url(user_id: str, photo_id: str) -> str | None:
+def get_wardrobe_photo_details(user_id: str, photo_id: str) -> dict | None:
     client = get_supabase_client()
+
     photo_response = (
         client.table("photos")
-        .select("storage_path")
+        .select("id,storage_path,created_at")
         .eq("id", photo_id)
         .eq("user_id", user_id)
         .limit(1)
@@ -216,11 +217,41 @@ def get_original_photo_url(user_id: str, photo_id: str) -> str | None:
     if not photo_row:
         return None
 
-    storage_path = photo_row.get("storage_path")
-    if not storage_path:
-        return None
+    analysis_response = (
+        client.table("outfit_analyses")
+        .select("id,style_label,created_at")
+        .eq("photo_id", photo_id)
+        .eq("user_id", user_id)
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+    )
+    analysis_row = (analysis_response.data or [None])[0]
 
-    return get_signed_image_url(storage_path, expires_in_seconds=3600)
+    items = []
+    if analysis_row:
+        items_response = (
+            client.table("items")
+            .select("id,analysis_id,category,name,color,created_at")
+            .eq("analysis_id", analysis_row["id"])
+            .eq("user_id", user_id)
+            .order("created_at")
+            .execute()
+        )
+        items = items_response.data or []
+
+    storage_path = photo_row.get("storage_path") or ""
+    image_url = get_signed_image_url(storage_path, expires_in_seconds=3600) if storage_path else None
+
+    return {
+        "photo_id": photo_row["id"],
+        "created_at": photo_row.get("created_at"),
+        "analysis_id": analysis_row["id"] if analysis_row else None,
+        "style_label": analysis_row["style_label"] if analysis_row else None,
+        "analysis_created_at": analysis_row["created_at"] if analysis_row else None,
+        "image_url": image_url,
+        "items": items
+    }
 
 
 def get_dashboard_stats(user_id: str) -> dict:
@@ -262,7 +293,8 @@ def _empty_model_settings() -> dict:
         "aws_secret_access_key": "",
         "aws_session_token": "",
         "aws_region": "",
-        "aws_bedrock_model_id": ""
+        "aws_bedrock_agent_id": "",
+        "aws_bedrock_agent_alias_id": ""
     }
 
 
@@ -272,7 +304,7 @@ def get_user_model_settings(user_id: str) -> dict:
         client.table("user_settings")
         .select(
             "preferred_model,gemini_api_key_enc,aws_access_key_id_enc,aws_secret_access_key_enc,"
-            "aws_session_token_enc,aws_region,aws_bedrock_model_id"
+            "aws_session_token_enc,aws_region,aws_bedrock_agent_id,aws_bedrock_agent_alias_id"
         )
         .eq("user_id", user_id)
         .limit(1)
@@ -289,7 +321,8 @@ def get_user_model_settings(user_id: str) -> dict:
         "aws_secret_access_key": decrypt_secret(row.get("aws_secret_access_key_enc") or ""),
         "aws_session_token": decrypt_secret(row.get("aws_session_token_enc") or ""),
         "aws_region": row.get("aws_region") or "",
-        "aws_bedrock_model_id": row.get("aws_bedrock_model_id") or ""
+        "aws_bedrock_agent_id": row.get("aws_bedrock_agent_id") or "",
+        "aws_bedrock_agent_alias_id": row.get("aws_bedrock_agent_alias_id") or ""
     }
 
 
@@ -302,7 +335,8 @@ def get_user_model_settings_masked(user_id: str) -> dict:
         "aws_secret_access_key_masked": mask_secret(settings_row.get("aws_secret_access_key", "")),
         "aws_session_token_masked": mask_secret(settings_row.get("aws_session_token", "")),
         "aws_region": settings_row.get("aws_region", ""),
-        "aws_bedrock_model_id": settings_row.get("aws_bedrock_model_id", "")
+        "aws_bedrock_agent_id": settings_row.get("aws_bedrock_agent_id", ""),
+        "aws_bedrock_agent_alias_id": settings_row.get("aws_bedrock_agent_alias_id", "")
     }
 
 
@@ -317,7 +351,8 @@ def upsert_user_model_settings(user_id: str, payload: dict) -> dict:
     aws_secret_access_key = payload.get("aws_secret_access_key")
     aws_session_token = payload.get("aws_session_token")
     aws_region = payload.get("aws_region")
-    aws_bedrock_model_id = payload.get("aws_bedrock_model_id")
+    aws_bedrock_agent_id = payload.get("aws_bedrock_agent_id")
+    aws_bedrock_agent_alias_id = payload.get("aws_bedrock_agent_alias_id")
 
     def _next_secret(incoming, existing):
         if incoming is None:
@@ -334,8 +369,11 @@ def upsert_user_model_settings(user_id: str, payload: dict) -> dict:
         ),
         "aws_session_token_enc": encrypt_secret(_next_secret(aws_session_token, current.get("aws_session_token", ""))),
         "aws_region": str(aws_region).strip() if aws_region is not None else current.get("aws_region", ""),
-        "aws_bedrock_model_id": (
-            str(aws_bedrock_model_id).strip() if aws_bedrock_model_id is not None else current.get("aws_bedrock_model_id", "")
+        "aws_bedrock_agent_id": (
+            str(aws_bedrock_agent_id).strip() if aws_bedrock_agent_id is not None else current.get("aws_bedrock_agent_id", "")
+        ),
+        "aws_bedrock_agent_alias_id": (
+            str(aws_bedrock_agent_alias_id).strip() if aws_bedrock_agent_alias_id is not None else current.get("aws_bedrock_agent_alias_id", "")
         ),
         "updated_at": datetime.now(timezone.utc).isoformat()
     }

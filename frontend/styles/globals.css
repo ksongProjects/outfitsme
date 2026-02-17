@@ -386,6 +386,10 @@ input[type="file"] {
   padding: 12px;
 }
 
+.modal-panel-sm {
+  width: min(480px, 100%);
+}
+
 .modal-header {
   display: flex;
   align-items: center;
@@ -407,6 +411,13 @@ input[type="file"] {
   border: 1px solid var(--line);
   border-radius: 10px;
   background: #fff;
+}
+
+.outfit-details-layout {
+  display: grid;
+  grid-template-columns: 1.1fr 0.9fr;
+  gap: 12px;
+  align-items: start;
 }
 
 .info {
@@ -490,6 +501,10 @@ ul {
   }
 
   .settings-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .outfit-details-layout {
     grid-template-columns: 1fr;
   }
 

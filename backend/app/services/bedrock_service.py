@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import re
+import uuid
 
 import boto3
 
@@ -10,7 +12,15 @@ class BedrockNotConfiguredError(RuntimeError):
 
 
 def _normalize_response_text(text: str) -> dict:
-    parsed = json.loads((text or "").strip())
+    cleaned = (text or "").strip()
+    try:
+        parsed = json.loads(cleaned)
+    except json.JSONDecodeError:
+        # Agent responses can include wrapping text around JSON.
+        match = re.search(r"\{[\s\S]*\}", cleaned)
+        if not match:
+            raise
+        parsed = json.loads(match.group(0))
     if not isinstance(parsed, dict):
         raise ValueError("Model JSON response is not an object.")
     return parsed
@@ -63,10 +73,11 @@ def _normalize_analysis(parsed: dict) -> dict:
     return {"style": style_label, "items": flattened_items, "outfits": outfits}
 
 
-def analyze_outfit_with_bedrock(
+def analyze_outfit_with_bedrock_agent(
     image_bytes: bytes,
     mime_type: str,
-    model_id: str,
+    agent_id: str,
+    agent_alias_id: str,
     aws_access_key_id: str,
     aws_secret_access_key: str,
     aws_region: str,
@@ -76,9 +87,13 @@ def analyze_outfit_with_bedrock(
         raise BedrockNotConfiguredError(
             "AWS Bedrock credentials are required: access key, secret key, and region."
         )
+    if not agent_id or not agent_alias_id:
+        raise BedrockNotConfiguredError(
+            "AWS Bedrock agent ID and alias ID are required."
+        )
 
     client_kwargs = {
-        "service_name": "bedrock-runtime",
+        "service_name": "bedrock-agent-runtime",
         "region_name": aws_region.strip()
     }
     session_token = (aws_session_token or "").strip()
@@ -96,37 +111,42 @@ def analyze_outfit_with_bedrock(
         "{\"outfits\": [{\"style\": string, \"items\": [{\"category\": string, \"name\": string, \"color\": string}]}]}."
     )
 
-    image_format = "jpeg"
-    lowered = (mime_type or "").lower()
-    if "png" in lowered:
-        image_format = "png"
-    elif "webp" in lowered:
-        image_format = "webp"
-
-    # Converse API expects bytes for image source.
-    response = client.converse(
-        modelId=model_id,
-        messages=[
-            {
-                "role": "user",
-                "content": [
-                    {"text": prompt},
-                    {
-                        "image": {
-                            "format": image_format,
-                            "source": {"bytes": image_bytes}
+    response = client.invoke_agent(
+        agentId=agent_id.strip(),
+        agentAliasId=agent_alias_id.strip(),
+        sessionId=str(uuid.uuid4()),
+        inputText=prompt,
+        sessionState={
+            "files": [
+                {
+                    "name": "outfit-image",
+                    "useCase": "CHAT",
+                    "source": {
+                        "sourceType": "BYTE_CONTENT",
+                        "byteContent": {
+                            "mediaType": mime_type or "image/jpeg",
+                            "data": image_bytes
                         }
                     }
-                ]
-            }
-        ]
+                }
+            ]
+        }
     )
 
-    output = response.get("output", {}).get("message", {}).get("content", [])
-    text_fragments = [part.get("text", "") for part in output if isinstance(part, dict) and "text" in part]
-    raw_text = "\n".join(text_fragments).strip()
+    chunks = []
+    for event in response.get("completion", []):
+        chunk = event.get("chunk") if isinstance(event, dict) else None
+        if not isinstance(chunk, dict):
+            continue
+        raw_bytes = chunk.get("bytes", b"")
+        if isinstance(raw_bytes, bytes):
+            chunks.append(raw_bytes.decode("utf-8", errors="ignore"))
+        elif isinstance(raw_bytes, str):
+            chunks.append(raw_bytes)
+
+    raw_text = "".join(chunks).strip()
     if not raw_text:
-        raise ValueError("Bedrock returned empty text response.")
+        raise ValueError("Bedrock Agent returned empty text response.")
 
     parsed = _normalize_response_text(raw_text)
     return _normalize_analysis(parsed)

@@ -7,7 +7,9 @@ export function useWardrobeState({ accessToken, onWardrobeChanged }) {
   const [wardrobe, setWardrobe] = useState([]);
   const [wardrobeLoading, setWardrobeLoading] = useState(false);
   const [wardrobeMessage, setWardrobeMessage] = useState("");
-  const [originalPhotoUrl, setOriginalPhotoUrl] = useState("");
+  const [deletingPhotoId, setDeletingPhotoId] = useState("");
+  const [outfitDetails, setOutfitDetails] = useState(null);
+  const [outfitDetailsLoading, setOutfitDetailsLoading] = useState(false);
 
   const loadWardrobe = async () => {
     if (!accessToken) {
@@ -50,14 +52,11 @@ export function useWardrobeState({ accessToken, onWardrobeChanged }) {
 
   const deleteWardrobeEntry = async (photoId) => {
     if (!accessToken) {
-      return;
+      return false;
     }
 
     setWardrobeMessage("");
-    const confirmed = window.confirm("Delete this outfit from your wardrobe?");
-    if (!confirmed) {
-      return;
-    }
+    setDeletingPhotoId(photoId);
 
     try {
       const response = await fetch(`${API_BASE}/api/wardrobe/${photoId}`, {
@@ -78,19 +77,26 @@ export function useWardrobeState({ accessToken, onWardrobeChanged }) {
       if (onWardrobeChanged) {
         onWardrobeChanged();
       }
+      return true;
     } catch (_err) {
       setWardrobeMessage("Could not delete this outfit right now. Please try again.");
       toast.error("Could not delete outfit right now.");
+      return false;
+    } finally {
+      setDeletingPhotoId("");
     }
   };
 
-  const openOriginalPhoto = async (photoId) => {
+  const openOutfitDetails = async (photoId) => {
     if (!accessToken) {
       return;
     }
 
+    setOutfitDetailsLoading(true);
+    setWardrobeMessage("");
+
     try {
-      const response = await fetch(`${API_BASE}/api/wardrobe/${photoId}/original`, {
+      const response = await fetch(`${API_BASE}/api/wardrobe/${photoId}/details`, {
         method: "GET",
         headers: {
           Authorization: `Bearer ${accessToken}`
@@ -99,26 +105,28 @@ export function useWardrobeState({ accessToken, onWardrobeChanged }) {
 
       if (!response.ok) {
         const errorBody = await response.json().catch(() => ({}));
-        throw new Error(errorBody.error || "Failed to load original photo.");
+        throw new Error(errorBody.error || "Failed to load outfit details.");
       }
 
       const payload = await response.json();
-      setOriginalPhotoUrl(payload.image_url || "");
-      if (!payload.image_url) {
-        toast.error("Original photo is unavailable.");
-      }
+      setOutfitDetails(payload.details || null);
     } catch (_err) {
-      setWardrobeMessage("Could not load original photo right now.");
-      toast.error("Could not load original photo.");
+      setOutfitDetails(null);
+      setWardrobeMessage("Could not load outfit details right now.");
+      toast.error("Could not load outfit details.");
+    } finally {
+      setOutfitDetailsLoading(false);
     }
   };
 
-  const closeOriginalPhoto = () => setOriginalPhotoUrl("");
+  const closeOutfitDetails = () => setOutfitDetails(null);
 
   const resetWardrobeState = () => {
     setWardrobe([]);
     setWardrobeMessage("");
-    setOriginalPhotoUrl("");
+    setDeletingPhotoId("");
+    setOutfitDetails(null);
+    setOutfitDetailsLoading(false);
   };
 
   return {
@@ -127,9 +135,11 @@ export function useWardrobeState({ accessToken, onWardrobeChanged }) {
     wardrobeMessage,
     loadWardrobe,
     deleteWardrobeEntry,
-    openOriginalPhoto,
-    originalPhotoUrl,
-    closeOriginalPhoto,
+    deletingPhotoId,
+    openOutfitDetails,
+    closeOutfitDetails,
+    outfitDetails,
+    outfitDetailsLoading,
     resetWardrobeState
   };
 }

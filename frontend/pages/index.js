@@ -111,14 +111,18 @@ export default function HomePage() {
     wardrobeMessage: wardrobeState.wardrobeMessage,
     loadWardrobe: wardrobeState.loadWardrobe,
     deleteWardrobeEntry: wardrobeState.deleteWardrobeEntry,
-    openOriginalPhoto: wardrobeState.openOriginalPhoto,
-    originalPhotoUrl: wardrobeState.originalPhotoUrl,
-    closeOriginalPhoto: wardrobeState.closeOriginalPhoto
+    deletingPhotoId: wardrobeState.deletingPhotoId,
+    openOutfitDetails: wardrobeState.openOutfitDetails,
+    closeOutfitDetails: wardrobeState.closeOutfitDetails,
+    outfitDetails: wardrobeState.outfitDetails,
+    outfitDetailsLoading: wardrobeState.outfitDetailsLoading
   }), [
     wardrobeState.wardrobe,
     wardrobeState.wardrobeLoading,
     wardrobeState.wardrobeMessage,
-    wardrobeState.originalPhotoUrl
+    wardrobeState.deletingPhotoId,
+    wardrobeState.outfitDetails,
+    wardrobeState.outfitDetailsLoading
   ]);
 
   const itemsValue = useMemo(() => ({

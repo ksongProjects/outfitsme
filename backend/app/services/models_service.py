@@ -11,15 +11,9 @@ MODEL_CATALOG = [
         "supports_image": True
     },
     {
-        "id": "amazon.nova-lite-v1:0",
-        "label": "Amazon Nova Lite",
-        "provider": "bedrock",
-        "supports_image": True
-    },
-    {
-        "id": "amazon.nova-pro-v1:0",
-        "label": "Amazon Nova Pro",
-        "provider": "bedrock",
+        "id": "bedrock-agent",
+        "label": "AWS Bedrock Agent",
+        "provider": "bedrock_agent",
         "supports_image": True
     }
 ]
@@ -34,6 +28,8 @@ def build_model_availability(model_settings: dict) -> list[dict]:
     aws_access = (model_settings.get("aws_access_key_id") or "").strip()
     aws_secret = (model_settings.get("aws_secret_access_key") or "").strip()
     aws_region = (model_settings.get("aws_region") or "").strip()
+    bedrock_agent_id = (model_settings.get("aws_bedrock_agent_id") or "").strip()
+    bedrock_agent_alias_id = (model_settings.get("aws_bedrock_agent_alias_id") or "").strip()
 
     models = []
     for model in MODEL_CATALOG:
@@ -48,10 +44,13 @@ def build_model_availability(model_settings: dict) -> list[dict]:
             if not gemini_key:
                 available = False
                 unavailable_reason = "Add a Gemini API key in Settings."
-        elif provider == "bedrock":
+        elif provider == "bedrock_agent":
             if not aws_access or not aws_secret or not aws_region:
                 available = False
                 unavailable_reason = "Add AWS Bedrock credentials (access key, secret key, region) in Settings."
+            elif not bedrock_agent_id or not bedrock_agent_alias_id:
+                available = False
+                unavailable_reason = "Add Bedrock Agent ID and Alias ID in Settings."
 
         models.append({**model, "available": available, "unavailable_reason": unavailable_reason})
     return models
