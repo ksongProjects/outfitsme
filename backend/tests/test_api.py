@@ -30,6 +30,13 @@ def test_similar_requires_token(client):
     assert response.get_json()["error"] == "Missing bearer token."
 
 
+def test_wardrobe_requires_token(client):
+    response = client.get("/api/wardrobe")
+
+    assert response.status_code == 401
+    assert response.get_json()["error"] == "Missing bearer token."
+
+
 def test_analyze_requires_image(client):
     response = client.post(
         "/api/analyze",

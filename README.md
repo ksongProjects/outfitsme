@@ -22,6 +22,7 @@ Current outfit detection and store similarity are still mocked, but data is pers
 2. Create tables (`photos`, `outfit_analyses`, `items`) from the project spec SQL.
 3. Enable RLS and add owner-based policies by `user_id`.
 4. Enable email/password auth in Supabase Auth.
+5. Run `supabase/migrations/20260217_000001_initial_schema.sql` in Supabase SQL editor.
 
 ## Environment Variables
 
@@ -77,6 +78,7 @@ Frontend: `http://localhost:3000`
 - `GET /health`
 - `POST /api/analyze` (requires Bearer token + multipart `image`)
 - `POST /api/similar` (requires Bearer token + JSON `items`)
+- `GET /api/wardrobe` (requires Bearer token; returns signed image URLs + saved analyses/items)
 
 ## Testing
 
@@ -107,3 +109,4 @@ npm test
 1. Replace mock analysis in `backend/app/routes/api.py` with real model inference.
 2. Normalize and persist real similar-item search results.
 3. Add signed URL retrieval for private images in user wardrobe views.
+4. Add pagination and filtering on wardrobe endpoint/UI.

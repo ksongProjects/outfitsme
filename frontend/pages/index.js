@@ -13,6 +13,7 @@ export default function HomePage() {
   const [previewUrl, setPreviewUrl] = useState("");
   const [analysis, setAnalysis] = useState(null);
   const [similarResults, setSimilarResults] = useState([]);
+  const [wardrobe, setWardrobe] = useState([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -131,11 +132,33 @@ export default function HomePage() {
 
       const similarJson = await similarRes.json();
       setSimilarResults(similarJson.results || []);
+      await loadWardrobe();
     } catch (err) {
       setError(err.message || "Unexpected error.");
     } finally {
       setLoading(false);
     }
+  };
+
+  const loadWardrobe = async () => {
+    if (!session?.access_token) {
+      return;
+    }
+
+    const wardrobeRes = await fetch(`${API_BASE}/api/wardrobe`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${session.access_token}`
+      }
+    });
+
+    if (!wardrobeRes.ok) {
+      const errorBody = await wardrobeRes.json().catch(() => ({}));
+      throw new Error(errorBody.error || "Failed to load wardrobe.");
+    }
+
+    const wardrobeJson = await wardrobeRes.json();
+    setWardrobe(wardrobeJson.wardrobe || []);
   };
 
   return (
@@ -164,6 +187,9 @@ export default function HomePage() {
           <button onClick={signUp}>Sign up</button>
           <button onClick={signIn}>Sign in</button>
           <button onClick={signOut}>Sign out</button>
+          <button onClick={loadWardrobe} disabled={!session}>
+            Load wardrobe
+          </button>
         </div>
 
         <p className="subtext">Session: {session ? "Active" : "Not signed in"}</p>
@@ -206,6 +232,31 @@ export default function HomePage() {
             {similarResults.map((result) => (
               <li key={`${result.store}-${result.item}`}>
                 <strong>{result.item}</strong> - {result.store} - {result.price} - {result.availability}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {wardrobe.length > 0 ? (
+        <section className="card">
+          <h2>Your wardrobe</h2>
+          <ul className="wardrobe-list">
+            {wardrobe.map((entry) => (
+              <li key={entry.photo_id} className="wardrobe-item">
+                {entry.image_url ? (
+                  <img src={entry.image_url} alt="Wardrobe outfit" className="wardrobe-image" />
+                ) : (
+                  <p className="subtext">No signed image URL returned.</p>
+                )}
+                <p>
+                  <strong>Style:</strong> {entry.analysis?.style_label || "Unlabeled"}
+                </p>
+                <ul>
+                  {(entry.analysis?.items || []).map((item) => (
+                    <li key={`${entry.photo_id}-${item.name}`}>{formatItemLabel(item)}</li>
+                  ))}
+                </ul>
               </li>
             ))}
           </ul>

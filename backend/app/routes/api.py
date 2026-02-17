@@ -4,6 +4,7 @@ from gotrue.errors import AuthApiError
 from app.services.supabase_service import (
     SupabaseNotConfiguredError,
     get_user_id_from_token,
+    list_wardrobe,
     persist_analysis,
     upload_photo_for_user,
 )
@@ -93,3 +94,24 @@ def find_similar_items():
         )
 
     return jsonify({"user_id": user_id, "results": results}), 200
+
+
+@api_bp.get("/wardrobe")
+def get_wardrobe():
+    access_token = _extract_access_token()
+    if not access_token:
+        return jsonify({"error": "Missing bearer token."}), 401
+
+    try:
+        user_id = get_user_id_from_token(access_token)
+        if not user_id:
+            return jsonify({"error": "Invalid or expired token."}), 401
+
+        wardrobe = list_wardrobe(user_id)
+        return jsonify({"user_id": user_id, "wardrobe": wardrobe}), 200
+    except SupabaseNotConfiguredError as exc:
+        return jsonify({"error": str(exc)}), 500
+    except AuthApiError:
+        return jsonify({"error": "Invalid or expired token."}), 401
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"error": f"Wardrobe lookup failed: {exc}"}), 500

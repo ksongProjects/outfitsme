@@ -93,3 +93,85 @@ def persist_analysis(user_id: str, storage_path: str, analysis: dict) -> dict:
         "analysis_id": analysis_row["id"],
         "storage_path": storage_path
     }
+
+
+def _normalize_signed_url(signed_data: dict) -> str | None:
+    signed_url = (
+        signed_data.get("signedURL")
+        or signed_data.get("signedUrl")
+        or signed_data.get("signed_url")
+    )
+    if not signed_url:
+        return None
+    if signed_url.startswith("http://") or signed_url.startswith("https://"):
+        return signed_url
+    return f"{settings.SUPABASE_URL}{signed_url}"
+
+
+def get_signed_image_url(storage_path: str, expires_in_seconds: int = 3600) -> str | None:
+    client = get_supabase_client()
+    response = client.storage.from_(settings.SUPABASE_BUCKET).create_signed_url(
+        storage_path,
+        expires_in_seconds
+    )
+    data = getattr(response, "data", None) or response
+    if isinstance(data, dict):
+        return _normalize_signed_url(data)
+    return None
+
+
+def list_wardrobe(user_id: str, limit: int = 20) -> list[dict]:
+    client = get_supabase_client()
+    photos_response = (
+        client.table("photos")
+        .select("id,storage_path,created_at")
+        .eq("user_id", user_id)
+        .order("created_at", desc=True)
+        .limit(limit)
+        .execute()
+    )
+    photos = photos_response.data or []
+
+    wardrobe = []
+    for photo in photos:
+        analyses_response = (
+            client.table("outfit_analyses")
+            .select("id,style_label,created_at")
+            .eq("photo_id", photo["id"])
+            .eq("user_id", user_id)
+            .order("created_at", desc=True)
+            .limit(1)
+            .execute()
+        )
+        analysis = (analyses_response.data or [None])[0]
+
+        items = []
+        if analysis:
+            items_response = (
+                client.table("items")
+                .select("category,name,color")
+                .eq("analysis_id", analysis["id"])
+                .eq("user_id", user_id)
+                .order("created_at", desc=False)
+                .execute()
+            )
+            items = items_response.data or []
+
+        wardrobe.append(
+            {
+                "photo_id": photo["id"],
+                "storage_path": photo["storage_path"],
+                "image_url": get_signed_image_url(photo["storage_path"]),
+                "created_at": photo["created_at"],
+                "analysis": {
+                    "id": analysis["id"],
+                    "style_label": analysis["style_label"],
+                    "created_at": analysis["created_at"],
+                    "items": items
+                }
+                if analysis
+                else None
+            }
+        )
+
+    return wardrobe
