@@ -112,7 +112,7 @@ export default function HomePage() {
     wardrobeMessage: wardrobeState.wardrobeMessage,
     loadWardrobe: wardrobeState.loadWardrobe,
     deleteWardrobeEntry: wardrobeState.deleteWardrobeEntry,
-    deletingPhotoId: wardrobeState.deletingPhotoId,
+    deletingOutfitId: wardrobeState.deletingOutfitId,
     openOutfitDetails: wardrobeState.openOutfitDetails,
     closeOutfitDetails: wardrobeState.closeOutfitDetails,
     outfitDetails: wardrobeState.outfitDetails,
@@ -121,7 +121,7 @@ export default function HomePage() {
     wardrobeState.wardrobe,
     wardrobeState.wardrobeLoading,
     wardrobeState.wardrobeMessage,
-    wardrobeState.deletingPhotoId,
+    wardrobeState.deletingOutfitId,
     wardrobeState.outfitDetails,
     wardrobeState.outfitDetailsLoading
   ]);
@@ -185,7 +185,7 @@ export default function HomePage() {
         <main className="dashboard">
           <header className="dashboard-header">
             <div>
-              <p className="eyebrow">OutfitMe Dashboard</p>
+              <p className="eyebrow">OutfitMe</p>
               <h1>{userFullName ? `Welcome back, ${userFullName}` : "Welcome back"}</h1>
               <p className="subtext">
                 {userFullName
@@ -202,7 +202,7 @@ export default function HomePage() {
                 className={`tab-btn ${dashboardTab === "dashboard" ? "active" : ""}`}
                 onClick={() => setDashboardTab("dashboard")}
               >
-                Dashboard
+                Home
               </button>
               <button
                 className={`tab-btn ${dashboardTab === "analyze" ? "active" : ""}`}
@@ -214,13 +214,13 @@ export default function HomePage() {
                 className={`tab-btn ${dashboardTab === "wardrobe" ? "active" : ""}`}
                 onClick={() => setDashboardTab("wardrobe")}
               >
-                Outfits
+                My Outfits
               </button>
               <button
                 className={`tab-btn ${dashboardTab === "items" ? "active" : ""}`}
                 onClick={() => setDashboardTab("items")}
               >
-                Items
+                Item catalog
               </button>
               <button
                 className={`tab-btn ${dashboardTab === "settings" ? "active" : ""}`}

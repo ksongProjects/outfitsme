@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import mimetypes
 import re
 from datetime import datetime, timezone
@@ -69,6 +70,187 @@ def _normalize_item_fields(item: dict) -> dict:
         "name": _normalize_label(item.get("name"), "Unknown Item"),
         "color": _normalize_label(item.get("color"), "Unknown")
     }
+
+
+def _coerce_dict(value) -> dict:
+    if isinstance(value, dict):
+        return value
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+            return parsed if isinstance(parsed, dict) else {}
+        except ValueError:
+            return {}
+    return {}
+
+
+def _build_item_signature(item: dict) -> tuple[str, str, str]:
+    normalized = _normalize_item_fields(item)
+    return (
+        normalized["category"].lower(),
+        normalized["name"].lower(),
+        normalized["color"].lower()
+    )
+
+
+def _safe_outfit_index(value) -> int:
+    try:
+        parsed = int(value)
+        return parsed if parsed >= 0 else 0
+    except (TypeError, ValueError):
+        return 0
+
+
+def _insert_outfits_and_items(
+    client: Client,
+    *,
+    user_id: str,
+    photo_id: str,
+    analysis_id: str,
+    analysis_created_at: str | None,
+    analysis: dict
+) -> list[dict]:
+    raw_outfits = analysis.get("outfits", [])
+    normalized_outfits = []
+    if isinstance(raw_outfits, list) and raw_outfits:
+        for index, outfit in enumerate(raw_outfits):
+            if not isinstance(outfit, dict):
+                continue
+            normalized_outfits.append(
+                {
+                    "photo_id": photo_id,
+                    "analysis_id": analysis_id,
+                    "user_id": user_id,
+                    "outfit_index": index,
+                    "style_label": _normalize_label(outfit.get("style"), "Unlabeled"),
+                    "created_at": analysis_created_at or datetime.now(timezone.utc).isoformat(),
+                    "updated_at": datetime.now(timezone.utc).isoformat()
+                }
+            )
+
+    if not normalized_outfits:
+        normalized_outfits = [
+            {
+                "photo_id": photo_id,
+                "analysis_id": analysis_id,
+                "user_id": user_id,
+                "outfit_index": 0,
+                "style_label": _normalize_label(analysis.get("style"), "Unlabeled"),
+                "created_at": analysis_created_at or datetime.now(timezone.utc).isoformat(),
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            }
+        ]
+
+    outfits_insert = (
+        client.table("outfits")
+        .upsert(normalized_outfits, on_conflict="analysis_id,outfit_index")
+        .execute()
+    )
+    outfits = outfits_insert.data or []
+    outfit_id_by_index = {row.get("outfit_index"): row.get("id") for row in outfits if row.get("id")}
+
+    outfit_items_rows = []
+    if isinstance(raw_outfits, list) and raw_outfits:
+        for index, outfit in enumerate(raw_outfits):
+            if not isinstance(outfit, dict):
+                continue
+            outfit_index = index
+            outfit_id = outfit_id_by_index.get(outfit_index)
+            if not outfit_id:
+                continue
+            for item in (outfit.get("items") or []):
+                if not isinstance(item, dict):
+                    continue
+                normalized_item = _normalize_item_fields(item)
+                outfit_items_rows.append(
+                    {
+                        "outfit_id": outfit_id,
+                        "user_id": user_id,
+                        "category": normalized_item["category"],
+                        "name": normalized_item["name"],
+                        "color": normalized_item["color"],
+                        "attributes_json": {
+                            "captured_at": datetime.now(timezone.utc).isoformat(),
+                            "outfit_index": outfit_index
+                        }
+                    }
+                )
+    else:
+        outfit_id = outfit_id_by_index.get(0)
+        if outfit_id:
+            for item in (analysis.get("items") or []):
+                if not isinstance(item, dict):
+                    continue
+                normalized_item = _normalize_item_fields(item)
+                outfit_items_rows.append(
+                    {
+                        "outfit_id": outfit_id,
+                        "user_id": user_id,
+                        "category": normalized_item["category"],
+                        "name": normalized_item["name"],
+                        "color": normalized_item["color"],
+                        "attributes_json": {
+                            "captured_at": datetime.now(timezone.utc).isoformat(),
+                            "outfit_index": 0
+                        }
+                    }
+                )
+
+    if outfit_items_rows:
+        client.table("outfit_items").insert(outfit_items_rows).execute()
+
+    return outfits
+
+
+def _resolve_item_style_label(item: dict, analysis_by_id: dict) -> str:
+    attributes = _coerce_dict(item.get("attributes_json") or {})
+
+    analysis_id = item.get("analysis_id")
+    analysis_entry = analysis_by_id.get(analysis_id) or {}
+    raw_json = _coerce_dict(analysis_entry.get("raw_json") if isinstance(analysis_entry, dict) else {})
+
+    outfit_index_raw = attributes.get("outfit_index")
+    try:
+        outfit_index = int(outfit_index_raw) if outfit_index_raw is not None else None
+    except (TypeError, ValueError):
+        outfit_index = None
+
+    if outfit_index is not None and isinstance(raw_json, dict):
+        raw_outfits = raw_json.get("outfits")
+        if isinstance(raw_outfits, list) and 0 <= outfit_index < len(raw_outfits):
+            outfit = raw_outfits[outfit_index]
+            if isinstance(outfit, dict):
+                style_from_outfit = _normalize_label(outfit.get("style"), "")
+                if style_from_outfit:
+                    return style_from_outfit
+    elif isinstance(raw_json, dict):
+        raw_outfits = raw_json.get("outfits")
+        if isinstance(raw_outfits, list) and len(raw_outfits) == 1 and isinstance(raw_outfits[0], dict):
+            single_outfit_style = _normalize_label(raw_outfits[0].get("style"), "")
+            if single_outfit_style:
+                return single_outfit_style
+        if isinstance(raw_outfits, list) and raw_outfits:
+            source_signature = _build_item_signature(item)
+            for outfit in raw_outfits:
+                if not isinstance(outfit, dict):
+                    continue
+                raw_items = outfit.get("items")
+                if not isinstance(raw_items, list):
+                    continue
+                for outfit_item in raw_items:
+                    if not isinstance(outfit_item, dict):
+                        continue
+                    if _build_item_signature(outfit_item) == source_signature:
+                        matched_style = _normalize_label(outfit.get("style"), "")
+                        if matched_style:
+                            return matched_style
+
+    style_from_item = _normalize_label(attributes.get("outfit_style"), "")
+    if style_from_item:
+        return style_from_item
+
+    style_from_analysis = _normalize_label(analysis_entry.get("style_label"), "")
+    return style_from_analysis or "Unknown"
 
 
 def _contains_keyword(text: str, keyword: str) -> bool:
@@ -144,6 +326,14 @@ def persist_analysis(user_id: str, storage_path: str, analysis: dict) -> dict:
         .execute()
     )
     analysis_row = analysis_insert.data[0]
+    _insert_outfits_and_items(
+        client,
+        user_id=user_id,
+        photo_id=photo_row["id"],
+        analysis_id=analysis_row["id"],
+        analysis_created_at=analysis_row.get("created_at"),
+        analysis=analysis
+    )
 
     item_rows = []
     raw_outfits = analysis.get("outfits", [])
@@ -228,68 +418,81 @@ def get_signed_image_url(storage_path: str, expires_in_seconds: int = 3600) -> s
 
 def list_wardrobe(user_id: str, limit: int = 20) -> list[dict]:
     client = get_supabase_client()
-    photos_response = (
-        client.table("photos")
-        .select("id,storage_path,created_at")
+    outfits_response = (
+        client.table("outfits")
+        .select("id,photo_id,analysis_id,outfit_index,style_label,created_at")
         .eq("user_id", user_id)
         .order("created_at", desc=True)
         .limit(limit)
         .execute()
     )
-    photos = photos_response.data or []
+    outfits = outfits_response.data or []
+    if not outfits:
+        return []
 
-    wardrobe = []
-    for photo in photos:
-        analyses_response = (
-            client.table("outfit_analyses")
-            .select("id,style_label,raw_json,created_at")
-            .eq("photo_id", photo["id"])
+    photo_ids = list({outfit.get("photo_id") for outfit in outfits if outfit.get("photo_id")})
+    outfit_ids = [outfit.get("id") for outfit in outfits if outfit.get("id")]
+
+    photos_by_id = {}
+    if photo_ids:
+        photos_response = (
+            client.table("photos")
+            .select("id,storage_path,created_at")
+            .in_("id", photo_ids)
             .eq("user_id", user_id)
-            .order("created_at", desc=True)
-            .limit(1)
             .execute()
         )
-        analysis = (analyses_response.data or [None])[0]
-        raw_json = analysis.get("raw_json") if analysis else {}
-        raw_outfits = raw_json.get("outfits") if isinstance(raw_json, dict) else None
+        photos_by_id = {photo.get("id"): photo for photo in (photos_response.data or []) if photo.get("id")}
 
-        normalized_outfits = []
-        if isinstance(raw_outfits, list):
-            for outfit in raw_outfits:
-                if not isinstance(outfit, dict):
-                    continue
-                normalized_items = [item for item in (outfit.get("items") or []) if isinstance(item, dict)]
-                normalized_outfits.append(
-                    {
-                        "style": _normalize_label(outfit.get("style"), "Unlabeled"),
-                        "items_count": len(normalized_items)
-                    }
-                )
+    counts_by_photo = {}
+    if photo_ids:
+        photo_outfits_response = (
+            client.table("outfits")
+            .select("photo_id")
+            .in_("photo_id", photo_ids)
+            .eq("user_id", user_id)
+            .execute()
+        )
+        for row in (photo_outfits_response.data or []):
+            photo_id = row.get("photo_id")
+            if not photo_id:
+                continue
+            counts_by_photo[photo_id] = counts_by_photo.get(photo_id, 0) + 1
 
-        if not normalized_outfits:
-            normalized_outfits = [
-                {
-                    "style": _normalize_label(analysis["style_label"], "Unlabeled") if analysis else "Unlabeled",
-                    "items_count": 0
-                }
-            ]
+    item_counts_by_outfit = {}
+    if outfit_ids:
+        outfit_items_response = (
+            client.table("outfit_items")
+            .select("outfit_id")
+            .in_("outfit_id", outfit_ids)
+            .eq("user_id", user_id)
+            .execute()
+        )
+        for row in (outfit_items_response.data or []):
+            outfit_id = row.get("outfit_id")
+            if not outfit_id:
+                continue
+            item_counts_by_outfit[outfit_id] = item_counts_by_outfit.get(outfit_id, 0) + 1
 
-        for index, outfit in enumerate(normalized_outfits):
-            wardrobe.append(
-                {
-                    "row_id": f"{photo['id']}:{index}",
-                    "photo_id": photo["id"],
-                    "storage_path": photo["storage_path"],
-                    "created_at": photo["created_at"],
-                    "analysis_id": analysis["id"] if analysis else None,
-                    "analysis_created_at": analysis["created_at"] if analysis else None,
-                    "style_label": outfit["style"],
-                    "outfit_index": index,
-                    "outfit_count": len(normalized_outfits),
-                    "outfit_items_count": outfit["items_count"]
-                }
-            )
-
+    wardrobe = []
+    for outfit in outfits:
+        photo = photos_by_id.get(outfit.get("photo_id")) or {}
+        outfit_id = outfit.get("id")
+        wardrobe.append(
+            {
+                "row_id": outfit_id or f"{outfit.get('photo_id')}:{outfit.get('outfit_index', 0)}",
+                "outfit_id": outfit_id,
+                "photo_id": outfit.get("photo_id"),
+                "storage_path": photo.get("storage_path"),
+                "created_at": outfit.get("created_at") or photo.get("created_at"),
+                "analysis_id": outfit.get("analysis_id"),
+                "analysis_created_at": None,
+                "style_label": _normalize_label(outfit.get("style_label"), "Unlabeled"),
+                "outfit_index": _safe_outfit_index(outfit.get("outfit_index")),
+                "outfit_count": counts_by_photo.get(outfit.get("photo_id"), 1),
+                "outfit_items_count": item_counts_by_outfit.get(outfit_id, 0)
+            }
+        )
     return wardrobe
 
 
@@ -305,17 +508,20 @@ def list_user_items(user_id: str, limit: int = 200) -> list[dict]:
     )
     items = items_response.data or []
     analysis_ids = list({item.get("analysis_id") for item in items if item.get("analysis_id")})
-    style_by_analysis_id = {}
+    analysis_by_id = {}
     if analysis_ids:
         analyses_response = (
             client.table("outfit_analyses")
-            .select("id,style_label")
+            .select("id,style_label,raw_json")
             .in_("id", analysis_ids)
             .eq("user_id", user_id)
             .execute()
         )
         for analysis in (analyses_response.data or []):
-            style_by_analysis_id[analysis.get("id")] = _normalize_label(analysis.get("style_label"), "Unknown")
+            analysis_by_id[analysis.get("id")] = {
+                "style_label": _normalize_label(analysis.get("style_label"), "Unknown"),
+                "raw_json": _coerce_dict(analysis.get("raw_json") if isinstance(analysis, dict) else {})
+            }
 
     return [
         {
@@ -323,11 +529,7 @@ def list_user_items(user_id: str, limit: int = 200) -> list[dict]:
             "category": _normalize_label(item.get("category"), "Item"),
             "name": _normalize_label(item.get("name"), "Unknown Item"),
             "color": _normalize_label(item.get("color"), "Unknown"),
-            "style_label": (
-                _normalize_label((item.get("attributes_json") or {}).get("outfit_style"), "")
-                or style_by_analysis_id.get(item.get("analysis_id"))
-                or "Unknown"
-            )
+            "style_label": _resolve_item_style_label(item, analysis_by_id)
         }
         for item in items
     ]
@@ -356,6 +558,41 @@ def delete_wardrobe_photo(user_id: str, photo_id: str) -> bool:
         client.table("photos")
         .delete()
         .eq("id", photo_id)
+        .eq("user_id", user_id)
+        .execute()
+    )
+    return True
+
+
+def delete_wardrobe_outfit(user_id: str, outfit_id: str) -> bool:
+    client = get_supabase_client()
+    outfit_response = (
+        client.table("outfits")
+        .select("id,analysis_id,outfit_index")
+        .eq("id", outfit_id)
+        .eq("user_id", user_id)
+        .limit(1)
+        .execute()
+    )
+    outfit_row = (outfit_response.data or [None])[0]
+    if not outfit_row:
+        return False
+
+    analysis_id = outfit_row.get("analysis_id")
+    outfit_index = _safe_outfit_index(outfit_row.get("outfit_index"))
+    (
+        client.table("items")
+        .delete()
+        .eq("user_id", user_id)
+        .eq("analysis_id", analysis_id)
+        .filter("attributes_json->>outfit_index", "eq", str(outfit_index))
+        .execute()
+    )
+
+    (
+        client.table("outfits")
+        .delete()
+        .eq("id", outfit_id)
         .eq("user_id", user_id)
         .execute()
     )
@@ -456,6 +693,13 @@ def get_dashboard_stats(user_id: str) -> dict:
         .execute()
     ).data or []
 
+    outfits = (
+        client.table("outfits")
+        .select("id")
+        .eq("user_id", user_id)
+        .execute()
+    ).data or []
+
     items = (
         client.table("items")
         .select("id,category,name,color")
@@ -504,14 +748,7 @@ def get_dashboard_stats(user_id: str) -> dict:
     )
     analyses_count = len(analyses)
     items_count = len(items)
-    outfits_count = 0
-    for analysis in analyses:
-        raw_json = analysis.get("raw_json") if isinstance(analysis, dict) else {}
-        raw_outfits = raw_json.get("outfits") if isinstance(raw_json, dict) else None
-        if isinstance(raw_outfits, list) and len(raw_outfits) > 0:
-            outfits_count += len([outfit for outfit in raw_outfits if isinstance(outfit, dict)])
-        else:
-            outfits_count += 1
+    outfits_count = len(outfits)
 
     avg_items_per_outfit = round(items_count / outfits_count, 1) if outfits_count > 0 else 0
 
@@ -604,6 +841,14 @@ def compose_outfit_from_items(
         .execute()
     )
     analysis_row = analysis_insert.data[0]
+    _insert_outfits_and_items(
+        client,
+        user_id=user_id,
+        photo_id=photo_row["id"],
+        analysis_id=analysis_row["id"],
+        analysis_created_at=analysis_row.get("created_at"),
+        analysis=raw_json
+    )
 
     now_iso = datetime.now(timezone.utc).isoformat()
     new_item_rows = [

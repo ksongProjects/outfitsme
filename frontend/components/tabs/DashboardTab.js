@@ -9,7 +9,7 @@ export default function DashboardTab({ stats, refreshStats, loading }) {
     <section>
       <div className="tab-header">
         <div className="tab-header-title">
-          <h2>Dashboard overview</h2>
+          <h2>Home</h2>
           <p className="tab-header-subtext">Track your outfit insights and wardrobe trends.</p>
         </div>
         <button className="ghost-btn" onClick={refreshStats} disabled={loading}>

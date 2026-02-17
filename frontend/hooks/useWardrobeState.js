@@ -6,7 +6,7 @@ import { API_BASE } from "../lib/apiBase";
 
 export function useWardrobeState({ accessToken, onWardrobeChanged }) {
   const [wardrobeMessage, setWardrobeMessage] = useState("");
-  const [deletingPhotoId, setDeletingPhotoId] = useState("");
+  const [deletingOutfitId, setDeletingOutfitId] = useState("");
   const [outfitDetails, setOutfitDetails] = useState(null);
   const [outfitDetailsLoading, setOutfitDetailsLoading] = useState(false);
   const queryClient = useQueryClient();
@@ -60,16 +60,16 @@ export function useWardrobeState({ accessToken, onWardrobeChanged }) {
     }
   };
 
-  const deleteWardrobeEntry = async (photoId) => {
+  const deleteWardrobeEntry = async (outfitId) => {
     if (!accessToken) {
       return false;
     }
 
     setWardrobeMessage("");
-    setDeletingPhotoId(photoId);
+    setDeletingOutfitId(outfitId);
 
     try {
-      await deleteWardrobeMutation.mutateAsync(photoId);
+      await deleteWardrobeMutation.mutateAsync(outfitId);
       setWardrobeMessage("Outfit removed.");
       toast.success("Outfit deleted.");
       if (onWardrobeChanged) {
@@ -81,13 +81,13 @@ export function useWardrobeState({ accessToken, onWardrobeChanged }) {
       toast.error("Could not delete outfit right now.");
       return false;
     } finally {
-      setDeletingPhotoId("");
+      setDeletingOutfitId("");
     }
   };
 
   const deleteWardrobeMutation = useMutation({
-    mutationFn: async (photoId) => {
-      const response = await fetch(`${API_BASE}/api/wardrobe/${photoId}`, {
+    mutationFn: async (outfitId) => {
+      const response = await fetch(`${API_BASE}/api/wardrobe/${outfitId}`, {
         method: "DELETE",
         headers: {
           Authorization: `Bearer ${accessToken}`
@@ -143,7 +143,7 @@ export function useWardrobeState({ accessToken, onWardrobeChanged }) {
 
   const resetWardrobeState = () => {
     setWardrobeMessage("");
-    setDeletingPhotoId("");
+    setDeletingOutfitId("");
     setOutfitDetails(null);
     setOutfitDetailsLoading(false);
     queryClient.removeQueries({ queryKey: ["wardrobe", accessToken] });
@@ -155,7 +155,7 @@ export function useWardrobeState({ accessToken, onWardrobeChanged }) {
     wardrobeMessage,
     loadWardrobe,
     deleteWardrobeEntry,
-    deletingPhotoId,
+    deletingOutfitId,
     openOutfitDetails,
     closeOutfitDetails,
     outfitDetails,

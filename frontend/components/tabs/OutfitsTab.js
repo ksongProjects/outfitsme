@@ -11,7 +11,7 @@ export default function OutfitsTab() {
     wardrobeMessage,
     loadWardrobe,
     deleteWardrobeEntry,
-    deletingPhotoId,
+    deletingOutfitId,
     openOutfitDetails,
     closeOutfitDetails,
     outfitDetails,
@@ -23,7 +23,7 @@ export default function OutfitsTab() {
     if (!pendingDelete) {
       return;
     }
-    const deleted = await deleteWardrobeEntry(pendingDelete.photo_id);
+    const deleted = await deleteWardrobeEntry(pendingDelete.outfit_id);
     if (deleted) {
       setPendingDelete(null);
     }
@@ -41,7 +41,7 @@ export default function OutfitsTab() {
     <section>
       <div className="tab-header">
         <div className="tab-header-title">
-          <h2>Your outfits</h2>
+          <h2>My Outfits</h2>
           <p className="tab-header-subtext">Browse saved looks and open outfit details.</p>
         </div>
         <button className="ghost-btn" onClick={loadWardrobe} disabled={wardrobeLoading}>
@@ -83,11 +83,11 @@ export default function OutfitsTab() {
                   type="button"
                   className="icon-btn danger-icon-btn"
                   onClick={() => setPendingDelete(entry)}
-                  disabled={deletingPhotoId === entry.photo_id}
+                  disabled={deletingOutfitId === entry.outfit_id}
                   aria-label="Delete outfit"
                   title="Delete outfit"
                 >
-                  {deletingPhotoId === entry.photo_id ? "..." : <Trash2 size={16} />}
+                  {deletingOutfitId === entry.outfit_id ? "..." : <Trash2 size={16} />}
                 </button>
               </td>
             </tr>
@@ -155,21 +155,21 @@ export default function OutfitsTab() {
               Style: <strong>{pendingDelete.style_label || "Unlabeled"}</strong>
             </p>
             <div className="button-row">
-              <button
-                type="button"
-                className="ghost-btn"
-                onClick={() => setPendingDelete(null)}
-                disabled={deletingPhotoId === pendingDelete.photo_id}
-              >
-                Cancel
-              </button>
+                <button
+                  type="button"
+                  className="ghost-btn"
+                  onClick={() => setPendingDelete(null)}
+                  disabled={deletingOutfitId === pendingDelete.outfit_id}
+                >
+                  Cancel
+                </button>
               <button
                 type="button"
                 className="ghost-btn danger-btn"
                 onClick={handleDelete}
-                disabled={deletingPhotoId === pendingDelete.photo_id}
+                disabled={deletingOutfitId === pendingDelete.outfit_id}
               >
-                {deletingPhotoId === pendingDelete.photo_id ? "Deleting..." : "Delete"}
+                {deletingOutfitId === pendingDelete.outfit_id ? "Deleting..." : "Delete"}
               </button>
             </div>
           </div>

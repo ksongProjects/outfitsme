@@ -16,7 +16,7 @@ from app.services.models_service import build_model_availability, get_preferred_
 from app.services.secrets_service import SettingsEncryptionError
 from app.services.supabase_service import (
     compose_outfit_from_items,
-    delete_wardrobe_photo,
+    delete_wardrobe_outfit,
     get_dashboard_stats,
     get_wardrobe_photo_details,
     get_user_model_settings,
@@ -263,8 +263,8 @@ def get_wardrobe():
         return jsonify({"error": f"Wardrobe lookup failed: {exc}"}), 500
 
 
-@api_bp.delete("/wardrobe/<photo_id>")
-def delete_wardrobe_entry(photo_id: str):
+@api_bp.delete("/wardrobe/<outfit_id>")
+def delete_wardrobe_entry(outfit_id: str):
     access_token = _extract_access_token()
     if not access_token:
         return jsonify({"error": "Missing bearer token."}), 401
@@ -274,11 +274,11 @@ def delete_wardrobe_entry(photo_id: str):
         if not user_id:
             return jsonify({"error": "Invalid or expired token."}), 401
 
-        deleted = delete_wardrobe_photo(user_id, photo_id)
+        deleted = delete_wardrobe_outfit(user_id, outfit_id)
         if not deleted:
             return jsonify({"error": "Wardrobe item not found."}), 404
 
-        return jsonify({"deleted": True, "photo_id": photo_id}), 200
+        return jsonify({"deleted": True, "outfit_id": outfit_id}), 200
     except SupabaseNotConfiguredError as exc:
         return jsonify({"error": str(exc)}), 500
     except AuthApiError:
