@@ -1,0 +1,6 @@
+project_id         = "your-gcp-project-id"
+region             = "us-central1"
+service_account_id = "outfitme-app"
+
+create_gemini_secret = false
+gemini_api_key       = ""

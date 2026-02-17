@@ -163,6 +163,10 @@ export default function HomePage() {
     analysisState.modelOptions
   ]);
 
+  const userFullName = (auth.session?.user?.user_metadata?.full_name || "").trim();
+  const userEmail = auth.session?.user?.email || "";
+  const userLabel = userFullName || userEmail || "your account";
+
   return (
     <DashboardProviders
       authValue={authValue}
@@ -178,8 +182,12 @@ export default function HomePage() {
           <header className="dashboard-header">
             <div>
               <p className="eyebrow">OutfitMe Dashboard</p>
-              <h1>Welcome back</h1>
-              <p className="subtext">{auth.session.user?.email}</p>
+              <h1>{userFullName ? `Welcome back, ${userFullName}` : "Welcome back"}</h1>
+              <p className="subtext">
+                {userFullName
+                  ? "Great to see you again. Ready to analyze your next outfit?"
+                  : `Signed in as ${userLabel}`}
+              </p>
             </div>
             <button className="ghost-btn" onClick={handleSignOut}>Sign out</button>
           </header>

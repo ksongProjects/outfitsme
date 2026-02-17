@@ -87,6 +87,15 @@ npm run dev
 
 Frontend: `http://localhost:3000`
 
+## Infrastructure (Terraform)
+
+Terraform templates are available in `infra/`:
+- `infra/aws` for AWS Bedrock Agent creation
+- `infra/google` for Google Cloud setup template
+- `infra/openai` for OpenAI config template
+
+See `infra/README.md` for step-by-step usage (`init`, `plan`, `apply`), required variables, and outputs.
+
 ## API Endpoints
 
 - `GET /health`

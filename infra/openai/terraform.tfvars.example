@@ -1,0 +1,9 @@
+openai_model  = "gpt-4.1-mini"
+openai_api_base = "https://api.openai.com/v1"
+
+openai_project      = ""
+openai_organization = ""
+openai_api_key      = ""
+
+# Keep false unless you explicitly want the key written locally.
+include_api_key_in_generated_file = false
