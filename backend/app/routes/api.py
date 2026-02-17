@@ -2,9 +2,15 @@ import requests
 from flask import Blueprint, jsonify, request
 from gotrue.errors import AuthApiError
 
-from app.services.gemini_service import GeminiNotConfiguredError, analyze_outfit_with_gemini
+from app.config import settings
+from app.services.gemini_service import (
+    GeminiNotConfiguredError,
+    analyze_outfit_with_gemini,
+    probe_gemini_connectivity,
+)
 from app.services.supabase_service import (
     SupabaseNotConfiguredError,
+    get_supabase_client,
     get_user_id_from_token,
     list_wardrobe,
     persist_analysis,
@@ -19,6 +25,12 @@ def _extract_access_token() -> str | None:
     if not header.startswith("Bearer "):
         return None
     return header.removeprefix("Bearer ").strip() or None
+
+
+def _mask_shape(value: str) -> dict:
+    if not value:
+        return {"set": False, "prefix": "", "length": 0}
+    return {"set": True, "prefix": value[:8], "length": len(value)}
 
 
 @api_bp.post("/analyze")
@@ -118,3 +130,60 @@ def get_wardrobe():
         return jsonify({"error": "Invalid or expired token."}), 401
     except Exception as exc:  # noqa: BLE001
         return jsonify({"error": f"Wardrobe lookup failed: {exc}"}), 500
+
+
+@api_bp.get("/diagnostics")
+def diagnostics():
+    checks = {
+        "supabase": {"ok": False, "message": ""},
+        "gemini": {"ok": False, "message": ""}
+    }
+
+    # Supabase: validate URL/key wiring and ability to query app tables.
+    try:
+        client = get_supabase_client()
+        client.table("photos").select("id").limit(1).execute()
+        checks["supabase"] = {
+            "ok": True,
+            "message": "Supabase connection and query succeeded."
+        }
+    except SupabaseNotConfiguredError as exc:
+        checks["supabase"]["message"] = str(exc)
+    except Exception as exc:  # noqa: BLE001
+        checks["supabase"]["message"] = f"Supabase check failed: {exc}"
+
+    # Gemini: validate key/model and a small text generation call.
+    try:
+        gemini_info = probe_gemini_connectivity()
+        checks["gemini"] = {
+            "ok": True,
+            "message": "Gemini connectivity check succeeded.",
+            **gemini_info
+        }
+    except GeminiNotConfiguredError as exc:
+        checks["gemini"]["message"] = str(exc)
+    except requests.HTTPError as exc:
+        checks["gemini"]["message"] = f"Gemini check failed: {exc}"
+    except Exception as exc:  # noqa: BLE001
+        checks["gemini"]["message"] = f"Gemini check failed: {exc}"
+
+    env_summary = {
+        "supabase_url_set": bool(settings.SUPABASE_URL),
+        "supabase_secret_key_set": bool(settings.SUPABASE_SECRET_KEY),
+        "gemini_api_key_set": bool(settings.GEMINI_API_KEY),
+        "gemini_model": settings.GEMINI_MODEL,
+        "supabase_key_shape": _mask_shape(settings.SUPABASE_SECRET_KEY),
+        "gemini_key_shape": _mask_shape(settings.GEMINI_API_KEY),
+        "config_env_path": "backend/.env"
+    }
+
+    all_ok = checks["supabase"]["ok"] and checks["gemini"]["ok"]
+    status_code = 200 if all_ok else 503
+
+    return jsonify(
+        {
+            "ok": all_ok,
+            "checks": checks,
+            "env": env_summary
+        }
+    ), status_code

@@ -76,6 +76,7 @@ Frontend: `http://localhost:3000`
 ## API Endpoints
 
 - `GET /health`
+- `GET /api/diagnostics` (dev config checks for Supabase + Gemini)
 - `POST /api/analyze` (requires Bearer token + multipart `image`)
 - `POST /api/similar` (requires Bearer token + JSON `items`)
 - `GET /api/wardrobe` (requires Bearer token; returns signed image URLs + saved analyses/items)

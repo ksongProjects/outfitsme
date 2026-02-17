@@ -111,6 +111,19 @@ input {
   align-self: center;
 }
 
+.auth-panel .tab-row {
+  margin-bottom: 14px;
+}
+
+.auth-panel .text-input {
+  margin-top: 0;
+  margin-bottom: 12px;
+}
+
+.auth-panel .primary-btn {
+  margin-top: 4px;
+}
+
 .feature-grid {
   margin-top: 18px;
   display: grid;

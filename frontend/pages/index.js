@@ -17,8 +17,10 @@ export default function HomePage() {
   const [similarResults, setSimilarResults] = useState([]);
   const [wardrobe, setWardrobe] = useState([]);
   const [error, setError] = useState("");
+  const [wardrobeMessage, setWardrobeMessage] = useState("");
   const [info, setInfo] = useState("");
   const [loading, setLoading] = useState(false);
+  const [wardrobeLoading, setWardrobeLoading] = useState(false);
 
   const disabled = useMemo(() => !file || loading || !session, [file, loading, session]);
 
@@ -44,15 +46,14 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
-    if (session?.access_token) {
-      loadWardrobe().catch((err) => {
-        setError(err.message || "Failed to load wardrobe.");
-      });
+    if (dashboardTab === "wardrobe" && session?.access_token) {
+      loadWardrobe();
     }
-  }, [session?.access_token]);
+  }, [dashboardTab, session?.access_token]);
 
   const signUp = async () => {
     setError("");
+    setWardrobeMessage("");
     setInfo("");
 
     const { error: authError } = await supabase.auth.signUp({ email, password });
@@ -66,6 +67,7 @@ export default function HomePage() {
 
   const signIn = async () => {
     setError("");
+    setWardrobeMessage("");
     setInfo("");
 
     const { error: authError } = await supabase.auth.signInWithPassword({ email, password });
@@ -79,6 +81,7 @@ export default function HomePage() {
 
   const signOut = async () => {
     setError("");
+    setWardrobeMessage("");
     setInfo("");
     await supabase.auth.signOut();
     setAnalysis(null);
@@ -92,6 +95,7 @@ export default function HomePage() {
   const onFileChange = (event) => {
     const selected = event.target.files?.[0];
     setError("");
+    setWardrobeMessage("");
     setInfo("");
     setAnalysis(null);
     setSimilarResults([]);
@@ -119,6 +123,7 @@ export default function HomePage() {
 
     setLoading(true);
     setError("");
+    setWardrobeMessage("");
     setInfo("");
 
     try {
@@ -157,7 +162,6 @@ export default function HomePage() {
 
       const similarJson = await similarRes.json();
       setSimilarResults(similarJson.results || []);
-      await loadWardrobe();
       setInfo("Analysis complete and saved to your wardrobe.");
     } catch (err) {
       setError(err.message || "Unexpected error.");
@@ -171,20 +175,32 @@ export default function HomePage() {
       return;
     }
 
-    const wardrobeRes = await fetch(`${API_BASE}/api/wardrobe`, {
-      method: "GET",
-      headers: {
-        Authorization: `Bearer ${session.access_token}`
+    setWardrobeLoading(true);
+    setWardrobeMessage("");
+
+    try {
+      const wardrobeRes = await fetch(`${API_BASE}/api/wardrobe`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`
+        }
+      });
+
+      if (!wardrobeRes.ok) {
+        const errorBody = await wardrobeRes.json().catch(() => ({}));
+        throw new Error(errorBody.error || "Unable to load wardrobe right now.");
       }
-    });
 
-    if (!wardrobeRes.ok) {
-      const errorBody = await wardrobeRes.json().catch(() => ({}));
-      throw new Error(errorBody.error || "Failed to load wardrobe.");
+      const wardrobeJson = await wardrobeRes.json();
+      const entries = wardrobeJson.wardrobe || [];
+      setWardrobe(entries);
+      setWardrobeMessage(entries.length === 0 ? "No wardrobe entries yet. Analyze your first outfit photo." : "");
+    } catch (_err) {
+      setWardrobe([]);
+      setWardrobeMessage("Couldn't load your wardrobe right now. You can still analyze a new outfit.");
+    } finally {
+      setWardrobeLoading(false);
     }
-
-    const wardrobeJson = await wardrobeRes.json();
-    setWardrobe(wardrobeJson.wardrobe || []);
   };
 
   if (!session) {
@@ -192,7 +208,6 @@ export default function HomePage() {
       <main className="landing">
         <header className="topbar">
           <div className="brand">OutfitMe</div>
-          <button className="ghost-btn" onClick={() => setAuthTab("signin")}>Sign in</button>
         </header>
 
         <section className="hero">
@@ -203,8 +218,7 @@ export default function HomePage() {
               Upload outfit images, identify clothing items with AI, and build your wardrobe with shoppable alternatives.
             </p>
             <div className="hero-actions">
-              <button className="primary-btn" onClick={() => setAuthTab("signup")}>Get started</button>
-              <button className="ghost-btn" onClick={() => setAuthTab("signin")}>I already have an account</button>
+              <button className="primary-btn" onClick={() => setAuthTab("signup")}>Create your account</button>
             </div>
           </div>
 
@@ -240,7 +254,7 @@ export default function HomePage() {
             />
 
             {authTab === "signin" ? (
-              <button className="primary-btn" onClick={signIn}>Sign in</button>
+              <button className="primary-btn" onClick={signIn}>Continue to dashboard</button>
             ) : (
               <button className="primary-btn" onClick={signUp}>Create account</button>
             )}
@@ -340,10 +354,12 @@ export default function HomePage() {
           <section>
             <div className="toolbar-row">
               <h2>Your wardrobe</h2>
-              <button className="ghost-btn" onClick={loadWardrobe}>Refresh</button>
+              <button className="ghost-btn" onClick={loadWardrobe} disabled={wardrobeLoading}>
+                {wardrobeLoading ? "Loading..." : "Refresh"}
+              </button>
             </div>
 
-            {wardrobe.length === 0 ? <p className="subtext">No outfits yet. Analyze your first photo.</p> : null}
+            {wardrobeMessage ? <p className="subtext">{wardrobeMessage}</p> : null}
 
             <div className="wardrobe-grid">
               {wardrobe.map((entry) => (
@@ -368,7 +384,7 @@ export default function HomePage() {
         )}
 
         {info ? <p className="info">{info}</p> : null}
-        {error ? <p className="error">{error}</p> : null}
+        {dashboardTab === "analyze" && error ? <p className="error">{error}</p> : null}
       </section>
     </main>
   );
