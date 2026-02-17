@@ -38,7 +38,7 @@ export default function AnalyzeTab({
   return (
     <div className="analysis-layout">
       <section>
-        <label htmlFor="image-upload">Outfit photo</label>
+        <label htmlFor="image-upload">Photo</label>
         <label
           htmlFor="image-upload"
           className={`dropzone ${isDragOver ? "is-dragover" : ""}`}
@@ -59,14 +59,14 @@ export default function AnalyzeTab({
             </button>
           ) : null}
           <button className="primary-btn" onClick={runAnalysis} disabled={disabled}>
-            {loading ? "Analyzing..." : "Analyze outfit"}
+            {loading ? "Analyzing..." : "Analyze photo"}
           </button>
         </div>
       </section>
 
       <section>
         <h2>Results</h2>
-        {!analysis ? <p className="subtext">Run analysis to view detected style and items.</p> : null}
+        {!analysis ? <p className="subtext">Analyze a photo to view detected style and items.</p> : null}
         {analysis ? (
           <>
             <p>

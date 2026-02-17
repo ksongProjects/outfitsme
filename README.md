@@ -84,6 +84,7 @@ Frontend: `http://localhost:3000`
 - `GET /api/wardrobe` (requires Bearer token; returns minimal outfit list for fast loading)
 - `GET /api/wardrobe/:photo_id/original` (requires Bearer token; returns signed URL for original photo preview)
 - `GET /api/items` (requires Bearer token; returns items-only list for item selection/combining)
+- `GET /api/stats` (requires Bearer token; returns dashboard counts for outfits, analyses, and items)
 - `DELETE /api/wardrobe/:photo_id` (requires Bearer token; deletes wardrobe entry + stored image)
 
 ## Testing

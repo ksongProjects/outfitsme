@@ -10,6 +10,7 @@ from app.services.gemini_service import (
 )
 from app.services.supabase_service import (
     delete_wardrobe_photo,
+    get_dashboard_stats,
     get_original_photo_url,
     list_user_items,
     SupabaseNotConfiguredError,
@@ -236,6 +237,27 @@ def get_items():
         return jsonify({"error": "Invalid or expired token."}), 401
     except Exception as exc:  # noqa: BLE001
         return jsonify({"error": f"Items lookup failed: {exc}"}), 500
+
+
+@api_bp.get("/stats")
+def get_stats():
+    access_token = _extract_access_token()
+    if not access_token:
+        return jsonify({"error": "Missing bearer token."}), 401
+
+    try:
+        user_id = get_user_id_from_token(access_token)
+        if not user_id:
+            return jsonify({"error": "Invalid or expired token."}), 401
+
+        stats = get_dashboard_stats(user_id)
+        return jsonify({"user_id": user_id, "stats": stats}), 200
+    except SupabaseNotConfiguredError as exc:
+        return jsonify({"error": str(exc)}), 500
+    except AuthApiError:
+        return jsonify({"error": "Invalid or expired token."}), 401
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"error": f"Stats lookup failed: {exc}"}), 500
 
 
 @api_bp.get("/diagnostics")

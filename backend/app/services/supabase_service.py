@@ -220,3 +220,34 @@ def get_original_photo_url(user_id: str, photo_id: str) -> str | None:
         return None
 
     return get_signed_image_url(storage_path, expires_in_seconds=3600)
+
+
+def get_dashboard_stats(user_id: str) -> dict:
+    client = get_supabase_client()
+
+    photos = (
+        client.table("photos")
+        .select("id")
+        .eq("user_id", user_id)
+        .execute()
+    ).data or []
+
+    analyses = (
+        client.table("outfit_analyses")
+        .select("id")
+        .eq("user_id", user_id)
+        .execute()
+    ).data or []
+
+    items = (
+        client.table("items")
+        .select("id")
+        .eq("user_id", user_id)
+        .execute()
+    ).data or []
+
+    return {
+        "outfits_count": len(photos),
+        "analyses_count": len(analyses),
+        "items_count": len(items)
+    }

@@ -338,6 +338,33 @@ input[type="file"] {
   background: #fff;
 }
 
+.stats-grid {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.stats-card {
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 10px;
+}
+
+.stats-label {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.stats-value {
+  margin: 6px 0 0;
+  font-family: "Manrope", sans-serif;
+  font-size: 1.35rem;
+  font-weight: 700;
+}
+
 .modal-backdrop {
   position: fixed;
   inset: 0;
@@ -432,7 +459,8 @@ ul {
   .hero,
   .analysis-layout,
   .feature-grid,
-  .wardrobe-grid {
+  .wardrobe-grid,
+  .stats-grid {
     grid-template-columns: 1fr;
   }
 

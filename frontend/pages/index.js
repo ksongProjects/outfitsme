@@ -25,6 +25,7 @@ export default function HomePage() {
   const [error, setError] = useState("");
   const [wardrobeMessage, setWardrobeMessage] = useState("");
   const [itemsMessage, setItemsMessage] = useState("");
+  const [stats, setStats] = useState({ outfits_count: 0, analyses_count: 0, items_count: 0 });
   const [info, setInfo] = useState("");
   const [loading, setLoading] = useState(false);
   const [wardrobeLoading, setWardrobeLoading] = useState(false);
@@ -126,6 +127,12 @@ export default function HomePage() {
       loadItems();
     }
   }, [dashboardTab, session?.access_token]);
+
+  useEffect(() => {
+    if (session?.access_token) {
+      loadStats();
+    }
+  }, [session?.access_token]);
 
   const signUp = async () => {
     setError("");
@@ -267,7 +274,7 @@ export default function HomePage() {
 
       if (!analyzeRes.ok) {
         const errorBody = await analyzeRes.json().catch(() => ({}));
-        throw new Error(errorBody.error || "Failed to analyze outfit.");
+        throw new Error(errorBody.error || "Failed to analyze photo.");
       }
 
       const analyzeJson = await analyzeRes.json();
@@ -289,8 +296,9 @@ export default function HomePage() {
 
       const similarJson = await similarRes.json();
       setSimilarResults(similarJson.results || []);
-      setInfo("Analysis complete and saved to your wardrobe.");
-      toast.success("Outfit analyzed and saved.");
+      setInfo("Analysis complete and saved to your outfits.");
+      toast.success("Photo analyzed and saved.");
+      loadStats();
     } catch (err) {
       const friendly = toUserFriendlyAnalyzeError(err.message);
       setError(friendly);
@@ -364,8 +372,9 @@ export default function HomePage() {
       }
 
       setWardrobe((prev) => prev.filter((entry) => entry.photo_id !== photoId));
-      setWardrobeMessage("Outfit removed from wardrobe.");
+      setWardrobeMessage("Outfit removed.");
       toast.success("Outfit deleted.");
+      loadStats();
     } catch (_err) {
       setWardrobeMessage("Could not delete this outfit right now. Please try again.");
       toast.error("Could not delete outfit right now.");
@@ -440,6 +449,30 @@ export default function HomePage() {
     }
   };
 
+  const loadStats = async () => {
+    if (!session?.access_token) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE}/api/stats`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`
+        }
+      });
+
+      if (!response.ok) {
+        return;
+      }
+
+      const payload = await response.json();
+      setStats(payload.stats || { outfits_count: 0, analyses_count: 0, items_count: 0 });
+    } catch (_err) {
+      // Stats are optional for UX; ignore failures.
+    }
+  };
+
   const toggleSelectItem = (itemId) => {
     setSelectedItemIds((prev) => {
       if (prev.includes(itemId)) {
@@ -482,7 +515,7 @@ export default function HomePage() {
             className={`tab-btn ${dashboardTab === "analyze" ? "active" : ""}`}
             onClick={() => setDashboardTab("analyze")}
           >
-            Analyze outfit
+            Analyze photo
           </button>
           <button
             className={`tab-btn ${dashboardTab === "wardrobe" ? "active" : ""}`}
@@ -496,6 +529,25 @@ export default function HomePage() {
           >
             Items
           </button>
+        </div>
+
+        <div className="stats-grid">
+          <article className="stats-card">
+            <p className="stats-label">Outfits Analyzed</p>
+            <p className="stats-value">{stats.analyses_count}</p>
+          </article>
+          <article className="stats-card">
+            <p className="stats-label">Outfits Saved</p>
+            <p className="stats-value">{stats.outfits_count}</p>
+          </article>
+          <article className="stats-card">
+            <p className="stats-label">Items Cataloged</p>
+            <p className="stats-value">{stats.items_count}</p>
+          </article>
+          <article className="stats-card">
+            <p className="stats-label">Items Selected</p>
+            <p className="stats-value">{selectedItemIds.length}</p>
+          </article>
         </div>
 
         {dashboardTab === "analyze" ? (
