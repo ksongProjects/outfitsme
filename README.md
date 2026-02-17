@@ -23,7 +23,7 @@ Gemini and AWS Bedrock Agent are supported for analysis. Similar-item results ar
 ## Supabase Setup
 
 1. Create a private storage bucket named `outfit-images`.
-2. Create tables (`photos`, `outfit_analyses`, `items`, `user_settings`) from migrations.
+2. Create tables (`photos`, `outfit_analyses`, `items`, `outfits`, `outfit_items`, `user_settings`) from migrations.
 3. Enable RLS and add owner-based policies by `user_id`.
 4. Enable email/password auth in Supabase Auth.
 5. Run:
@@ -31,6 +31,8 @@ Gemini and AWS Bedrock Agent are supported for analysis. Similar-item results ar
    - `supabase/migrations/20260217_000002_user_settings.sql`
    - `supabase/migrations/20260217_000003_bedrock_agent_settings.sql`
    - `supabase/migrations/20260217_000004_drop_unused_bedrock_model_id.sql`
+   - `supabase/migrations/20260217_000005_drop_unused_aws_credentials.sql`
+   - `supabase/migrations/20260217_000006_outfits_table_and_itemized_deletes.sql`
 
 ## Environment Variables
 
@@ -106,11 +108,12 @@ See `infra/README.md` for step-by-step usage (`init`, `plan`, `apply`), required
 - `GET /api/diagnostics` (dev config checks for Supabase + Gemini)
 - `POST /api/analyze` (requires Bearer token + multipart `image`)
 - `POST /api/similar` (requires Bearer token + JSON `items`)
+- `POST /api/outfits/compose` (requires Bearer token + JSON `item_ids`; creates a virtual/composed outfit from selected items)
 - `GET /api/wardrobe` (requires Bearer token; returns one row per detected outfit)
 - `GET /api/wardrobe/:photo_id/details?outfit_index=<n>` (requires Bearer token; returns signed original photo URL + selected outfit details)
 - `GET /api/items` (requires Bearer token; returns items plus `style_label` used by catalog filters)
 - `GET /api/stats` (requires Bearer token; returns dashboard metrics including photos analyzed, outfits saved, item-type/color breakdowns, and highlights)
-- `DELETE /api/wardrobe/:photo_id` (requires Bearer token; deletes wardrobe entry + stored image)
+- `DELETE /api/wardrobe/:outfit_id` (requires Bearer token; deletes a single outfit and removes the photo only when no outfits remain)
 - `GET /api/models` (requires Bearer token; returns model capability + per-user availability)
 - `GET /api/settings/model-keys` (requires Bearer token; returns masked model settings)
 - `PUT /api/settings/model-keys` (requires Bearer token; saves encrypted model credentials/preferences)
