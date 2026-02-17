@@ -43,8 +43,11 @@ export default function AnalyzeTab() {
 
   return (
     <section>
-      <div className="toolbar-row">
-        <h2>Photo analysis</h2>
+      <div className="tab-header">
+        <div className="tab-header-title">
+          <h2>Photo analysis</h2>
+          <p className="tab-header-subtext">Upload a photo to detect outfit styles and items.</p>
+        </div>
       </div>
       <div className="analysis-layout">
         <section>

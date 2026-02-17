@@ -54,6 +54,23 @@ def _title_case_label(value: str) -> str:
     return cleaned.title() if cleaned else "Other"
 
 
+def _normalize_label(value: str, fallback: str) -> str:
+    cleaned = " ".join(str(value or "").strip().split())
+    if not cleaned:
+        return fallback
+    return cleaned.title()
+
+
+def _normalize_item_fields(item: dict) -> dict:
+    if not isinstance(item, dict):
+        return {"category": "Item", "name": "Unknown Item", "color": "Unknown"}
+    return {
+        "category": _normalize_label(item.get("category"), "Item"),
+        "name": _normalize_label(item.get("name"), "Unknown Item"),
+        "color": _normalize_label(item.get("color"), "Unknown")
+    }
+
+
 def _contains_keyword(text: str, keyword: str) -> bool:
     if not text or not keyword:
         return False
@@ -120,7 +137,7 @@ def persist_analysis(user_id: str, storage_path: str, analysis: dict) -> dict:
             {
                 "photo_id": photo_row["id"],
                 "user_id": user_id,
-                "style_label": analysis.get("style"),
+                "style_label": _normalize_label(analysis.get("style"), "Unknown"),
                 "raw_json": analysis
             }
         )
@@ -138,33 +155,35 @@ def persist_analysis(user_id: str, storage_path: str, analysis: dict) -> dict:
             for item in (outfit.get("items") or []):
                 if not isinstance(item, dict):
                     continue
+                normalized_item = _normalize_item_fields(item)
                 item_rows.append(
                     {
                         "analysis_id": analysis_row["id"],
                         "user_id": user_id,
-                        "category": item.get("category"),
-                        "name": item.get("name"),
-                        "color": item.get("color"),
+                        "category": normalized_item["category"],
+                        "name": normalized_item["name"],
+                        "color": normalized_item["color"],
                         "attributes_json": {
                             "captured_at": datetime.now(timezone.utc).isoformat(),
                             "outfit_index": outfit_index,
-                            "outfit_style": outfit_style
+                            "outfit_style": _normalize_label(outfit_style, "Unknown")
                         }
                     }
                 )
     else:
         for item in analysis.get("items", []):
+            normalized_item = _normalize_item_fields(item)
             item_rows.append(
                 {
                     "analysis_id": analysis_row["id"],
                     "user_id": user_id,
-                    "category": item.get("category"),
-                    "name": item.get("name"),
-                    "color": item.get("color"),
+                    "category": normalized_item["category"],
+                    "name": normalized_item["name"],
+                    "color": normalized_item["color"],
                     "attributes_json": {
                         "captured_at": datetime.now(timezone.utc).isoformat(),
                         "outfit_index": 0,
-                        "outfit_style": str(analysis.get("style") or "Unknown").strip() or "Unknown"
+                        "outfit_style": _normalize_label(analysis.get("style"), "Unknown")
                     }
                 }
             )
@@ -194,13 +213,16 @@ def _normalize_signed_url(signed_data: dict) -> str | None:
 
 def get_signed_image_url(storage_path: str, expires_in_seconds: int = 3600) -> str | None:
     client = get_supabase_client()
-    response = client.storage.from_(settings.SUPABASE_BUCKET).create_signed_url(
-        storage_path,
-        expires_in_seconds
-    )
-    data = getattr(response, "data", None) or response
-    if isinstance(data, dict):
-        return _normalize_signed_url(data)
+    try:
+        response = client.storage.from_(settings.SUPABASE_BUCKET).create_signed_url(
+            storage_path,
+            expires_in_seconds
+        )
+        data = getattr(response, "data", None) or response
+        if isinstance(data, dict):
+            return _normalize_signed_url(data)
+    except Exception:  # noqa: BLE001
+        return None
     return None
 
 
@@ -239,7 +261,7 @@ def list_wardrobe(user_id: str, limit: int = 20) -> list[dict]:
                 normalized_items = [item for item in (outfit.get("items") or []) if isinstance(item, dict)]
                 normalized_outfits.append(
                     {
-                        "style": str(outfit.get("style") or "Unlabeled").strip() or "Unlabeled",
+                        "style": _normalize_label(outfit.get("style"), "Unlabeled"),
                         "items_count": len(normalized_items)
                     }
                 )
@@ -247,7 +269,7 @@ def list_wardrobe(user_id: str, limit: int = 20) -> list[dict]:
         if not normalized_outfits:
             normalized_outfits = [
                 {
-                    "style": analysis["style_label"] if analysis else "Unlabeled",
+                    "style": _normalize_label(analysis["style_label"], "Unlabeled") if analysis else "Unlabeled",
                     "items_count": 0
                 }
             ]
@@ -293,13 +315,16 @@ def list_user_items(user_id: str, limit: int = 200) -> list[dict]:
             .execute()
         )
         for analysis in (analyses_response.data or []):
-            style_by_analysis_id[analysis.get("id")] = analysis.get("style_label")
+            style_by_analysis_id[analysis.get("id")] = _normalize_label(analysis.get("style_label"), "Unknown")
 
     return [
         {
             **item,
+            "category": _normalize_label(item.get("category"), "Item"),
+            "name": _normalize_label(item.get("name"), "Unknown Item"),
+            "color": _normalize_label(item.get("color"), "Unknown"),
             "style_label": (
-                (item.get("attributes_json") or {}).get("outfit_style")
+                _normalize_label((item.get("attributes_json") or {}).get("outfit_style"), "")
                 or style_by_analysis_id.get(item.get("analysis_id"))
                 or "Unknown"
             )
@@ -324,7 +349,7 @@ def delete_wardrobe_photo(user_id: str, photo_id: str) -> bool:
         return False
 
     storage_path = photo_row.get("storage_path")
-    if storage_path:
+    if storage_path and not str(storage_path).startswith("virtual/"):
         client.storage.from_(settings.SUPABASE_BUCKET).remove([storage_path])
 
     (
@@ -375,8 +400,8 @@ def get_wardrobe_photo_details(user_id: str, photo_id: str, outfit_index: int | 
                 outfits.append(
                     {
                         "outfit_index": index,
-                        "style": str(outfit.get("style") or "Unlabeled").strip() or "Unlabeled",
-                        "items": outfit_items
+                        "style": _normalize_label(outfit.get("style"), "Unlabeled"),
+                        "items": [_normalize_item_fields(item) for item in outfit_items]
                     }
                 )
 
@@ -385,13 +410,17 @@ def get_wardrobe_photo_details(user_id: str, photo_id: str, outfit_index: int | 
             outfits = [
                 {
                     "outfit_index": 0,
-                    "style": analysis_row.get("style_label") or "Unlabeled",
-                    "items": [item for item in (fallback_items or []) if isinstance(item, dict)]
+                    "style": _normalize_label(analysis_row.get("style_label"), "Unlabeled"),
+                    "items": [_normalize_item_fields(item) for item in (fallback_items or []) if isinstance(item, dict)]
                 }
             ]
 
     storage_path = photo_row.get("storage_path") or ""
-    image_url = get_signed_image_url(storage_path, expires_in_seconds=3600) if storage_path else None
+    image_url = (
+        get_signed_image_url(storage_path, expires_in_seconds=3600)
+        if storage_path and not str(storage_path).startswith("virtual/")
+        else None
+    )
 
     selected_outfit = None
     if outfit_index is not None:
@@ -401,7 +430,7 @@ def get_wardrobe_photo_details(user_id: str, photo_id: str, outfit_index: int | 
         "photo_id": photo_row["id"],
         "created_at": photo_row.get("created_at"),
         "analysis_id": analysis_row["id"] if analysis_row else None,
-        "style_label": analysis_row["style_label"] if analysis_row else None,
+        "style_label": _normalize_label(analysis_row.get("style_label"), "Unlabeled") if analysis_row else None,
         "analysis_created_at": analysis_row["created_at"] if analysis_row else None,
         "image_url": image_url,
         "outfits": outfits,
@@ -415,7 +444,7 @@ def get_dashboard_stats(user_id: str) -> dict:
 
     photos = (
         client.table("photos")
-        .select("id")
+        .select("id,storage_path")
         .eq("user_id", user_id)
         .execute()
     ).data or []
@@ -448,7 +477,7 @@ def get_dashboard_stats(user_id: str) -> dict:
     color_counts = {}
     for item in items:
         item_type = _classify_item_type(item.get("category") or "", item.get("name") or "")
-        color = (item.get("color") or "Unknown").strip() or "Unknown"
+        color = _normalize_label(item.get("color"), "Unknown")
         detailed_type_counts[item_type] = detailed_type_counts.get(item_type, 0) + 1
         color_counts[color] = color_counts.get(color, 0) + 1
 
@@ -470,7 +499,9 @@ def get_dashboard_stats(user_id: str) -> dict:
         else None
     } if latest_photo else None
 
-    photos_count = len(photos)
+    photos_count = len(
+        [photo for photo in photos if not str(photo.get("storage_path") or "").startswith("virtual/")]
+    )
     analyses_count = len(analyses)
     items_count = len(items)
     outfits_count = 0
@@ -501,13 +532,111 @@ def get_dashboard_stats(user_id: str) -> dict:
     }
 
 
+def compose_outfit_from_items(
+    user_id: str,
+    item_ids: list[str],
+    style_label: str = "Composed outfit"
+) -> dict:
+    client = get_supabase_client()
+    unique_item_ids = []
+    seen = set()
+    for item_id in item_ids:
+        value = str(item_id or "").strip()
+        if not value or value in seen:
+            continue
+        seen.add(value)
+        unique_item_ids.append(value)
+
+    if not unique_item_ids:
+        raise ValueError("item_ids must include at least one valid item id.")
+
+    source_items = (
+        client.table("items")
+        .select("id,category,name,color")
+        .eq("user_id", user_id)
+        .in_("id", unique_item_ids)
+        .execute()
+    ).data or []
+    if not source_items:
+        raise ValueError("No matching items found for this user.")
+
+    style = _normalize_label(style_label, "Composed Outfit")
+    composed_items = [
+        _normalize_item_fields(item)
+        for item in source_items
+    ]
+
+    photo_insert = (
+        client.table("photos")
+        .insert(
+            {
+                "user_id": user_id,
+                "storage_path": f"virtual/composed/{uuid4().hex}.json"
+            }
+        )
+        .execute()
+    )
+    photo_row = photo_insert.data[0]
+
+    raw_json = {
+        "style": style,
+        "items": composed_items,
+        "outfits": [
+            {
+                "style": style,
+                "items": composed_items
+            }
+        ],
+        "source_item_ids": unique_item_ids,
+        "composed": True
+    }
+
+    analysis_insert = (
+        client.table("outfit_analyses")
+        .insert(
+            {
+                "photo_id": photo_row["id"],
+                "user_id": user_id,
+                "style_label": style,
+                "raw_json": raw_json
+            }
+        )
+        .execute()
+    )
+    analysis_row = analysis_insert.data[0]
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    new_item_rows = [
+        {
+            "analysis_id": analysis_row["id"],
+            "user_id": user_id,
+            "category": _normalize_label(item.get("category"), "Item"),
+            "name": _normalize_label(item.get("name"), "Unknown Item"),
+            "color": _normalize_label(item.get("color"), "Unknown"),
+            "attributes_json": {
+                "captured_at": now_iso,
+                "outfit_index": 0,
+                "outfit_style": style,
+                "composed_from_item_id": item.get("id")
+            }
+        }
+        for item in source_items
+    ]
+    if new_item_rows:
+        client.table("items").insert(new_item_rows).execute()
+
+    return {
+        "photo_id": photo_row["id"],
+        "analysis_id": analysis_row["id"],
+        "style_label": style,
+        "items_count": len(new_item_rows)
+    }
+
+
 def _empty_model_settings() -> dict:
     return {
         "preferred_model": settings.DEFAULT_ANALYSIS_MODEL,
         "gemini_api_key": "",
-        "aws_access_key_id": "",
-        "aws_secret_access_key": "",
-        "aws_session_token": "",
         "aws_region": "",
         "aws_bedrock_agent_id": "",
         "aws_bedrock_agent_alias_id": ""
@@ -519,8 +648,7 @@ def get_user_model_settings(user_id: str) -> dict:
     response = (
         client.table("user_settings")
         .select(
-            "preferred_model,gemini_api_key_enc,aws_access_key_id_enc,aws_secret_access_key_enc,"
-            "aws_session_token_enc,aws_region,aws_bedrock_agent_id,aws_bedrock_agent_alias_id"
+            "preferred_model,gemini_api_key_enc,aws_region,aws_bedrock_agent_id,aws_bedrock_agent_alias_id"
         )
         .eq("user_id", user_id)
         .limit(1)
@@ -533,9 +661,6 @@ def get_user_model_settings(user_id: str) -> dict:
     return {
         "preferred_model": row.get("preferred_model") or settings.DEFAULT_ANALYSIS_MODEL,
         "gemini_api_key": decrypt_secret(row.get("gemini_api_key_enc") or ""),
-        "aws_access_key_id": decrypt_secret(row.get("aws_access_key_id_enc") or ""),
-        "aws_secret_access_key": decrypt_secret(row.get("aws_secret_access_key_enc") or ""),
-        "aws_session_token": decrypt_secret(row.get("aws_session_token_enc") or ""),
         "aws_region": row.get("aws_region") or "",
         "aws_bedrock_agent_id": row.get("aws_bedrock_agent_id") or "",
         "aws_bedrock_agent_alias_id": row.get("aws_bedrock_agent_alias_id") or ""
@@ -547,9 +672,6 @@ def get_user_model_settings_masked(user_id: str) -> dict:
     return {
         "preferred_model": settings_row.get("preferred_model") or settings.DEFAULT_ANALYSIS_MODEL,
         "gemini_api_key_masked": mask_secret(settings_row.get("gemini_api_key", "")),
-        "aws_access_key_id_masked": mask_secret(settings_row.get("aws_access_key_id", "")),
-        "aws_secret_access_key_masked": mask_secret(settings_row.get("aws_secret_access_key", "")),
-        "aws_session_token_masked": mask_secret(settings_row.get("aws_session_token", "")),
         "aws_region": settings_row.get("aws_region", ""),
         "aws_bedrock_agent_id": settings_row.get("aws_bedrock_agent_id", ""),
         "aws_bedrock_agent_alias_id": settings_row.get("aws_bedrock_agent_alias_id", "")
@@ -563,9 +685,6 @@ def upsert_user_model_settings(user_id: str, payload: dict) -> dict:
     preferred_model = str(payload.get("preferred_model", current.get("preferred_model", ""))).strip()
 
     gemini_api_key = payload.get("gemini_api_key")
-    aws_access_key_id = payload.get("aws_access_key_id")
-    aws_secret_access_key = payload.get("aws_secret_access_key")
-    aws_session_token = payload.get("aws_session_token")
     aws_region = payload.get("aws_region")
     aws_bedrock_agent_id = payload.get("aws_bedrock_agent_id")
     aws_bedrock_agent_alias_id = payload.get("aws_bedrock_agent_alias_id")
@@ -579,11 +698,6 @@ def upsert_user_model_settings(user_id: str, payload: dict) -> dict:
         "user_id": user_id,
         "preferred_model": preferred_model or settings.DEFAULT_ANALYSIS_MODEL,
         "gemini_api_key_enc": encrypt_secret(_next_secret(gemini_api_key, current.get("gemini_api_key", ""))),
-        "aws_access_key_id_enc": encrypt_secret(_next_secret(aws_access_key_id, current.get("aws_access_key_id", ""))),
-        "aws_secret_access_key_enc": encrypt_secret(
-            _next_secret(aws_secret_access_key, current.get("aws_secret_access_key", ""))
-        ),
-        "aws_session_token_enc": encrypt_secret(_next_secret(aws_session_token, current.get("aws_session_token", ""))),
         "aws_region": str(aws_region).strip() if aws_region is not None else current.get("aws_region", ""),
         "aws_bedrock_agent_id": (
             str(aws_bedrock_agent_id).strip() if aws_bedrock_agent_id is not None else current.get("aws_bedrock_agent_id", "")

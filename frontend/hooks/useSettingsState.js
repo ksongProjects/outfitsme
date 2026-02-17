@@ -13,9 +13,6 @@ export function useSettingsState({ session, accessToken, onModelSettingsUpdated 
   const [settingsForm, setSettingsForm] = useState({
     preferred_model: "gemini-2.5-flash",
     gemini_api_key: "",
-    aws_access_key_id: "",
-    aws_secret_access_key: "",
-    aws_session_token: "",
     aws_region: "",
     aws_bedrock_agent_id: "",
     aws_bedrock_agent_alias_id: ""
@@ -115,10 +112,7 @@ export function useSettingsState({ session, accessToken, onModelSettingsUpdated 
       await saveModelSettingsMutation.mutateAsync(settingsForm);
       setSettingsForm((prev) => ({
         ...prev,
-        gemini_api_key: "",
-        aws_access_key_id: "",
-        aws_secret_access_key: "",
-        aws_session_token: ""
+        gemini_api_key: ""
       }));
       toast.success("Model settings updated.");
       if (onModelSettingsUpdated) {

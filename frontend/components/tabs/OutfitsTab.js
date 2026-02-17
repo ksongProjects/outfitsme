@@ -39,8 +39,11 @@ export default function OutfitsTab() {
 
   return (
     <section>
-      <div className="toolbar-row">
-        <h2>Your outfits</h2>
+      <div className="tab-header">
+        <div className="tab-header-title">
+          <h2>Your outfits</h2>
+          <p className="tab-header-subtext">Browse saved looks and open outfit details.</p>
+        </div>
         <button className="ghost-btn" onClick={loadWardrobe} disabled={wardrobeLoading}>
           {wardrobeLoading ? "Loading..." : "Refresh"}
         </button>

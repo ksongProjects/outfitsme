@@ -15,6 +15,7 @@ from app.services.gemini_service import (
 from app.services.models_service import build_model_availability, get_preferred_model
 from app.services.secrets_service import SettingsEncryptionError
 from app.services.supabase_service import (
+    compose_outfit_from_items,
     delete_wardrobe_photo,
     get_dashboard_stats,
     get_wardrobe_photo_details,
@@ -92,10 +93,7 @@ def analyze_outfit():
                 mime_type=mime_type,
                 agent_id=user_settings.get("aws_bedrock_agent_id", ""),
                 agent_alias_id=user_settings.get("aws_bedrock_agent_alias_id", ""),
-                aws_access_key_id=user_settings.get("aws_access_key_id", ""),
-                aws_secret_access_key=user_settings.get("aws_secret_access_key", ""),
-                aws_region=user_settings.get("aws_region", ""),
-                aws_session_token=user_settings.get("aws_session_token", "")
+                aws_region=user_settings.get("aws_region", "")
             )
         else:
             return jsonify({"error": f"Unsupported model provider: {model_entry['provider']}"}), 400
@@ -210,6 +208,38 @@ def find_similar_items():
         )
 
     return jsonify({"user_id": user_id, "results": results}), 200
+
+
+@api_bp.post("/outfits/compose")
+def compose_outfit():
+    access_token = _extract_access_token()
+    if not access_token:
+        return jsonify({"error": "Missing bearer token."}), 401
+
+    payload = request.get_json(silent=True) or {}
+    if not isinstance(payload, dict):
+        return jsonify({"error": "Invalid payload."}), 400
+
+    item_ids = payload.get("item_ids", [])
+    style_label = payload.get("style_label", "Composed outfit")
+    if not isinstance(item_ids, list):
+        return jsonify({"error": "item_ids must be a list."}), 400
+
+    try:
+        user_id = get_user_id_from_token(access_token)
+        if not user_id:
+            return jsonify({"error": "Invalid or expired token."}), 401
+
+        result = compose_outfit_from_items(user_id, item_ids=item_ids, style_label=style_label)
+        return jsonify({"user_id": user_id, **result}), 200
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except SupabaseNotConfiguredError as exc:
+        return jsonify({"error": str(exc)}), 500
+    except AuthApiError:
+        return jsonify({"error": "Invalid or expired token."}), 401
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"error": f"Compose outfit failed: {exc}"}), 500
 
 
 @api_bp.get("/wardrobe")

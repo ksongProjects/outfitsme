@@ -25,8 +25,6 @@ def get_model_catalog() -> list[dict]:
 
 def build_model_availability(model_settings: dict) -> list[dict]:
     gemini_key = (model_settings.get("gemini_api_key") or settings.GEMINI_API_KEY or "").strip()
-    aws_access = (model_settings.get("aws_access_key_id") or "").strip()
-    aws_secret = (model_settings.get("aws_secret_access_key") or "").strip()
     aws_region = (model_settings.get("aws_region") or "").strip()
     bedrock_agent_id = (model_settings.get("aws_bedrock_agent_id") or "").strip()
     bedrock_agent_alias_id = (model_settings.get("aws_bedrock_agent_alias_id") or "").strip()
@@ -45,9 +43,9 @@ def build_model_availability(model_settings: dict) -> list[dict]:
                 available = False
                 unavailable_reason = "Add a Gemini API key in Settings."
         elif provider == "bedrock_agent":
-            if not aws_access or not aws_secret or not aws_region:
+            if not aws_region:
                 available = False
-                unavailable_reason = "Add AWS Bedrock credentials (access key, secret key, region) in Settings."
+                unavailable_reason = "Add AWS region in Settings."
             elif not bedrock_agent_id or not bedrock_agent_alias_id:
                 available = False
                 unavailable_reason = "Add Bedrock Agent ID and Alias ID in Settings."

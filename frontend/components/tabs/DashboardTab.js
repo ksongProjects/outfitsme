@@ -7,8 +7,11 @@ export default function DashboardTab({ stats, refreshStats, loading }) {
 
   return (
     <section>
-      <div className="toolbar-row">
-        <h2>Dashboard overview</h2>
+      <div className="tab-header">
+        <div className="tab-header-title">
+          <h2>Dashboard overview</h2>
+          <p className="tab-header-subtext">Track your outfit insights and wardrobe trends.</p>
+        </div>
         <button className="ghost-btn" onClick={refreshStats} disabled={loading}>
           {loading ? "Refreshing..." : "Refresh"}
         </button>

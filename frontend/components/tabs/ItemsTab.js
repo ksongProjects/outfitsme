@@ -5,6 +5,7 @@ import {
   getPaginationRowModel,
   useReactTable
 } from "@tanstack/react-table";
+import { toast } from "sonner";
 
 import { formatItemLabel, getItemIcon } from "../../utils/formatters";
 import { useItemsContext } from "../../context/DashboardContext";
@@ -15,6 +16,8 @@ export default function ItemsTab() {
     itemsLoading,
     itemsMessage,
     loadItems,
+    composeOutfitFromSelected,
+    composeOutfitLoading,
     selectedItemIds,
     toggleSelectItem,
     selectedItems
@@ -22,35 +25,55 @@ export default function ItemsTab() {
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [colorFilter, setColorFilter] = useState("all");
   const [styleFilter, setStyleFilter] = useState("all");
+  const [confirmModalOpen, setConfirmModalOpen] = useState(false);
+
+  const normalizeFilterValue = (value) => (
+    (value || "Unknown").trim().replace(/\s+/g, " ").toLowerCase()
+  );
+
+  const buildUniqueOptions = (values) => {
+    const map = new Map();
+    for (const rawValue of values) {
+      const label = (rawValue || "Unknown").trim().replace(/\s+/g, " ") || "Unknown";
+      const normalized = normalizeFilterValue(label);
+      if (!map.has(normalized)) {
+        map.set(normalized, label);
+      }
+    }
+    return [...map.entries()]
+      .sort((a, b) => a[1].localeCompare(b[1]))
+      .map(([value, label]) => ({ value, label }));
+  };
+
+  const getOptionLabel = (options, selectedValue) => (
+    options.find((option) => option.value === selectedValue)?.label || selectedValue
+  );
 
   const categoryOptions = useMemo(() => {
-    const options = [...new Set(items.map((item) => (item.category || "Unknown").trim() || "Unknown"))];
-    return options.sort((a, b) => a.localeCompare(b));
+    return buildUniqueOptions(items.map((item) => item.category));
   }, [items]);
 
   const colorOptions = useMemo(() => {
-    const options = [...new Set(items.map((item) => (item.color || "Unknown").trim() || "Unknown"))];
-    return options.sort((a, b) => a.localeCompare(b));
+    return buildUniqueOptions(items.map((item) => item.color));
   }, [items]);
 
   const styleOptions = useMemo(() => {
-    const options = [...new Set(items.map((item) => (item.style_label || "Unknown").trim() || "Unknown"))];
-    return options.sort((a, b) => a.localeCompare(b));
+    return buildUniqueOptions(items.map((item) => item.style_label));
   }, [items]);
 
   const filteredItems = useMemo(() => (
     items.filter((item) => {
-      const matchesCategory = categoryFilter === "all" || (item.category || "Unknown") === categoryFilter;
-      const matchesColor = colorFilter === "all" || (item.color || "Unknown") === colorFilter;
-      const matchesStyle = styleFilter === "all" || (item.style_label || "Unknown") === styleFilter;
+      const matchesCategory = categoryFilter === "all" || normalizeFilterValue(item.category) === categoryFilter;
+      const matchesColor = colorFilter === "all" || normalizeFilterValue(item.color) === colorFilter;
+      const matchesStyle = styleFilter === "all" || normalizeFilterValue(item.style_label) === styleFilter;
       return matchesCategory && matchesColor && matchesStyle;
     })
   ), [items, categoryFilter, colorFilter, styleFilter]);
 
   const activeFilterChips = [
-    categoryFilter !== "all" ? `Type: ${categoryFilter}` : "",
-    colorFilter !== "all" ? `Color: ${colorFilter}` : "",
-    styleFilter !== "all" ? `Style: ${styleFilter}` : ""
+    categoryFilter !== "all" ? `Type: ${getOptionLabel(categoryOptions, categoryFilter)}` : "",
+    colorFilter !== "all" ? `Color: ${getOptionLabel(colorOptions, colorFilter)}` : "",
+    styleFilter !== "all" ? `Style: ${getOptionLabel(styleOptions, styleFilter)}` : ""
   ].filter(Boolean);
 
   const columns = useMemo(() => [
@@ -61,6 +84,7 @@ export default function ItemsTab() {
         <input
           type="checkbox"
           checked={selectedItemIds.includes(row.original.id)}
+          onClick={(event) => event.stopPropagation()}
           onChange={() => toggleSelectItem(row.original.id)}
         />
       )
@@ -105,10 +129,22 @@ export default function ItemsTab() {
     }
   });
 
+  const handleConfirmSelectedItems = async () => {
+    try {
+      await composeOutfitFromSelected();
+      setConfirmModalOpen(false);
+    } catch (err) {
+      toast.error(err.message || "Could not create outfit from selected items.");
+    }
+  };
+
   return (
     <section>
-      <div className="toolbar-row">
-        <h2>Item catalog</h2>
+      <div className="tab-header">
+        <div className="tab-header-title">
+          <h2>Item catalog</h2>
+          <p className="tab-header-subtext">Filter, select, and compose outfits from saved items.</p>
+        </div>
         <button className="ghost-btn" onClick={loadItems} disabled={itemsLoading}>
           {itemsLoading ? "Loading..." : "Refresh"}
         </button>
@@ -120,19 +156,19 @@ export default function ItemsTab() {
         <select className="text-input" value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}>
           <option value="all">All types</option>
           {categoryOptions.map((category) => (
-            <option key={`category-${category}`} value={category}>{category}</option>
+            <option key={`category-${category.value}`} value={category.value}>{category.label}</option>
           ))}
         </select>
         <select className="text-input" value={colorFilter} onChange={(event) => setColorFilter(event.target.value)}>
           <option value="all">All colors</option>
           {colorOptions.map((color) => (
-            <option key={`color-${color}`} value={color}>{color}</option>
+            <option key={`color-${color.value}`} value={color.value}>{color.label}</option>
           ))}
         </select>
         <select className="text-input" value={styleFilter} onChange={(event) => setStyleFilter(event.target.value)}>
           <option value="all">All styles</option>
           {styleOptions.map((style) => (
-            <option key={`style-${style}`} value={style}>{style}</option>
+            <option key={`style-${style.value}`} value={style.value}>{style.label}</option>
           ))}
         </select>
         <button
@@ -171,7 +207,11 @@ export default function ItemsTab() {
           </thead>
           <tbody>
             {table.getRowModel().rows.map((row) => (
-              <tr key={row.id}>
+              <tr
+                key={row.id}
+                className={selectedItemIds.includes(row.original.id) ? "table-row-selected" : ""}
+                onClick={() => toggleSelectItem(row.original.id)}
+              >
                 {row.getVisibleCells().map((cell) => (
                   <td key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>
                 ))}
@@ -192,21 +232,65 @@ export default function ItemsTab() {
           <button type="button" className="ghost-btn" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}>
             Next
           </button>
+          <button
+            type="button"
+            className="primary-btn"
+            disabled={selectedItems.length === 0}
+            onClick={() => setConfirmModalOpen(true)}
+          >
+            Create new outfit
+          </button>
         </div>
       </div>
 
-      <div className="combine-panel">
-        <h3>New outfit (selected items)</h3>
-        {selectedItems.length === 0 ? (
-          <p className="subtext">Select any number of items to combine a new outfit.</p>
-        ) : (
-          <ul>
-            {selectedItems.map((item) => (
-              <li key={`selected-${item.id}`}>{formatItemLabel(item)}</li>
-            ))}
-          </ul>
-        )}
-      </div>
+      {confirmModalOpen ? (
+        <div className="modal-backdrop" onClick={() => setConfirmModalOpen(false)}>
+          <div className="modal-panel" onClick={(event) => event.stopPropagation()}>
+            <div className="modal-header">
+              <h3>Confirm new outfit</h3>
+              <button type="button" className="ghost-btn" onClick={() => setConfirmModalOpen(false)}>Close</button>
+            </div>
+            <div className="outfit-details-layout">
+              <div className="selection-preview">
+                <h4>Preview</h4>
+                <p className="subtext">{selectedItems.length} item{selectedItems.length === 1 ? "" : "s"} selected</p>
+                <div className="selection-preview-grid">
+                  {selectedItems.map((item) => (
+                    <div key={`preview-${item.id}`} className="selection-preview-pill">
+                      <span className="item-icon" aria-hidden="true">{getItemIcon(item)}</span>
+                      <span>{item.name || "Unknown"}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <h4>Selected items</h4>
+                <ul className="analysis-items">
+                  {selectedItems.map((item) => (
+                    <li key={`selected-${item.id}`} className="analysis-item">
+                      <span className="item-icon" aria-hidden="true">{getItemIcon(item)}</span>
+                      <span>{formatItemLabel(item)}</span>
+                    </li>
+                  ))}
+                </ul>
+                <div className="button-row">
+                  <button type="button" className="ghost-btn" onClick={() => setConfirmModalOpen(false)}>
+                    Cancel
+                  </button>
+                  <button
+                    type="button"
+                    className="primary-btn"
+                    onClick={handleConfirmSelectedItems}
+                    disabled={composeOutfitLoading}
+                  >
+                    {composeOutfitLoading ? "Creating..." : "Confirm outfit"}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

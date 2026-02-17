@@ -12,6 +12,13 @@ class GeminiNotConfiguredError(RuntimeError):
     pass
 
 
+def _normalize_label(value: str, fallback: str) -> str:
+    cleaned = " ".join(str(value or "").strip().split())
+    if not cleaned:
+        return fallback
+    return cleaned.title()
+
+
 def _gemini_endpoint(model: str) -> str:
     return f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
@@ -78,9 +85,9 @@ def _parse_gemini_json(response_json: dict) -> dict:
                 continue
             normalized.append(
                 {
-                    "category": str(item.get("category", "Item")).strip() or "Item",
-                    "name": str(item.get("name", "Unknown item")).strip() or "Unknown item",
-                    "color": str(item.get("color", "Unknown")).strip() or "Unknown"
+                    "category": _normalize_label(item.get("category", "Item"), "Item"),
+                    "name": _normalize_label(item.get("name", "Unknown item"), "Unknown Item"),
+                    "color": _normalize_label(item.get("color", "Unknown"), "Unknown")
                 }
             )
         return normalized
@@ -91,7 +98,7 @@ def _parse_gemini_json(response_json: dict) -> dict:
         for outfit in raw_outfits:
             if not isinstance(outfit, dict):
                 continue
-            style = str(outfit.get("style", "Unknown")).strip() or "Unknown"
+            style = _normalize_label(outfit.get("style", "Unknown"), "Unknown")
             items = outfit.get("items", [])
             if not isinstance(items, list):
                 items = []
@@ -99,7 +106,7 @@ def _parse_gemini_json(response_json: dict) -> dict:
 
     # Backward compatibility: accept legacy single-outfit JSON.
     if not outfits:
-        style = str(parsed.get("style", "Unknown")).strip() or "Unknown"
+        style = _normalize_label(parsed.get("style", "Unknown"), "Unknown")
         items = parsed.get("items", [])
         if not isinstance(items, list):
             items = []

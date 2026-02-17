@@ -43,8 +43,11 @@ export default function SettingsTab() {
   return (
     <section className="settings-layout">
       <div className="settings-span">
-        <div className="toolbar-row">
-          <h2>Settings</h2>
+        <div className="tab-header">
+          <div className="tab-header-title">
+            <h2>Settings</h2>
+            <p className="tab-header-subtext">Manage profile, security, and model credentials.</p>
+          </div>
         </div>
       </div>
       <aside className="settings-menu">
@@ -166,35 +169,6 @@ export default function SettingsTab() {
 
             {showBedrockAgentInputs ? (
               <>
-                <label htmlFor="aws-access-key">AWS access key ID</label>
-                <input
-                  id="aws-access-key"
-                  className="text-input"
-                  value={settingsForm.aws_access_key_id}
-                  onChange={(event) => setSettingsForm((prev) => ({ ...prev, aws_access_key_id: event.target.value }))}
-                  placeholder="AKIA..."
-                />
-
-                <label htmlFor="aws-secret-key">AWS secret access key</label>
-                <input
-                  id="aws-secret-key"
-                  type="password"
-                  className="text-input"
-                  value={settingsForm.aws_secret_access_key}
-                  onChange={(event) => setSettingsForm((prev) => ({ ...prev, aws_secret_access_key: event.target.value }))}
-                  placeholder="AWS secret"
-                />
-
-                <label htmlFor="aws-session-token">AWS session token (optional)</label>
-                <input
-                  id="aws-session-token"
-                  type="password"
-                  className="text-input"
-                  value={settingsForm.aws_session_token}
-                  onChange={(event) => setSettingsForm((prev) => ({ ...prev, aws_session_token: event.target.value }))}
-                  placeholder="Temporary credentials only"
-                />
-
                 <label htmlFor="aws-region">AWS region</label>
                 <input
                   id="aws-region"

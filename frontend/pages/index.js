@@ -131,6 +131,8 @@ export default function HomePage() {
     itemsLoading: itemsState.itemsLoading,
     itemsMessage: itemsState.itemsMessage,
     loadItems: itemsState.loadItems,
+    composeOutfitFromSelected: itemsState.composeOutfitFromSelected,
+    composeOutfitLoading: itemsState.composeOutfitLoading,
     selectedItemIds: itemsState.selectedItemIds,
     toggleSelectItem: itemsState.toggleSelectItem,
     selectedItems: itemsState.selectedItems
@@ -138,6 +140,7 @@ export default function HomePage() {
     itemsState.items,
     itemsState.itemsLoading,
     itemsState.itemsMessage,
+    itemsState.composeOutfitLoading,
     itemsState.selectedItemIds,
     itemsState.selectedItems
   ]);

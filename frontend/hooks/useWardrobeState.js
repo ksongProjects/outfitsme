@@ -57,8 +57,6 @@ export function useWardrobeState({ accessToken, onWardrobeChanged }) {
     setWardrobeMessage(entries.length === 0 ? "No wardrobe entries yet. Analyze your first outfit photo." : "");
     if (entries.length === 0) {
       toast.info("No outfits yet. Analyze your first photo.");
-    } else {
-      toast.success("Outfits loaded.");
     }
   };
 

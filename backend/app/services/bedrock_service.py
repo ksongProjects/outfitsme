@@ -11,6 +11,13 @@ class BedrockNotConfiguredError(RuntimeError):
     pass
 
 
+def _normalize_label(value: str, fallback: str) -> str:
+    cleaned = " ".join(str(value or "").strip().split())
+    if not cleaned:
+        return fallback
+    return cleaned.title()
+
+
 def _normalize_response_text(text: str) -> dict:
     cleaned = (text or "").strip()
     try:
@@ -33,7 +40,7 @@ def _normalize_analysis(parsed: dict) -> dict:
         for outfit in raw_outfits:
             if not isinstance(outfit, dict):
                 continue
-            style = str(outfit.get("style", "Unknown")).strip() or "Unknown"
+            style = _normalize_label(outfit.get("style", "Unknown"), "Unknown")
             raw_items = outfit.get("items", [])
             items = []
             if isinstance(raw_items, list):
@@ -42,15 +49,15 @@ def _normalize_analysis(parsed: dict) -> dict:
                         continue
                     items.append(
                         {
-                            "category": str(item.get("category", "Item")).strip() or "Item",
-                            "name": str(item.get("name", "Unknown item")).strip() or "Unknown item",
-                            "color": str(item.get("color", "Unknown")).strip() or "Unknown"
+                            "category": _normalize_label(item.get("category", "Item"), "Item"),
+                            "name": _normalize_label(item.get("name", "Unknown item"), "Unknown Item"),
+                            "color": _normalize_label(item.get("color", "Unknown"), "Unknown")
                         }
                     )
             outfits.append({"style": style, "items": items})
 
     if not outfits:
-        style = str(parsed.get("style", "Unknown")).strip() or "Unknown"
+        style = _normalize_label(parsed.get("style", "Unknown"), "Unknown")
         raw_items = parsed.get("items", [])
         items = []
         if isinstance(raw_items, list):
@@ -59,9 +66,9 @@ def _normalize_analysis(parsed: dict) -> dict:
                     continue
                 items.append(
                     {
-                        "category": str(item.get("category", "Item")).strip() or "Item",
-                        "name": str(item.get("name", "Unknown item")).strip() or "Unknown item",
-                        "color": str(item.get("color", "Unknown")).strip() or "Unknown"
+                        "category": _normalize_label(item.get("category", "Item"), "Item"),
+                        "name": _normalize_label(item.get("name", "Unknown item"), "Unknown Item"),
+                        "color": _normalize_label(item.get("color", "Unknown"), "Unknown")
                     }
                 )
         outfits = [{"style": style, "items": items}]
@@ -78,15 +85,10 @@ def analyze_outfit_with_bedrock_agent(
     mime_type: str,
     agent_id: str,
     agent_alias_id: str,
-    aws_access_key_id: str,
-    aws_secret_access_key: str,
-    aws_region: str,
-    aws_session_token: str = ""
+    aws_region: str
 ) -> dict:
-    if not aws_access_key_id or not aws_secret_access_key or not aws_region:
-        raise BedrockNotConfiguredError(
-            "AWS Bedrock credentials are required: access key, secret key, and region."
-        )
+    if not aws_region:
+        raise BedrockNotConfiguredError("AWS region is required.")
     if not agent_id or not agent_alias_id:
         raise BedrockNotConfiguredError(
             "AWS Bedrock agent ID and alias ID are required."
@@ -96,12 +98,6 @@ def analyze_outfit_with_bedrock_agent(
         "service_name": "bedrock-agent-runtime",
         "region_name": aws_region.strip()
     }
-    session_token = (aws_session_token or "").strip()
-    if session_token:
-        client_kwargs["aws_session_token"] = session_token
-    client_kwargs["aws_access_key_id"] = aws_access_key_id.strip()
-    client_kwargs["aws_secret_access_key"] = aws_secret_access_key.strip()
-
     client = boto3.client(**client_kwargs)
 
     prompt = (

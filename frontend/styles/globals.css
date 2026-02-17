@@ -17,14 +17,21 @@
 
 html {
   height: 100%;
-  /* Reserve scrollbar space to avoid horizontal layout shifts between short/long pages. */
-  scrollbar-gutter: stable;
   background:
     radial-gradient(circle at 92% 2%, rgba(224, 139, 75, 0.2), transparent 32%),
     radial-gradient(circle at 8% 22%, rgba(13, 95, 79, 0.15), transparent 36%),
     var(--bg);
   background-repeat: no-repeat;
   background-size: cover;
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  width: 0;
+  height: 0;
+  display: none;
 }
 
 body {
@@ -103,6 +110,10 @@ input {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
+}
+
+.dashboard .tab-row {
+  margin-bottom: 14px;
 }
 
 .button-row {
@@ -324,6 +335,24 @@ input[type="file"] {
   margin: 0;
 }
 
+.tab-header {
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.tab-header-title h2 {
+  margin: 0;
+}
+
+.tab-header-subtext {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
 .wardrobe-grid {
   margin-top: 12px;
   display: grid;
@@ -375,8 +404,8 @@ input[type="file"] {
 
 .table-scroll-wrap {
   margin-top: 10px;
-  max-height: 460px;
-  overflow: auto;
+  max-height: none;
+  overflow: visible;
   border-radius: 12px;
 }
 
@@ -386,6 +415,14 @@ input[type="file"] {
   align-items: center;
   justify-content: space-between;
   gap: 10px;
+}
+
+.table-row-selected td {
+  background: #f4fbf9;
+}
+
+.data-table tbody tr {
+  cursor: pointer;
 }
 
 .combine-panel {
@@ -542,6 +579,11 @@ ul {
   display: grid;
   grid-template-columns: 220px minmax(0, 1fr);
   gap: 12px;
+  align-items: start;
+}
+
+.settings-layout > * {
+  min-width: 0;
 }
 
 .settings-span {
@@ -587,6 +629,7 @@ ul {
   border: 1px solid var(--line);
   border-radius: 12px;
   background: #fff;
+  overflow: hidden;
 }
 
 .settings-card h2 {
@@ -631,6 +674,33 @@ ul {
   color: var(--muted);
 }
 
+.selection-preview {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  padding: 10px;
+}
+
+.selection-preview h4 {
+  margin: 0 0 6px;
+}
+
+.selection-preview-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.selection-preview-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 4px 10px;
+  background: #fff;
+}
+
 @media (max-width: 900px) {
   .hero,
   .analysis-layout,
@@ -666,7 +736,8 @@ ul {
   }
 
   .topbar,
-  .dashboard-header {
+  .dashboard-header,
+  .tab-header {
     align-items: flex-start;
     flex-direction: column;
   }
