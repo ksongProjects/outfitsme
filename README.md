@@ -5,10 +5,10 @@ OutfitMe is a web app where users upload outfit photos, identify clothing items,
 ## Current Local MVP
 
 Implemented in this repo:
-- `frontend/`: Next.js UI with Supabase email/password auth and session handling
-- `backend/`: Flask API with authenticated endpoints, Supabase token verification, private bucket upload, and DB persistence
+- `frontend/`: Next.js UI with landing page auth flow and a tabbed dashboard (`Analyze outfit`, `Wardrobe`)
+- `backend/`: Flask API with authenticated endpoints, Gemini outfit analysis, Supabase token verification, private bucket upload, and DB persistence
 
-Current outfit detection and store similarity are still mocked, but data is persisted to Supabase.
+Gemini powers outfit analysis. Similar-item results are still mocked for now.
 
 ## Prerequisites
 
@@ -42,8 +42,8 @@ PORT=5000
 SUPABASE_URL=
 SUPABASE_SECRET_KEY=
 SUPABASE_BUCKET=outfit-images
-AWS_REGION=
-BEDROCK_MODEL_ID=
+GEMINI_API_KEY=
+GEMINI_MODEL=gemini-2.5-flash
 ```
 
 ## Run Locally
@@ -108,5 +108,5 @@ npm test
 
 1. Replace mock analysis in `backend/app/routes/api.py` with real model inference.
 2. Normalize and persist real similar-item search results.
-3. Add signed URL retrieval for private images in user wardrobe views.
-4. Add pagination and filtering on wardrobe endpoint/UI.
+3. Add pagination and filtering on wardrobe endpoint/UI.
+4. Add richer wardrobe details (season, tags, favorite looks).

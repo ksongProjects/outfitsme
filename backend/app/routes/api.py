@@ -1,6 +1,8 @@
+import requests
 from flask import Blueprint, jsonify, request
 from gotrue.errors import AuthApiError
 
+from app.services.gemini_service import GeminiNotConfiguredError, analyze_outfit_with_gemini
 from app.services.supabase_service import (
     SupabaseNotConfiguredError,
     get_user_id_from_token,
@@ -19,17 +21,6 @@ def _extract_access_token() -> str | None:
     return header.removeprefix("Bearer ").strip() or None
 
 
-def _mock_analysis_result() -> dict:
-    return {
-        "style": "Smart Casual",
-        "items": [
-            {"category": "Top", "name": "White Oxford Shirt", "color": "White"},
-            {"category": "Bottom", "name": "Navy Chinos", "color": "Navy"},
-            {"category": "Shoes", "name": "Brown Loafers", "color": "Brown"}
-        ]
-    }
-
-
 @api_bp.post("/analyze")
 def analyze_outfit():
     access_token = _extract_access_token()
@@ -46,13 +37,25 @@ def analyze_outfit():
         if not user_id:
             return jsonify({"error": "Invalid or expired token."}), 401
 
+        image_bytes = image.read()
+        if not image_bytes:
+            return jsonify({"error": "Image file is empty."}), 400
+
+        mime_type = image.mimetype or "image/jpeg"
+        analysis = analyze_outfit_with_gemini(image_bytes, mime_type)
+        image.stream.seek(0)
         storage_path = upload_photo_for_user(image, user_id)
-        analysis = _mock_analysis_result()
         persistence = persist_analysis(user_id, storage_path, analysis)
 
         return jsonify({**analysis, **persistence}), 200
     except SupabaseNotConfiguredError as exc:
         return jsonify({"error": str(exc)}), 500
+    except GeminiNotConfiguredError as exc:
+        return jsonify({"error": str(exc)}), 500
+    except requests.HTTPError as exc:
+        return jsonify({"error": f"Gemini request failed: {exc}"}), 502
+    except ValueError as exc:
+        return jsonify({"error": f"Gemini response parse failed: {exc}"}), 502
     except AuthApiError:
         return jsonify({"error": "Invalid or expired token."}), 401
     except Exception as exc:  # noqa: BLE001
