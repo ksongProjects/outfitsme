@@ -1,10 +1,12 @@
 import { useEffect, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { supabase } from "../lib/supabaseClient";
 import { API_BASE } from "../lib/apiBase";
 
 export function useSettingsState({ session, accessToken, onModelSettingsUpdated }) {
+  const queryClient = useQueryClient();
   const [profileName, setProfileName] = useState("");
   const [newEmail, setNewEmail] = useState("");
   const [newPassword, setNewPassword] = useState("");
@@ -23,12 +25,12 @@ export function useSettingsState({ session, accessToken, onModelSettingsUpdated 
     setProfileName(session?.user?.user_metadata?.full_name || "");
   }, [session]);
 
-  const loadModelSettings = async () => {
-    if (!accessToken) {
-      return;
-    }
-
-    try {
+  const modelSettingsQuery = useQuery({
+    queryKey: ["model-settings", accessToken],
+    queryFn: async () => {
+      if (!accessToken) {
+        return { settings: {} };
+      }
       const response = await fetch(`${API_BASE}/api/settings/model-keys`, {
         method: "GET",
         headers: {
@@ -36,20 +38,33 @@ export function useSettingsState({ session, accessToken, onModelSettingsUpdated 
         }
       });
       if (!response.ok) {
-        return;
+        throw new Error("Unable to load model settings.");
       }
-      const payload = await response.json();
-      const current = payload.settings || {};
-      setSettingsForm((prev) => ({
-        ...prev,
-        preferred_model: current.preferred_model || prev.preferred_model,
-        aws_region: current.aws_region || "",
-        aws_bedrock_agent_id: current.aws_bedrock_agent_id || "",
-        aws_bedrock_agent_alias_id: current.aws_bedrock_agent_alias_id || ""
-      }));
-    } catch (_err) {
-      // Optional UI helper only.
+      return await response.json();
+    },
+    enabled: false,
+    staleTime: 20_000
+  });
+
+  const loadModelSettings = async () => {
+    if (!accessToken) {
+      return;
     }
+
+    const result = await modelSettingsQuery.refetch();
+    if (result.isError) {
+      return;
+    }
+
+    const payload = result.data || {};
+    const current = payload.settings || {};
+    setSettingsForm((prev) => ({
+      ...prev,
+      preferred_model: current.preferred_model || prev.preferred_model,
+      aws_region: current.aws_region || "",
+      aws_bedrock_agent_id: current.aws_bedrock_agent_id || "",
+      aws_bedrock_agent_alias_id: current.aws_bedrock_agent_alias_id || ""
+    }));
   };
 
   const saveProfile = async () => {
@@ -97,20 +112,7 @@ export function useSettingsState({ session, accessToken, onModelSettingsUpdated 
     }
 
     try {
-      const response = await fetch(`${API_BASE}/api/settings/model-keys`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`
-        },
-        body: JSON.stringify(settingsForm)
-      });
-
-      if (!response.ok) {
-        const errorBody = await response.json().catch(() => ({}));
-        throw new Error(errorBody.error || "Failed to save model settings.");
-      }
-
+      await saveModelSettingsMutation.mutateAsync(settingsForm);
       setSettingsForm((prev) => ({
         ...prev,
         gemini_api_key: "",
@@ -127,6 +129,31 @@ export function useSettingsState({ session, accessToken, onModelSettingsUpdated 
       toast.error(err.message || "Failed to save model settings.");
     }
   };
+
+  const saveModelSettingsMutation = useMutation({
+    mutationFn: async (payload) => {
+      const response = await fetch(`${API_BASE}/api/settings/model-keys`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}));
+        throw new Error(errorBody.error || "Failed to save model settings.");
+      }
+
+      return await response.json();
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["model-settings", accessToken] });
+      await queryClient.invalidateQueries({ queryKey: ["models", accessToken] });
+      await queryClient.invalidateQueries({ queryKey: ["stats", accessToken] });
+    }
+  });
 
   return {
     profileName,

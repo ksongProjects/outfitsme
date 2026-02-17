@@ -16,8 +16,8 @@ export default function DashboardTab({ stats, refreshStats, loading }) {
 
       <div className="stats-grid">
         <article className="stats-card">
-          <p className="stats-label">Outfits analyzed</p>
-          <p className="stats-value">{stats.analyses_count}</p>
+          <p className="stats-label">Photos analyzed</p>
+          <p className="stats-value">{stats.photos_count ?? stats.analyses_count}</p>
         </article>
         <article className="stats-card">
           <p className="stats-label">Outfits saved</p>

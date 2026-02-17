@@ -15,15 +15,23 @@
   box-sizing: border-box;
 }
 
-body {
-  min-height: 100vh;
-  margin: 0;
+html {
+  height: 100%;
+  /* Reserve scrollbar space to avoid horizontal layout shifts between short/long pages. */
+  scrollbar-gutter: stable;
   background:
     radial-gradient(circle at 92% 2%, rgba(224, 139, 75, 0.2), transparent 32%),
     radial-gradient(circle at 8% 22%, rgba(13, 95, 79, 0.15), transparent 36%),
     var(--bg);
   background-repeat: no-repeat;
   background-size: cover;
+}
+
+body {
+  min-height: 100%;
+  overflow-y: auto;
+  margin: 0;
+  background: transparent;
   color: var(--ink);
   font-family: "Source Sans 3", sans-serif;
 }
@@ -166,6 +174,41 @@ input {
   border: 1px solid transparent;
   cursor: pointer;
   transition: all 0.2s ease;
+}
+
+.link-btn {
+  background: none;
+  border: none;
+  color: var(--ink);
+  padding: 0;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.icon-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.danger-icon-btn {
+  color: #8f1d1d;
+  border-color: #e0b4b4;
 }
 
 .primary-btn {
@@ -330,6 +373,21 @@ input[type="file"] {
   border-bottom: none;
 }
 
+.table-scroll-wrap {
+  margin-top: 10px;
+  max-height: 460px;
+  overflow: auto;
+  border-radius: 12px;
+}
+
+.pagination-row {
+  margin-top: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
 .combine-panel {
   margin-top: 14px;
   padding: 12px;
@@ -484,6 +542,10 @@ ul {
   display: grid;
   grid-template-columns: 220px minmax(0, 1fr);
   gap: 12px;
+}
+
+.settings-span {
+  grid-column: 1 / -1;
 }
 
 .settings-menu {

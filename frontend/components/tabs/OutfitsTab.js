@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Trash2 } from "lucide-react";
 
 import { formatItemLabel, getItemIcon } from "../../utils/formatters";
 import { useWardrobeContext } from "../../context/DashboardContext";
@@ -60,25 +61,30 @@ export default function OutfitsTab() {
         <tbody>
           {wardrobe.map((entry) => (
             <tr key={entry.row_id || `${entry.photo_id}:${entry.outfit_index || 0}`}>
-              <td>{getOutfitDisplayName(entry)}</td>
-              <td>{entry.style_label || "Unlabeled"}</td>
+              <td>
+                <button
+                  type="button"
+                  className="link-btn"
+                  onClick={() => openOutfitDetails(entry.photo_id, entry.outfit_index)}
+                >
+                  {getOutfitDisplayName(entry)}
+                </button>
+              </td>
+              <td>
+                {entry.style_label || "Unlabeled"}
+              </td>
               <td>{entry.outfit_items_count ?? "-"}</td>
               <td>{new Date(entry.created_at).toLocaleString()}</td>
               <td>
                 <button
                   type="button"
-                  className="ghost-btn"
-                  onClick={() => openOutfitDetails(entry.photo_id, entry.outfit_index)}
-                >
-                  View details
-                </button>
-                <button
-                  type="button"
-                  className="ghost-btn danger-btn"
+                  className="icon-btn danger-icon-btn"
                   onClick={() => setPendingDelete(entry)}
                   disabled={deletingPhotoId === entry.photo_id}
+                  aria-label="Delete outfit"
+                  title="Delete outfit"
                 >
-                  {deletingPhotoId === entry.photo_id ? "Deleting..." : "Delete"}
+                  {deletingPhotoId === entry.photo_id ? "..." : <Trash2 size={16} />}
                 </button>
               </td>
             </tr>

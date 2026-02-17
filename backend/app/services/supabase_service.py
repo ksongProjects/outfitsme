@@ -422,7 +422,7 @@ def get_dashboard_stats(user_id: str) -> dict:
 
     analyses = (
         client.table("outfit_analyses")
-        .select("id")
+        .select("id,raw_json")
         .eq("user_id", user_id)
         .execute()
     ).data or []
@@ -470,12 +470,22 @@ def get_dashboard_stats(user_id: str) -> dict:
         else None
     } if latest_photo else None
 
-    outfits_count = len(photos)
+    photos_count = len(photos)
     analyses_count = len(analyses)
     items_count = len(items)
+    outfits_count = 0
+    for analysis in analyses:
+        raw_json = analysis.get("raw_json") if isinstance(analysis, dict) else {}
+        raw_outfits = raw_json.get("outfits") if isinstance(raw_json, dict) else None
+        if isinstance(raw_outfits, list) and len(raw_outfits) > 0:
+            outfits_count += len([outfit for outfit in raw_outfits if isinstance(outfit, dict)])
+        else:
+            outfits_count += 1
+
     avg_items_per_outfit = round(items_count / outfits_count, 1) if outfits_count > 0 else 0
 
     return {
+        "photos_count": photos_count,
         "outfits_count": outfits_count,
         "analyses_count": analyses_count,
         "items_count": items_count,

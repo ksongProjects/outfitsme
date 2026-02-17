@@ -20,14 +20,14 @@ export default function HomePage() {
   const auth = useAuthState();
   const accessToken = auth.session?.access_token || "";
 
-  const statsState = useStatsState();
+  const statsState = useStatsState({ accessToken });
   const analysisState = useAnalysisState({
     accessToken,
-    onAnalysisSaved: () => statsState.loadStats(accessToken)
+    onAnalysisSaved: () => statsState.loadStats()
   });
   const wardrobeState = useWardrobeState({
     accessToken,
-    onWardrobeChanged: () => statsState.loadStats(accessToken)
+    onWardrobeChanged: () => statsState.loadStats()
   });
   const itemsState = useItemsState({ accessToken });
   const settingsState = useSettingsState({
@@ -40,7 +40,7 @@ export default function HomePage() {
     if (!accessToken) {
       return;
     }
-    statsState.loadStats(accessToken);
+    statsState.loadStats();
     analysisState.loadModels();
     settingsState.loadModelSettings();
   }, [accessToken]);
@@ -205,7 +205,7 @@ export default function HomePage() {
                 className={`tab-btn ${dashboardTab === "analyze" ? "active" : ""}`}
                 onClick={() => setDashboardTab("analyze")}
               >
-                Analyze photo
+                Photo analysis
               </button>
               <button
                 className={`tab-btn ${dashboardTab === "wardrobe" ? "active" : ""}`}
@@ -230,7 +230,7 @@ export default function HomePage() {
             {dashboardTab === "dashboard" ? (
               <DashboardTab
                 stats={statsState.stats}
-                refreshStats={() => statsState.loadStats(accessToken)}
+                refreshStats={() => statsState.loadStats()}
                 loading={statsState.statsLoading}
               />
             ) : null}

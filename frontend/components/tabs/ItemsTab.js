@@ -1,4 +1,10 @@
 import { useMemo, useState } from "react";
+import {
+  flexRender,
+  getCoreRowModel,
+  getPaginationRowModel,
+  useReactTable
+} from "@tanstack/react-table";
 
 import { formatItemLabel, getItemIcon } from "../../utils/formatters";
 import { useItemsContext } from "../../context/DashboardContext";
@@ -46,6 +52,58 @@ export default function ItemsTab() {
     colorFilter !== "all" ? `Color: ${colorFilter}` : "",
     styleFilter !== "all" ? `Style: ${styleFilter}` : ""
   ].filter(Boolean);
+
+  const columns = useMemo(() => [
+    {
+      accessorKey: "select",
+      header: "Select",
+      cell: ({ row }) => (
+        <input
+          type="checkbox"
+          checked={selectedItemIds.includes(row.original.id)}
+          onChange={() => toggleSelectItem(row.original.id)}
+        />
+      )
+    },
+    {
+      accessorKey: "category",
+      header: "Category",
+      cell: ({ row }) => row.original.category || "Item"
+    },
+    {
+      accessorKey: "name",
+      header: "Name",
+      cell: ({ row }) => (
+        <span>
+          <span className="item-icon" aria-hidden="true">{getItemIcon(row.original)}</span>{" "}
+          {row.original.name || "Unknown"}
+        </span>
+      )
+    },
+    {
+      accessorKey: "color",
+      header: "Color",
+      cell: ({ row }) => row.original.color || "Unknown"
+    },
+    {
+      accessorKey: "style_label",
+      header: "Style",
+      cell: ({ row }) => row.original.style_label || "Unknown"
+    }
+  ], [selectedItemIds, toggleSelectItem]);
+
+  const table = useReactTable({
+    data: filteredItems,
+    columns,
+    getCoreRowModel: getCoreRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    initialState: {
+      pagination: {
+        pageIndex: 0,
+        pageSize: 10
+      }
+    }
+  });
 
   return (
     <section>
@@ -98,37 +156,44 @@ export default function ItemsTab() {
         </div>
       ) : null}
 
-      <table className="data-table">
-        <thead>
-          <tr>
-            <th>Select</th>
-            <th>Category</th>
-            <th>Name</th>
-            <th>Color</th>
-            <th>Style</th>
-          </tr>
-        </thead>
-        <tbody>
-          {filteredItems.map((item) => (
-            <tr key={item.id}>
-              <td>
-                <input
-                  type="checkbox"
-                  checked={selectedItemIds.includes(item.id)}
-                  onChange={() => toggleSelectItem(item.id)}
-                />
-              </td>
-              <td>{item.category || "Item"}</td>
-              <td>
-                <span className="item-icon" aria-hidden="true">{getItemIcon(item)}</span>{" "}
-                {item.name || "Unknown"}
-              </td>
-              <td>{item.color || "Unknown"}</td>
-              <td>{item.style_label || "Unknown"}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <div className="table-scroll-wrap">
+        <table className="data-table">
+          <thead>
+            {table.getHeaderGroups().map((headerGroup) => (
+              <tr key={headerGroup.id}>
+                {headerGroup.headers.map((header) => (
+                  <th key={header.id}>
+                    {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                  </th>
+                ))}
+              </tr>
+            ))}
+          </thead>
+          <tbody>
+            {table.getRowModel().rows.map((row) => (
+              <tr key={row.id}>
+                {row.getVisibleCells().map((cell) => (
+                  <td key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="pagination-row">
+        <p className="subtext">
+          Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount() || 1}
+        </p>
+        <div className="button-row">
+          <button type="button" className="ghost-btn" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}>
+            Previous
+          </button>
+          <button type="button" className="ghost-btn" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}>
+            Next
+          </button>
+        </div>
+      </div>
 
       <div className="combine-panel">
         <h3>New outfit (selected items)</h3>

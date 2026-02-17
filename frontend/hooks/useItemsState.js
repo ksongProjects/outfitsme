@@ -1,48 +1,54 @@
 import { useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { API_BASE } from "../lib/apiBase";
 
 export function useItemsState({ accessToken }) {
-  const [items, setItems] = useState([]);
-  const [itemsLoading, setItemsLoading] = useState(false);
-  const [itemsMessage, setItemsMessage] = useState("");
   const [selectedItemIds, setSelectedItemIds] = useState([]);
 
-  const loadItems = async () => {
+  const fetchItems = async () => {
     if (!accessToken) {
-      return;
+      return [];
     }
 
-    setItemsLoading(true);
-    setItemsMessage("");
-
-    try {
-      const itemsRes = await fetch(`${API_BASE}/api/items`, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${accessToken}`
-        }
-      });
-
-      if (!itemsRes.ok) {
-        const errorBody = await itemsRes.json().catch(() => ({}));
-        throw new Error(errorBody.error || "Unable to load items right now.");
+    const itemsRes = await fetch(`${API_BASE}/api/items`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${accessToken}`
       }
+    });
 
-      const itemsJson = await itemsRes.json();
-      const rows = itemsJson.items || [];
-      setItems(rows);
-      setItemsMessage(rows.length === 0 ? "No items yet. Analyze an outfit to populate your item catalog." : "");
-      if (rows.length === 0) {
-        toast.info("No items yet.");
-      }
-    } catch (_err) {
-      setItems([]);
-      setItemsMessage("Couldn't load item catalog right now.");
+    if (!itemsRes.ok) {
+      const errorBody = await itemsRes.json().catch(() => ({}));
+      throw new Error(errorBody.error || "Unable to load items right now.");
+    }
+
+    const itemsJson = await itemsRes.json();
+    return itemsJson.items || [];
+  };
+
+  const itemsQuery = useQuery({
+    queryKey: ["items", accessToken],
+    queryFn: fetchItems,
+    enabled: Boolean(accessToken),
+    staleTime: 20_000
+  });
+
+  const items = itemsQuery.data || [];
+  const itemsLoading = itemsQuery.isFetching;
+  const itemsMessage = itemsQuery.isError
+    ? "Couldn't load item catalog right now."
+    : (items.length === 0 ? "No items yet. Analyze an outfit to populate your item catalog." : "");
+
+  const loadItems = async () => {
+    const result = await itemsQuery.refetch();
+    if (result.isError) {
       toast.error("Couldn't load item catalog.");
-    } finally {
-      setItemsLoading(false);
+      return;
+    }
+    if ((result.data || []).length === 0) {
+      toast.info("No items yet.");
     }
   };
 
@@ -56,8 +62,6 @@ export function useItemsState({ accessToken }) {
   };
 
   const resetItemsState = () => {
-    setItems([]);
-    setItemsMessage("");
     setSelectedItemIds([]);
   };
 

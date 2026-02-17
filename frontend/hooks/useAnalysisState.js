@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { API_BASE } from "../lib/apiBase";
@@ -8,12 +9,65 @@ export function useAnalysisState({ accessToken, onAnalysisSaved }) {
   const [previewUrl, setPreviewUrl] = useState("");
   const [analysis, setAnalysis] = useState(null);
   const [similarResults, setSimilarResults] = useState([]);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
   const [modelOptions, setModelOptions] = useState([]);
   const [selectedModel, setSelectedModel] = useState("gemini-2.5-flash");
+  const queryClient = useQueryClient();
 
+  const analyzeMutation = useMutation({
+    mutationFn: async ({ fileToAnalyze, modelId }) => {
+      const formData = new FormData();
+      formData.append("image", fileToAnalyze);
+      formData.append("analysis_model", modelId);
+
+      const analyzeRes = await fetch(`${API_BASE}/api/analyze`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        },
+        body: formData
+      });
+
+      if (!analyzeRes.ok) {
+        const errorBody = await analyzeRes.json().catch(() => ({}));
+        throw new Error(errorBody.error || "Failed to analyze photo.");
+      }
+
+      const analyzeJson = await analyzeRes.json();
+
+      const similarRes = await fetch(`${API_BASE}/api/similar`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`
+        },
+        body: JSON.stringify({ items: analyzeJson.items || [] })
+      });
+
+      if (!similarRes.ok) {
+        const errorBody = await similarRes.json().catch(() => ({}));
+        throw new Error(errorBody.error || "Failed to search similar items.");
+      }
+
+      const similarJson = await similarRes.json();
+      return { analyzeJson, similarJson };
+    },
+    onSuccess: async ({ analyzeJson, similarJson }) => {
+      setAnalysis(analyzeJson);
+      setSimilarResults(similarJson.results || []);
+      setInfo("Analysis complete and saved to your outfits.");
+      toast.success("Photo analyzed and saved.");
+      await queryClient.invalidateQueries({ queryKey: ["stats", accessToken] });
+      await queryClient.invalidateQueries({ queryKey: ["wardrobe", accessToken] });
+      await queryClient.invalidateQueries({ queryKey: ["items", accessToken] });
+      if (onAnalysisSaved) {
+        onAnalysisSaved();
+      }
+    }
+  });
+
+  const loading = analyzeMutation.isPending;
   const disabled = useMemo(() => !file || loading || !accessToken, [file, loading, accessToken]);
 
   useEffect(() => {
@@ -144,67 +198,25 @@ export function useAnalysisState({ accessToken, onAnalysisSaved }) {
       return;
     }
 
-    setLoading(true);
     setError("");
     setInfo("");
 
     try {
-      const formData = new FormData();
-      formData.append("image", file);
-      formData.append("analysis_model", selectedModel);
-
-      const analyzeRes = await fetch(`${API_BASE}/api/analyze`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`
-        },
-        body: formData
-      });
-
-      if (!analyzeRes.ok) {
-        const errorBody = await analyzeRes.json().catch(() => ({}));
-        throw new Error(errorBody.error || "Failed to analyze photo.");
-      }
-
-      const analyzeJson = await analyzeRes.json();
-      setAnalysis(analyzeJson);
-
-      const similarRes = await fetch(`${API_BASE}/api/similar`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`
-        },
-        body: JSON.stringify({ items: analyzeJson.items || [] })
-      });
-
-      if (!similarRes.ok) {
-        const errorBody = await similarRes.json().catch(() => ({}));
-        throw new Error(errorBody.error || "Failed to search similar items.");
-      }
-
-      const similarJson = await similarRes.json();
-      setSimilarResults(similarJson.results || []);
-      setInfo("Analysis complete and saved to your outfits.");
-      toast.success("Photo analyzed and saved.");
-      if (onAnalysisSaved) {
-        onAnalysisSaved();
-      }
+      await analyzeMutation.mutateAsync({ fileToAnalyze: file, modelId: selectedModel });
     } catch (err) {
       const friendly = toUserFriendlyAnalyzeError(err.message);
       setError(friendly);
       toast.error(friendly);
-    } finally {
-      setLoading(false);
     }
   };
 
-  const loadModels = async () => {
-    if (!accessToken) {
-      return;
-    }
+  const modelsQuery = useQuery({
+    queryKey: ["models", accessToken],
+    queryFn: async () => {
+      if (!accessToken) {
+        return { models: [], preferred_model: "gemini-2.5-flash" };
+      }
 
-    try {
       const response = await fetch(`${API_BASE}/api/models`, {
         method: "GET",
         headers: {
@@ -212,23 +224,36 @@ export function useAnalysisState({ accessToken, onAnalysisSaved }) {
         }
       });
       if (!response.ok) {
-        return;
+        throw new Error("Unable to load models.");
       }
-      const payload = await response.json();
-      const models = payload.models || [];
-      setModelOptions(models);
-      const preferred = payload.preferred_model || "gemini-2.5-flash";
-      const preferredEntry = models.find((model) => model.id === preferred && model.supports_image && model.available);
-      if (preferredEntry) {
-        setSelectedModel(preferredEntry.id);
-        return;
-      }
-      const fallback = models.find((model) => model.supports_image && model.available);
-      if (fallback) {
-        setSelectedModel(fallback.id);
-      }
-    } catch (_err) {
-      // Optional UI helper only.
+      return await response.json();
+    },
+    enabled: false,
+    staleTime: 20_000
+  });
+
+  const loadModels = async () => {
+    if (!accessToken) {
+      return;
+    }
+
+    const result = await modelsQuery.refetch();
+    if (result.isError) {
+      return;
+    }
+
+    const payload = result.data || {};
+    const models = payload.models || [];
+    setModelOptions(models);
+    const preferred = payload.preferred_model || "gemini-2.5-flash";
+    const preferredEntry = models.find((model) => model.id === preferred && model.supports_image && model.available);
+    if (preferredEntry) {
+      setSelectedModel(preferredEntry.id);
+      return;
+    }
+    const fallback = models.find((model) => model.supports_image && model.available);
+    if (fallback) {
+      setSelectedModel(fallback.id);
     }
   };
 

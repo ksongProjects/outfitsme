@@ -42,8 +42,12 @@ export default function AnalyzeTab() {
   };
 
   return (
-    <div className="analysis-layout">
-      <section>
+    <section>
+      <div className="toolbar-row">
+        <h2>Photo analysis</h2>
+      </div>
+      <div className="analysis-layout">
+        <section>
         <label htmlFor="image-upload">Photo</label>
         <label htmlFor="analysis-model">Analysis model</label>
         <select
@@ -89,9 +93,9 @@ export default function AnalyzeTab() {
             {loading ? "Analyzing..." : "Analyze photo"}
           </button>
         </div>
-      </section>
+        </section>
 
-      <section>
+        <section>
         <h2>Results</h2>
         {!analysis ? <p className="subtext">Analyze a photo to view detected style and items.</p> : null}
         {analysis ? (
@@ -144,7 +148,8 @@ export default function AnalyzeTab() {
             </ul>
           </>
         ) : null}
-      </section>
-    </div>
+        </section>
+      </div>
+    </section>
   );
 }
