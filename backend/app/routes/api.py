@@ -118,6 +118,22 @@ def analyze_outfit():
                     "color": item.get("color")
                 }
                 for item in analysis_items
+            ],
+            "outfits": [
+                {
+                    "style": outfit.get("style"),
+                    "items": [
+                        {
+                            "category": item.get("category"),
+                            "name": item.get("name"),
+                            "color": item.get("color")
+                        }
+                        for item in (outfit.get("items") or [])
+                        if isinstance(item, dict)
+                    ]
+                }
+                for outfit in analysis_outfits
+                if isinstance(outfit, dict)
             ]
         }
 
@@ -252,11 +268,23 @@ def get_wardrobe_details(photo_id: str):
         if not user_id:
             return jsonify({"error": "Invalid or expired token."}), 401
 
-        details = get_wardrobe_photo_details(user_id, photo_id)
+        outfit_index_raw = request.args.get("outfit_index")
+        outfit_index = None
+        if outfit_index_raw is not None and outfit_index_raw != "":
+            outfit_index = int(outfit_index_raw)
+            if outfit_index < 0:
+                return jsonify({"error": "outfit_index must be >= 0"}), 400
+
+        details = get_wardrobe_photo_details(user_id, photo_id, outfit_index=outfit_index)
         if not details:
             return jsonify({"error": "Outfit details not found."}), 404
 
+        if outfit_index is not None and details.get("selected_outfit") is None:
+            return jsonify({"error": "Requested outfit index not found for this photo."}), 404
+
         return jsonify({"photo_id": photo_id, "details": details}), 200
+    except ValueError:
+        return jsonify({"error": "outfit_index must be an integer."}), 400
     except SupabaseNotConfiguredError as exc:
         return jsonify({"error": str(exc)}), 500
     except AuthApiError:

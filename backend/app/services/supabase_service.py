@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import mimetypes
+import re
 from datetime import datetime, timezone
 from uuid import uuid4
 
@@ -12,6 +13,62 @@ from app.services.secrets_service import decrypt_secret, encrypt_secret, mask_se
 
 class SupabaseNotConfiguredError(RuntimeError):
     pass
+
+
+DETAILED_ITEM_TYPE_KEYWORDS = [
+    ("Blazer", ["blazer"]),
+    ("Jacket", ["jacket", "bomber", "windbreaker", "anorak", "puffer"]),
+    ("Coat", ["coat", "trench", "parka", "overcoat", "peacoat"]),
+    ("Hoodie", ["hoodie", "sweatshirt"]),
+    ("Sweater", ["sweater", "cardigan", "knit"]),
+    ("T-Shirt", ["t-shirt", "tee", "tshirt"]),
+    ("Polo", ["polo"]),
+    ("Shirt", ["shirt", "button-down", "button up", "blouse", "top"]),
+    ("Tank Top", ["tank top", "tank"]),
+    ("Dress", ["dress", "gown"]),
+    ("Skirt", ["skirt"]),
+    ("Jeans", ["jean", "denim"]),
+    ("Dress Pants", ["dress pant", "dress pants", "slack", "slacks", "trouser", "trousers", "chino", "chinos"]),
+    ("Shorts", ["short", "shorts"]),
+    ("Leggings", ["legging", "leggings"]),
+    ("Suit", ["suit"]),
+    ("Tie", ["tie", "necktie", "bow tie"]),
+    ("Belt", ["belt"]),
+    ("Scarf", ["scarf"]),
+    ("Hat", ["hat", "cap", "beanie"]),
+    ("Socks", ["sock", "socks"]),
+    ("Sneakers", ["sneaker", "sneakers", "trainer", "trainers"]),
+    ("Boots", ["boot", "boots"]),
+    ("Loafers", ["loafer", "loafers"]),
+    ("Heels", ["heel", "heels", "pump", "pumps", "stiletto"]),
+    ("Sandals", ["sandal", "sandals", "flip flop", "flip-flop"]),
+    ("Bag", ["bag", "handbag", "tote", "backpack", "purse", "clutch"]),
+    ("Jewelry", ["jewelry", "necklace", "ring", "bracelet", "earring"]),
+    ("Watch", ["watch"]),
+    ("Sunglasses", ["sunglass", "sunglasses", "eyewear", "glasses"]),
+]
+
+
+def _title_case_label(value: str) -> str:
+    cleaned = " ".join((value or "").strip().split())
+    return cleaned.title() if cleaned else "Other"
+
+
+def _contains_keyword(text: str, keyword: str) -> bool:
+    if not text or not keyword:
+        return False
+    pattern = rf"\b{re.escape(keyword.lower())}\b"
+    return re.search(pattern, text) is not None
+
+
+def _classify_item_type(category: str, name: str) -> str:
+    text = f"{(category or '').lower()} {(name or '').lower()}".strip()
+    for label, keywords in DETAILED_ITEM_TYPE_KEYWORDS:
+        if any(_contains_keyword(text, keyword) for keyword in keywords):
+            return label
+
+    fallback = (category or "").strip()
+    return _title_case_label(fallback or "Other")
 
 
 def get_supabase_client() -> Client:
@@ -72,19 +129,45 @@ def persist_analysis(user_id: str, storage_path: str, analysis: dict) -> dict:
     analysis_row = analysis_insert.data[0]
 
     item_rows = []
-    for item in analysis.get("items", []):
-        item_rows.append(
-            {
-                "analysis_id": analysis_row["id"],
-                "user_id": user_id,
-                "category": item.get("category"),
-                "name": item.get("name"),
-                "color": item.get("color"),
-                "attributes_json": {
-                    "captured_at": datetime.now(timezone.utc).isoformat()
+    raw_outfits = analysis.get("outfits", [])
+    if isinstance(raw_outfits, list) and raw_outfits:
+        for outfit_index, outfit in enumerate(raw_outfits):
+            if not isinstance(outfit, dict):
+                continue
+            outfit_style = str(outfit.get("style") or analysis.get("style") or "Unknown").strip() or "Unknown"
+            for item in (outfit.get("items") or []):
+                if not isinstance(item, dict):
+                    continue
+                item_rows.append(
+                    {
+                        "analysis_id": analysis_row["id"],
+                        "user_id": user_id,
+                        "category": item.get("category"),
+                        "name": item.get("name"),
+                        "color": item.get("color"),
+                        "attributes_json": {
+                            "captured_at": datetime.now(timezone.utc).isoformat(),
+                            "outfit_index": outfit_index,
+                            "outfit_style": outfit_style
+                        }
+                    }
+                )
+    else:
+        for item in analysis.get("items", []):
+            item_rows.append(
+                {
+                    "analysis_id": analysis_row["id"],
+                    "user_id": user_id,
+                    "category": item.get("category"),
+                    "name": item.get("name"),
+                    "color": item.get("color"),
+                    "attributes_json": {
+                        "captured_at": datetime.now(timezone.utc).isoformat(),
+                        "outfit_index": 0,
+                        "outfit_style": str(analysis.get("style") or "Unknown").strip() or "Unknown"
+                    }
                 }
-            }
-        )
+            )
 
     if item_rows:
         client.table("items").insert(item_rows).execute()
@@ -137,7 +220,7 @@ def list_wardrobe(user_id: str, limit: int = 20) -> list[dict]:
     for photo in photos:
         analyses_response = (
             client.table("outfit_analyses")
-            .select("id,style_label,created_at")
+            .select("id,style_label,raw_json,created_at")
             .eq("photo_id", photo["id"])
             .eq("user_id", user_id)
             .order("created_at", desc=True)
@@ -145,17 +228,45 @@ def list_wardrobe(user_id: str, limit: int = 20) -> list[dict]:
             .execute()
         )
         analysis = (analyses_response.data or [None])[0]
+        raw_json = analysis.get("raw_json") if analysis else {}
+        raw_outfits = raw_json.get("outfits") if isinstance(raw_json, dict) else None
 
-        wardrobe.append(
-            {
-                "photo_id": photo["id"],
-                "storage_path": photo["storage_path"],
-                "created_at": photo["created_at"],
-                "analysis_id": analysis["id"] if analysis else None,
-                "style_label": analysis["style_label"] if analysis else None,
-                "analysis_created_at": analysis["created_at"] if analysis else None
-            }
-        )
+        normalized_outfits = []
+        if isinstance(raw_outfits, list):
+            for outfit in raw_outfits:
+                if not isinstance(outfit, dict):
+                    continue
+                normalized_items = [item for item in (outfit.get("items") or []) if isinstance(item, dict)]
+                normalized_outfits.append(
+                    {
+                        "style": str(outfit.get("style") or "Unlabeled").strip() or "Unlabeled",
+                        "items_count": len(normalized_items)
+                    }
+                )
+
+        if not normalized_outfits:
+            normalized_outfits = [
+                {
+                    "style": analysis["style_label"] if analysis else "Unlabeled",
+                    "items_count": 0
+                }
+            ]
+
+        for index, outfit in enumerate(normalized_outfits):
+            wardrobe.append(
+                {
+                    "row_id": f"{photo['id']}:{index}",
+                    "photo_id": photo["id"],
+                    "storage_path": photo["storage_path"],
+                    "created_at": photo["created_at"],
+                    "analysis_id": analysis["id"] if analysis else None,
+                    "analysis_created_at": analysis["created_at"] if analysis else None,
+                    "style_label": outfit["style"],
+                    "outfit_index": index,
+                    "outfit_count": len(normalized_outfits),
+                    "outfit_items_count": outfit["items_count"]
+                }
+            )
 
     return wardrobe
 
@@ -164,13 +275,37 @@ def list_user_items(user_id: str, limit: int = 200) -> list[dict]:
     client = get_supabase_client()
     items_response = (
         client.table("items")
-        .select("id,analysis_id,category,name,color,created_at")
+        .select("id,analysis_id,category,name,color,attributes_json,created_at")
         .eq("user_id", user_id)
         .order("created_at", desc=True)
         .limit(limit)
         .execute()
     )
-    return items_response.data or []
+    items = items_response.data or []
+    analysis_ids = list({item.get("analysis_id") for item in items if item.get("analysis_id")})
+    style_by_analysis_id = {}
+    if analysis_ids:
+        analyses_response = (
+            client.table("outfit_analyses")
+            .select("id,style_label")
+            .in_("id", analysis_ids)
+            .eq("user_id", user_id)
+            .execute()
+        )
+        for analysis in (analyses_response.data or []):
+            style_by_analysis_id[analysis.get("id")] = analysis.get("style_label")
+
+    return [
+        {
+            **item,
+            "style_label": (
+                (item.get("attributes_json") or {}).get("outfit_style")
+                or style_by_analysis_id.get(item.get("analysis_id"))
+                or "Unknown"
+            )
+        }
+        for item in items
+    ]
 
 
 def delete_wardrobe_photo(user_id: str, photo_id: str) -> bool:
@@ -202,7 +337,7 @@ def delete_wardrobe_photo(user_id: str, photo_id: str) -> bool:
     return True
 
 
-def get_wardrobe_photo_details(user_id: str, photo_id: str) -> dict | None:
+def get_wardrobe_photo_details(user_id: str, photo_id: str, outfit_index: int | None = None) -> dict | None:
     client = get_supabase_client()
 
     photo_response = (
@@ -219,7 +354,7 @@ def get_wardrobe_photo_details(user_id: str, photo_id: str) -> dict | None:
 
     analysis_response = (
         client.table("outfit_analyses")
-        .select("id,style_label,created_at")
+        .select("id,style_label,raw_json,created_at")
         .eq("photo_id", photo_id)
         .eq("user_id", user_id)
         .order("created_at", desc=True)
@@ -228,20 +363,39 @@ def get_wardrobe_photo_details(user_id: str, photo_id: str) -> dict | None:
     )
     analysis_row = (analysis_response.data or [None])[0]
 
-    items = []
+    outfits = []
     if analysis_row:
-        items_response = (
-            client.table("items")
-            .select("id,analysis_id,category,name,color,created_at")
-            .eq("analysis_id", analysis_row["id"])
-            .eq("user_id", user_id)
-            .order("created_at")
-            .execute()
-        )
-        items = items_response.data or []
+        raw_json = analysis_row.get("raw_json") or {}
+        raw_outfits = raw_json.get("outfits") if isinstance(raw_json, dict) else None
+        if isinstance(raw_outfits, list):
+            for index, outfit in enumerate(raw_outfits):
+                if not isinstance(outfit, dict):
+                    continue
+                outfit_items = [item for item in (outfit.get("items") or []) if isinstance(item, dict)]
+                outfits.append(
+                    {
+                        "outfit_index": index,
+                        "style": str(outfit.get("style") or "Unlabeled").strip() or "Unlabeled",
+                        "items": outfit_items
+                    }
+                )
+
+        if not outfits:
+            fallback_items = raw_json.get("items") if isinstance(raw_json, dict) else []
+            outfits = [
+                {
+                    "outfit_index": 0,
+                    "style": analysis_row.get("style_label") or "Unlabeled",
+                    "items": [item for item in (fallback_items or []) if isinstance(item, dict)]
+                }
+            ]
 
     storage_path = photo_row.get("storage_path") or ""
     image_url = get_signed_image_url(storage_path, expires_in_seconds=3600) if storage_path else None
+
+    selected_outfit = None
+    if outfit_index is not None:
+        selected_outfit = next((outfit for outfit in outfits if outfit.get("outfit_index") == outfit_index), None)
 
     return {
         "photo_id": photo_row["id"],
@@ -250,7 +404,9 @@ def get_wardrobe_photo_details(user_id: str, photo_id: str) -> dict | None:
         "style_label": analysis_row["style_label"] if analysis_row else None,
         "analysis_created_at": analysis_row["created_at"] if analysis_row else None,
         "image_url": image_url,
-        "items": items
+        "outfits": outfits,
+        "selected_outfit_index": outfit_index,
+        "selected_outfit": selected_outfit
     }
 
 
@@ -273,15 +429,65 @@ def get_dashboard_stats(user_id: str) -> dict:
 
     items = (
         client.table("items")
-        .select("id")
+        .select("id,category,name,color")
         .eq("user_id", user_id)
         .execute()
     ).data or []
 
+    latest_photo_row = (
+        client.table("photos")
+        .select("id,storage_path,created_at")
+        .eq("user_id", user_id)
+        .order("created_at", desc=True)
+        .limit(1)
+        .execute()
+    ).data
+    latest_photo = (latest_photo_row or [None])[0]
+
+    detailed_type_counts = {}
+    color_counts = {}
+    for item in items:
+        item_type = _classify_item_type(item.get("category") or "", item.get("name") or "")
+        color = (item.get("color") or "Unknown").strip() or "Unknown"
+        detailed_type_counts[item_type] = detailed_type_counts.get(item_type, 0) + 1
+        color_counts[color] = color_counts.get(color, 0) + 1
+
+    detailed_item_types = [
+        {"label": label, "count": count}
+        for label, count in sorted(detailed_type_counts.items(), key=lambda pair: pair[1], reverse=True)
+    ]
+    top_item_types = detailed_item_types[:10]
+    top_colors = [
+        {"label": label, "count": count}
+        for label, count in sorted(color_counts.items(), key=lambda pair: pair[1], reverse=True)[:5]
+    ]
+
+    latest_outfit = {
+        "photo_id": latest_photo["id"],
+        "created_at": latest_photo.get("created_at"),
+        "image_url": get_signed_image_url(latest_photo.get("storage_path") or "", expires_in_seconds=3600)
+        if latest_photo and latest_photo.get("storage_path")
+        else None
+    } if latest_photo else None
+
+    outfits_count = len(photos)
+    analyses_count = len(analyses)
+    items_count = len(items)
+    avg_items_per_outfit = round(items_count / outfits_count, 1) if outfits_count > 0 else 0
+
     return {
-        "outfits_count": len(photos),
-        "analyses_count": len(analyses),
-        "items_count": len(items)
+        "outfits_count": outfits_count,
+        "analyses_count": analyses_count,
+        "items_count": items_count,
+        "top_item_types": top_item_types,
+        "detailed_item_types": detailed_item_types,
+        "top_colors": top_colors,
+        "latest_outfit": latest_outfit,
+        "highlights": {
+            "most_common_item_type": top_item_types[0]["label"] if top_item_types else "N/A",
+            "most_common_color": top_colors[0]["label"] if top_colors else "N/A",
+            "avg_items_per_outfit": avg_items_per_outfit
+        }
     }
 
 

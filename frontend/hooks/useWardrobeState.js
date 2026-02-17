@@ -87,7 +87,7 @@ export function useWardrobeState({ accessToken, onWardrobeChanged }) {
     }
   };
 
-  const openOutfitDetails = async (photoId) => {
+  const openOutfitDetails = async (photoId, outfitIndex = null) => {
     if (!accessToken) {
       return;
     }
@@ -96,7 +96,8 @@ export function useWardrobeState({ accessToken, onWardrobeChanged }) {
     setWardrobeMessage("");
 
     try {
-      const response = await fetch(`${API_BASE}/api/wardrobe/${photoId}/details`, {
+      const query = outfitIndex === null || outfitIndex === undefined ? "" : `?outfit_index=${outfitIndex}`;
+      const response = await fetch(`${API_BASE}/api/wardrobe/${photoId}/details${query}`, {
         method: "GET",
         headers: {
           Authorization: `Bearer ${accessToken}`

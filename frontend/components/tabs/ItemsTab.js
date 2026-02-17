@@ -1,3 +1,5 @@
+import { useMemo, useState } from "react";
+
 import { formatItemLabel, getItemIcon } from "../../utils/formatters";
 import { useItemsContext } from "../../context/DashboardContext";
 
@@ -11,6 +13,39 @@ export default function ItemsTab() {
     toggleSelectItem,
     selectedItems
   } = useItemsContext();
+  const [categoryFilter, setCategoryFilter] = useState("all");
+  const [colorFilter, setColorFilter] = useState("all");
+  const [styleFilter, setStyleFilter] = useState("all");
+
+  const categoryOptions = useMemo(() => {
+    const options = [...new Set(items.map((item) => (item.category || "Unknown").trim() || "Unknown"))];
+    return options.sort((a, b) => a.localeCompare(b));
+  }, [items]);
+
+  const colorOptions = useMemo(() => {
+    const options = [...new Set(items.map((item) => (item.color || "Unknown").trim() || "Unknown"))];
+    return options.sort((a, b) => a.localeCompare(b));
+  }, [items]);
+
+  const styleOptions = useMemo(() => {
+    const options = [...new Set(items.map((item) => (item.style_label || "Unknown").trim() || "Unknown"))];
+    return options.sort((a, b) => a.localeCompare(b));
+  }, [items]);
+
+  const filteredItems = useMemo(() => (
+    items.filter((item) => {
+      const matchesCategory = categoryFilter === "all" || (item.category || "Unknown") === categoryFilter;
+      const matchesColor = colorFilter === "all" || (item.color || "Unknown") === colorFilter;
+      const matchesStyle = styleFilter === "all" || (item.style_label || "Unknown") === styleFilter;
+      return matchesCategory && matchesColor && matchesStyle;
+    })
+  ), [items, categoryFilter, colorFilter, styleFilter]);
+
+  const activeFilterChips = [
+    categoryFilter !== "all" ? `Type: ${categoryFilter}` : "",
+    colorFilter !== "all" ? `Color: ${colorFilter}` : "",
+    styleFilter !== "all" ? `Style: ${styleFilter}` : ""
+  ].filter(Boolean);
 
   return (
     <section>
@@ -23,6 +58,46 @@ export default function ItemsTab() {
 
       {itemsMessage ? <p className="subtext">{itemsMessage}</p> : null}
 
+      <div className="filter-row">
+        <select className="text-input" value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}>
+          <option value="all">All types</option>
+          {categoryOptions.map((category) => (
+            <option key={`category-${category}`} value={category}>{category}</option>
+          ))}
+        </select>
+        <select className="text-input" value={colorFilter} onChange={(event) => setColorFilter(event.target.value)}>
+          <option value="all">All colors</option>
+          {colorOptions.map((color) => (
+            <option key={`color-${color}`} value={color}>{color}</option>
+          ))}
+        </select>
+        <select className="text-input" value={styleFilter} onChange={(event) => setStyleFilter(event.target.value)}>
+          <option value="all">All styles</option>
+          {styleOptions.map((style) => (
+            <option key={`style-${style}`} value={style}>{style}</option>
+          ))}
+        </select>
+        <button
+          type="button"
+          className="ghost-btn"
+          onClick={() => {
+            setCategoryFilter("all");
+            setColorFilter("all");
+            setStyleFilter("all");
+          }}
+        >
+          Clear filters
+        </button>
+      </div>
+
+      {activeFilterChips.length > 0 ? (
+        <div className="filter-chips">
+          {activeFilterChips.map((chip) => (
+            <span key={chip} className="filter-chip">{chip}</span>
+          ))}
+        </div>
+      ) : null}
+
       <table className="data-table">
         <thead>
           <tr>
@@ -30,10 +105,11 @@ export default function ItemsTab() {
             <th>Category</th>
             <th>Name</th>
             <th>Color</th>
+            <th>Style</th>
           </tr>
         </thead>
         <tbody>
-          {items.map((item) => (
+          {filteredItems.map((item) => (
             <tr key={item.id}>
               <td>
                 <input
@@ -48,6 +124,7 @@ export default function ItemsTab() {
                 {item.name || "Unknown"}
               </td>
               <td>{item.color || "Unknown"}</td>
+              <td>{item.style_label || "Unknown"}</td>
             </tr>
           ))}
         </tbody>

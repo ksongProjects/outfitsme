@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 
 import LandingAuth from "../components/LandingAuth";
+import DashboardTab from "../components/tabs/DashboardTab";
 import AnalyzeTab from "../components/tabs/AnalyzeTab";
 import OutfitsTab from "../components/tabs/OutfitsTab";
 import ItemsTab from "../components/tabs/ItemsTab";
@@ -14,7 +15,7 @@ import { useItemsState } from "../hooks/useItemsState";
 import { useSettingsState } from "../hooks/useSettingsState";
 
 export default function HomePage() {
-  const [dashboardTab, setDashboardTab] = useState("analyze");
+  const [dashboardTab, setDashboardTab] = useState("dashboard");
 
   const auth = useAuthState();
   const accessToken = auth.session?.access_token || "";
@@ -61,7 +62,7 @@ export default function HomePage() {
     analysisState.resetAnalysisState();
     wardrobeState.resetWardrobeState();
     itemsState.resetItemsState();
-    setDashboardTab("analyze");
+    setDashboardTab("dashboard");
   }, [auth.signOut, analysisState.resetAnalysisState, wardrobeState.resetWardrobeState, itemsState.resetItemsState]);
 
   const authValue = useMemo(() => ({
@@ -195,6 +196,12 @@ export default function HomePage() {
           <section className="card">
             <div className="tab-row">
               <button
+                className={`tab-btn ${dashboardTab === "dashboard" ? "active" : ""}`}
+                onClick={() => setDashboardTab("dashboard")}
+              >
+                Dashboard
+              </button>
+              <button
                 className={`tab-btn ${dashboardTab === "analyze" ? "active" : ""}`}
                 onClick={() => setDashboardTab("analyze")}
               >
@@ -220,25 +227,13 @@ export default function HomePage() {
               </button>
             </div>
 
-            <div className="stats-grid">
-              <article className="stats-card">
-                <p className="stats-label">Outfits Analyzed</p>
-                <p className="stats-value">{statsState.stats.analyses_count}</p>
-              </article>
-              <article className="stats-card">
-                <p className="stats-label">Outfits Saved</p>
-                <p className="stats-value">{statsState.stats.outfits_count}</p>
-              </article>
-              <article className="stats-card">
-                <p className="stats-label">Items Cataloged</p>
-                <p className="stats-value">{statsState.stats.items_count}</p>
-              </article>
-              <article className="stats-card">
-                <p className="stats-label">Items Selected</p>
-                <p className="stats-value">{itemsState.selectedItemIds.length}</p>
-              </article>
-            </div>
-
+            {dashboardTab === "dashboard" ? (
+              <DashboardTab
+                stats={statsState.stats}
+                refreshStats={() => statsState.loadStats(accessToken)}
+                loading={statsState.statsLoading}
+              />
+            ) : null}
             {dashboardTab === "analyze" ? <AnalyzeTab /> : null}
             {dashboardTab === "wardrobe" ? <OutfitsTab /> : null}
             {dashboardTab === "items" ? <ItemsTab /> : null}

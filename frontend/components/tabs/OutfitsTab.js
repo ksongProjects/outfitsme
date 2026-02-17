@@ -28,6 +28,14 @@ export default function OutfitsTab() {
     }
   };
 
+  const getOutfitDisplayName = (entry) => {
+    const style = entry.style_label || "Unlabeled";
+    if ((entry.outfit_count || 1) > 1) {
+      return `${style} - Outfit ${(entry.outfit_index || 0) + 1}`;
+    }
+    return `${style} - Outfit`;
+  };
+
   return (
     <section>
       <div className="toolbar-row">
@@ -42,21 +50,25 @@ export default function OutfitsTab() {
       <table className="data-table">
         <thead>
           <tr>
+            <th>Name</th>
             <th>Style</th>
+            <th>Items</th>
             <th>Created</th>
             <th>Action</th>
           </tr>
         </thead>
         <tbody>
           {wardrobe.map((entry) => (
-            <tr key={entry.photo_id}>
+            <tr key={entry.row_id || `${entry.photo_id}:${entry.outfit_index || 0}`}>
+              <td>{getOutfitDisplayName(entry)}</td>
               <td>{entry.style_label || "Unlabeled"}</td>
+              <td>{entry.outfit_items_count ?? "-"}</td>
               <td>{new Date(entry.created_at).toLocaleString()}</td>
               <td>
                 <button
                   type="button"
                   className="ghost-btn"
-                  onClick={() => openOutfitDetails(entry.photo_id)}
+                  onClick={() => openOutfitDetails(entry.photo_id, entry.outfit_index)}
                 >
                   View details
                 </button>
@@ -91,21 +103,29 @@ export default function OutfitsTab() {
                   <p className="subtext">Original image is unavailable for this outfit.</p>
                 )}
                 <div>
-                  <p className="subtext">
-                    Style: <strong>{outfitDetails?.style_label || "Unlabeled"}</strong>
-                  </p>
-                  <h4>Items in this outfit</h4>
-                  {outfitDetails?.items?.length ? (
-                    <ul className="analysis-items">
-                      {outfitDetails.items.map((item) => (
-                        <li key={item.id} className="analysis-item">
-                          <span className="item-icon" aria-hidden="true">{getItemIcon(item)}</span>
-                          <span>{formatItemLabel(item)}</span>
-                        </li>
-                      ))}
-                    </ul>
+                  <h4>
+                    Outfit {(outfitDetails?.selected_outfit?.outfit_index ?? 0) + 1}
+                  </h4>
+                  {outfitDetails?.selected_outfit ? (
+                    <div className="outfit-group">
+                      <p>
+                        <strong>Style:</strong> {outfitDetails.selected_outfit.style || "Unlabeled"}
+                      </p>
+                      {(outfitDetails.selected_outfit.items || []).length ? (
+                        <ul className="analysis-items">
+                          {outfitDetails.selected_outfit.items.map((item, index) => (
+                            <li key={`detail-item-${outfitDetails.selected_outfit.outfit_index}-${index}`} className="analysis-item">
+                              <span className="item-icon" aria-hidden="true">{getItemIcon(item)}</span>
+                              <span>{formatItemLabel(item)}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="subtext">No items were stored for this outfit.</p>
+                      )}
+                    </div>
                   ) : (
-                    <p className="subtext">No items were stored for this outfit.</p>
+                    <p className="subtext">The selected outfit could not be loaded for this photo.</p>
                   )}
                 </div>
               </div>
