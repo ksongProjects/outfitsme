@@ -81,7 +81,9 @@ Frontend: `http://localhost:3000`
 - `GET /api/diagnostics` (dev config checks for Supabase + Gemini)
 - `POST /api/analyze` (requires Bearer token + multipart `image`)
 - `POST /api/similar` (requires Bearer token + JSON `items`)
-- `GET /api/wardrobe` (requires Bearer token; returns signed image URLs + saved analyses/items)
+- `GET /api/wardrobe` (requires Bearer token; returns minimal outfit list for fast loading)
+- `GET /api/wardrobe/:photo_id/original` (requires Bearer token; returns signed URL for original photo preview)
+- `GET /api/items` (requires Bearer token; returns items-only list for item selection/combining)
 - `DELETE /api/wardrobe/:photo_id` (requires Bearer token; deletes wardrobe entry + stored image)
 
 ## Testing

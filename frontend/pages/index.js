@@ -1,7 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 
+import LandingAuth from "../components/LandingAuth";
+import AnalyzeTab from "../components/tabs/AnalyzeTab";
+import OutfitsTab from "../components/tabs/OutfitsTab";
+import ItemsTab from "../components/tabs/ItemsTab";
 import { supabase } from "../lib/supabaseClient";
-import { formatItemLabel } from "../utils/formatters";
 
 const API_BASE = process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5000";
 
@@ -16,13 +19,71 @@ export default function HomePage() {
   const [analysis, setAnalysis] = useState(null);
   const [similarResults, setSimilarResults] = useState([]);
   const [wardrobe, setWardrobe] = useState([]);
+  const [items, setItems] = useState([]);
+  const [selectedItemIds, setSelectedItemIds] = useState([]);
   const [error, setError] = useState("");
   const [wardrobeMessage, setWardrobeMessage] = useState("");
+  const [itemsMessage, setItemsMessage] = useState("");
   const [info, setInfo] = useState("");
   const [loading, setLoading] = useState(false);
   const [wardrobeLoading, setWardrobeLoading] = useState(false);
+  const [originalPhotoUrl, setOriginalPhotoUrl] = useState("");
+  const [itemsLoading, setItemsLoading] = useState(false);
 
   const disabled = useMemo(() => !file || loading || !session, [file, loading, session]);
+
+  const toUserFriendlyAnalyzeError = (message) => {
+    const raw = String(message || "").toLowerCase();
+    if (raw.includes("unable to process input image")) {
+      return "We couldn't process this image. It may be corrupted or unsupported. Please try another JPG, PNG, or WEBP file.";
+    }
+    if (raw.includes("image file is empty")) {
+      return "The selected file is empty. Please choose a valid image.";
+    }
+    if (raw.includes("missing bearer token") || raw.includes("invalid or expired token")) {
+      return "Your session expired. Please sign in again.";
+    }
+    if (raw.includes("quota") || raw.includes("rate-limit") || raw.includes("429")) {
+      return "The AI service is busy right now. Please try again shortly.";
+    }
+    return message || "Unexpected error.";
+  };
+
+  const validateImageFile = async (candidate) => {
+    if (!candidate) {
+      return "Please select an image first.";
+    }
+    if (!candidate.type || !candidate.type.startsWith("image/")) {
+      return "Please select a valid image file.";
+    }
+    if (candidate.size <= 0) {
+      return "The selected file is empty. Please choose a valid image.";
+    }
+
+    try {
+      if (typeof createImageBitmap === "function") {
+        const bitmap = await createImageBitmap(candidate);
+        bitmap.close();
+        return "";
+      }
+    } catch (_err) {
+      return "This image appears corrupted or unreadable. Please choose another file.";
+    }
+
+    return await new Promise((resolve) => {
+      const probeUrl = URL.createObjectURL(candidate);
+      const img = new Image();
+      img.onload = () => {
+        URL.revokeObjectURL(probeUrl);
+        resolve("");
+      };
+      img.onerror = () => {
+        URL.revokeObjectURL(probeUrl);
+        resolve("This image appears corrupted or unreadable. Please choose another file.");
+      };
+      img.src = probeUrl;
+    });
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -46,8 +107,22 @@ export default function HomePage() {
   }, []);
 
   useEffect(() => {
+    return () => {
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+      }
+    };
+  }, [previewUrl]);
+
+  useEffect(() => {
     if (dashboardTab === "wardrobe" && session?.access_token) {
       loadWardrobe();
+    }
+  }, [dashboardTab, session?.access_token]);
+
+  useEffect(() => {
+    if (dashboardTab === "items" && session?.access_token) {
+      loadItems();
     }
   }, [dashboardTab, session?.access_token]);
 
@@ -96,12 +171,15 @@ export default function HomePage() {
     setAnalysis(null);
     setSimilarResults([]);
     setWardrobe([]);
+    setItems([]);
+    setSelectedItemIds([]);
     setFile(null);
     setPreviewUrl("");
     setDashboardTab("analyze");
+    setOriginalPhotoUrl("");
   };
 
-  const onFileChange = (event) => {
+  const onFileChange = async (event) => {
     const selected = event.target.files?.[0];
     setError("");
     setWardrobeMessage("");
@@ -115,6 +193,17 @@ export default function HomePage() {
       return;
     }
 
+    const validationError = await validateImageFile(selected);
+    if (validationError) {
+      setFile(null);
+      setPreviewUrl("");
+      setError(validationError);
+      return;
+    }
+
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
+    }
     setFile(selected);
     setPreviewUrl(URL.createObjectURL(selected));
   };
@@ -173,7 +262,7 @@ export default function HomePage() {
       setSimilarResults(similarJson.results || []);
       setInfo("Analysis complete and saved to your wardrobe.");
     } catch (err) {
-      setError(err.message || "Unexpected error.");
+      setError(toUserFriendlyAnalyzeError(err.message));
     } finally {
       setLoading(false);
     }
@@ -243,84 +332,90 @@ export default function HomePage() {
     }
   };
 
+  const openOriginalPhoto = async (photoId) => {
+    if (!session?.access_token) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE}/api/wardrobe/${photoId}/original`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`
+        }
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}));
+        throw new Error(errorBody.error || "Failed to load original photo.");
+      }
+
+      const payload = await response.json();
+      setOriginalPhotoUrl(payload.image_url || "");
+    } catch (_err) {
+      setWardrobeMessage("Could not load original photo right now.");
+    }
+  };
+
+  const closeOriginalPhoto = () => setOriginalPhotoUrl("");
+
+  const loadItems = async () => {
+    if (!session?.access_token) {
+      return;
+    }
+
+    setItemsLoading(true);
+    setItemsMessage("");
+
+    try {
+      const itemsRes = await fetch(`${API_BASE}/api/items`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`
+        }
+      });
+
+      if (!itemsRes.ok) {
+        const errorBody = await itemsRes.json().catch(() => ({}));
+        throw new Error(errorBody.error || "Unable to load items right now.");
+      }
+
+      const itemsJson = await itemsRes.json();
+      const rows = itemsJson.items || [];
+      setItems(rows);
+      setItemsMessage(rows.length === 0 ? "No items yet. Analyze an outfit to populate your item catalog." : "");
+    } catch (_err) {
+      setItems([]);
+      setItemsMessage("Couldn't load item catalog right now.");
+    } finally {
+      setItemsLoading(false);
+    }
+  };
+
+  const toggleSelectItem = (itemId) => {
+    setSelectedItemIds((prev) => {
+      if (prev.includes(itemId)) {
+        return prev.filter((id) => id !== itemId);
+      }
+      return [...prev, itemId];
+    });
+  };
+
+  const selectedItems = items.filter((item) => selectedItemIds.includes(item.id));
+
   if (!session) {
     return (
-      <main className="landing">
-        <header className="topbar">
-          <div className="brand">OutfitMe</div>
-        </header>
-
-        <section className="hero">
-          <div>
-            <p className="eyebrow">OutfitMe v1</p>
-            <h1>Find your style from one photo.</h1>
-            <p className="hero-copy">
-              Upload outfit images, identify clothing items with AI, and build your wardrobe with shoppable alternatives.
-            </p>
-            <div className="hero-actions">
-              <button className="primary-btn" onClick={() => setAuthTab("signup")}>Create your account</button>
-            </div>
-          </div>
-
-          <form className="auth-panel card" onSubmit={submitAuth}>
-            <div className="tab-row">
-              <button
-                type="button"
-                className={`tab-btn ${authTab === "signin" ? "active" : ""}`}
-                onClick={() => setAuthTab("signin")}
-              >
-                Sign in
-              </button>
-              <button
-                type="button"
-                className={`tab-btn ${authTab === "signup" ? "active" : ""}`}
-                onClick={() => setAuthTab("signup")}
-              >
-                Sign up
-              </button>
-            </div>
-
-            <input
-              type="email"
-              placeholder="Email"
-              value={email}
-              onChange={(event) => setEmail(event.target.value)}
-              className="text-input"
-            />
-            <input
-              type="password"
-              placeholder="Password"
-              value={password}
-              onChange={(event) => setPassword(event.target.value)}
-              className="text-input"
-            />
-
-            {authTab === "signin" ? (
-              <button type="submit" className="primary-btn">Continue to dashboard</button>
-            ) : (
-              <button type="submit" className="primary-btn">Create account</button>
-            )}
-
-            {info ? <p className="info">{info}</p> : null}
-            {error ? <p className="error">{error}</p> : null}
-          </form>
-        </section>
-
-        <section className="feature-grid">
-          <article className="feature-card">
-            <h3>Analyze Outfit</h3>
-            <p>Use Gemini to detect style and clothing items from photos.</p>
-          </article>
-          <article className="feature-card">
-            <h3>Build Wardrobe</h3>
-            <p>Save analyzed looks and browse them with signed private image access.</p>
-          </article>
-          <article className="feature-card">
-            <h3>Find Similar</h3>
-            <p>Get similar item suggestions and price availability for each detected item.</p>
-          </article>
-        </section>
-      </main>
+      <LandingAuth
+        authTab={authTab}
+        setAuthTab={setAuthTab}
+        email={email}
+        password={password}
+        setEmail={setEmail}
+        setPassword={setPassword}
+        submitAuth={submitAuth}
+        info={info}
+        error={error}
+      />
     );
   }
 
@@ -347,98 +442,52 @@ export default function HomePage() {
             className={`tab-btn ${dashboardTab === "wardrobe" ? "active" : ""}`}
             onClick={() => setDashboardTab("wardrobe")}
           >
-            Wardrobe
+            Outfits
+          </button>
+          <button
+            className={`tab-btn ${dashboardTab === "items" ? "active" : ""}`}
+            onClick={() => setDashboardTab("items")}
+          >
+            Items
           </button>
         </div>
 
         {dashboardTab === "analyze" ? (
-          <div className="analysis-layout">
-            <section>
-              <label htmlFor="image-upload">Outfit photo</label>
-              <input id="image-upload" type="file" accept="image/*" onChange={onFileChange} />
-              {previewUrl ? <img className="preview" src={previewUrl} alt="Selected outfit" /> : null}
-              <button className="primary-btn" onClick={runAnalysis} disabled={disabled}>
-                {loading ? "Analyzing..." : "Analyze outfit"}
-              </button>
-            </section>
+          <AnalyzeTab
+            previewUrl={previewUrl}
+            onFileChange={onFileChange}
+            runAnalysis={runAnalysis}
+            disabled={disabled}
+            loading={loading}
+            analysis={analysis}
+            similarResults={similarResults}
+          />
+        ) : null}
 
-            <section>
-              <h2>Results</h2>
-              {!analysis ? <p className="subtext">Run analysis to view detected style and items.</p> : null}
-              {analysis ? (
-                <>
-                  <p>
-                    <strong>Style:</strong> {analysis.style}
-                  </p>
-                  <ul className="analysis-items">
-                    {analysis.items.map((item) => (
-                      <li key={item.name} className="analysis-item">
-                        {item.image_data_url ? (
-                          <img src={item.image_data_url} alt={item.name} className="item-thumb" />
-                        ) : null}
-                        <span>{formatItemLabel(item)}</span>
-                      </li>
-                    ))}
-                  </ul>
-                </>
-              ) : null}
+        {dashboardTab === "wardrobe" ? (
+          <OutfitsTab
+            wardrobe={wardrobe}
+            wardrobeLoading={wardrobeLoading}
+            wardrobeMessage={wardrobeMessage}
+            loadWardrobe={loadWardrobe}
+            deleteWardrobeEntry={deleteWardrobeEntry}
+            openOriginalPhoto={openOriginalPhoto}
+            originalPhotoUrl={originalPhotoUrl}
+            closeOriginalPhoto={closeOriginalPhoto}
+          />
+        ) : null}
 
-              {similarResults.length > 0 ? (
-                <>
-                  <h3>Similar items</h3>
-                  <ul>
-                    {similarResults.map((result) => (
-                      <li key={`${result.store}-${result.item}`}>
-                        <strong>{result.item}</strong> - {result.store} - {result.price} - {result.availability}
-                      </li>
-                    ))}
-                  </ul>
-                </>
-              ) : null}
-            </section>
-          </div>
-        ) : (
-          <section>
-            <div className="toolbar-row">
-              <h2>Your wardrobe</h2>
-              <button className="ghost-btn" onClick={loadWardrobe} disabled={wardrobeLoading}>
-                {wardrobeLoading ? "Loading..." : "Refresh"}
-              </button>
-            </div>
-
-            {wardrobeMessage ? <p className="subtext">{wardrobeMessage}</p> : null}
-
-            <div className="wardrobe-grid">
-              {wardrobe.map((entry) => (
-                <article key={entry.photo_id} className="wardrobe-card">
-                  {entry.image_url ? (
-                    <img src={entry.image_url} alt="Wardrobe outfit" className="wardrobe-image" />
-                  ) : (
-                    <p className="subtext">Image not available.</p>
-                  )}
-                  <div className="wardrobe-actions">
-                    {entry.image_url ? (
-                      <a className="ghost-btn" href={entry.image_url} target="_blank" rel="noreferrer">
-                        View original
-                      </a>
-                    ) : null}
-                    <button type="button" className="ghost-btn danger-btn" onClick={() => deleteWardrobeEntry(entry.photo_id)}>
-                      Delete
-                    </button>
-                  </div>
-                  <p>
-                    <strong>Style:</strong> {entry.analysis?.style_label || "Unlabeled"}
-                  </p>
-                  <ul>
-                    {(entry.analysis?.items || []).map((item) => (
-                      <li key={`${entry.photo_id}-${item.name}`}>{formatItemLabel(item)}</li>
-                    ))}
-                  </ul>
-                </article>
-              ))}
-            </div>
-          </section>
-        )}
+        {dashboardTab === "items" ? (
+          <ItemsTab
+            items={items}
+            itemsLoading={itemsLoading}
+            itemsMessage={itemsMessage}
+            loadItems={loadItems}
+            selectedItemIds={selectedItemIds}
+            toggleSelectItem={toggleSelectItem}
+            selectedItems={selectedItems}
+          />
+        ) : null}
 
         {info ? <p className="info">{info}</p> : null}
         {dashboardTab === "analyze" && error ? <p className="error">{error}</p> : null}

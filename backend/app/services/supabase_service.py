@@ -145,36 +145,31 @@ def list_wardrobe(user_id: str, limit: int = 20) -> list[dict]:
         )
         analysis = (analyses_response.data or [None])[0]
 
-        items = []
-        if analysis:
-            items_response = (
-                client.table("items")
-                .select("category,name,color")
-                .eq("analysis_id", analysis["id"])
-                .eq("user_id", user_id)
-                .order("created_at", desc=False)
-                .execute()
-            )
-            items = items_response.data or []
-
         wardrobe.append(
             {
                 "photo_id": photo["id"],
                 "storage_path": photo["storage_path"],
-                "image_url": get_signed_image_url(photo["storage_path"]),
                 "created_at": photo["created_at"],
-                "analysis": {
-                    "id": analysis["id"],
-                    "style_label": analysis["style_label"],
-                    "created_at": analysis["created_at"],
-                    "items": items
-                }
-                if analysis
-                else None
+                "analysis_id": analysis["id"] if analysis else None,
+                "style_label": analysis["style_label"] if analysis else None,
+                "analysis_created_at": analysis["created_at"] if analysis else None
             }
         )
 
     return wardrobe
+
+
+def list_user_items(user_id: str, limit: int = 200) -> list[dict]:
+    client = get_supabase_client()
+    items_response = (
+        client.table("items")
+        .select("id,analysis_id,category,name,color,created_at")
+        .eq("user_id", user_id)
+        .order("created_at", desc=True)
+        .limit(limit)
+        .execute()
+    )
+    return items_response.data or []
 
 
 def delete_wardrobe_photo(user_id: str, photo_id: str) -> bool:
@@ -204,3 +199,24 @@ def delete_wardrobe_photo(user_id: str, photo_id: str) -> bool:
         .execute()
     )
     return True
+
+
+def get_original_photo_url(user_id: str, photo_id: str) -> str | None:
+    client = get_supabase_client()
+    photo_response = (
+        client.table("photos")
+        .select("storage_path")
+        .eq("id", photo_id)
+        .eq("user_id", user_id)
+        .limit(1)
+        .execute()
+    )
+    photo_row = (photo_response.data or [None])[0]
+    if not photo_row:
+        return None
+
+    storage_path = photo_row.get("storage_path")
+    if not storage_path:
+        return None
+
+    return get_signed_image_url(storage_path, expires_in_seconds=3600)
