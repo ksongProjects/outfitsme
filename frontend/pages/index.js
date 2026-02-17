@@ -79,6 +79,15 @@ export default function HomePage() {
     setInfo("Signed in successfully.");
   };
 
+  const submitAuth = async (event) => {
+    event.preventDefault();
+    if (authTab === "signin") {
+      await signIn();
+      return;
+    }
+    await signUp();
+  };
+
   const signOut = async () => {
     setError("");
     setWardrobeMessage("");
@@ -203,6 +212,37 @@ export default function HomePage() {
     }
   };
 
+  const deleteWardrobeEntry = async (photoId) => {
+    if (!session?.access_token) {
+      return;
+    }
+
+    setWardrobeMessage("");
+    const confirmed = window.confirm("Delete this outfit from your wardrobe?");
+    if (!confirmed) {
+      return;
+    }
+
+    try {
+      const response = await fetch(`${API_BASE}/api/wardrobe/${photoId}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${session.access_token}`
+        }
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}));
+        throw new Error(errorBody.error || "Failed to delete wardrobe item.");
+      }
+
+      setWardrobe((prev) => prev.filter((entry) => entry.photo_id !== photoId));
+      setWardrobeMessage("Outfit removed from wardrobe.");
+    } catch (_err) {
+      setWardrobeMessage("Could not delete this outfit right now. Please try again.");
+    }
+  };
+
   if (!session) {
     return (
       <main className="landing">
@@ -222,15 +262,17 @@ export default function HomePage() {
             </div>
           </div>
 
-          <div className="auth-panel card">
+          <form className="auth-panel card" onSubmit={submitAuth}>
             <div className="tab-row">
               <button
+                type="button"
                 className={`tab-btn ${authTab === "signin" ? "active" : ""}`}
                 onClick={() => setAuthTab("signin")}
               >
                 Sign in
               </button>
               <button
+                type="button"
                 className={`tab-btn ${authTab === "signup" ? "active" : ""}`}
                 onClick={() => setAuthTab("signup")}
               >
@@ -254,14 +296,14 @@ export default function HomePage() {
             />
 
             {authTab === "signin" ? (
-              <button className="primary-btn" onClick={signIn}>Continue to dashboard</button>
+              <button type="submit" className="primary-btn">Continue to dashboard</button>
             ) : (
-              <button className="primary-btn" onClick={signUp}>Create account</button>
+              <button type="submit" className="primary-btn">Create account</button>
             )}
 
             {info ? <p className="info">{info}</p> : null}
             {error ? <p className="error">{error}</p> : null}
-          </div>
+          </form>
         </section>
 
         <section className="feature-grid">
@@ -328,9 +370,14 @@ export default function HomePage() {
                   <p>
                     <strong>Style:</strong> {analysis.style}
                   </p>
-                  <ul>
+                  <ul className="analysis-items">
                     {analysis.items.map((item) => (
-                      <li key={item.name}>{formatItemLabel(item)}</li>
+                      <li key={item.name} className="analysis-item">
+                        {item.image_data_url ? (
+                          <img src={item.image_data_url} alt={item.name} className="item-thumb" />
+                        ) : null}
+                        <span>{formatItemLabel(item)}</span>
+                      </li>
                     ))}
                   </ul>
                 </>
@@ -369,6 +416,16 @@ export default function HomePage() {
                   ) : (
                     <p className="subtext">Image not available.</p>
                   )}
+                  <div className="wardrobe-actions">
+                    {entry.image_url ? (
+                      <a className="ghost-btn" href={entry.image_url} target="_blank" rel="noreferrer">
+                        View original
+                      </a>
+                    ) : null}
+                    <button type="button" className="ghost-btn danger-btn" onClick={() => deleteWardrobeEntry(entry.photo_id)}>
+                      Delete
+                    </button>
+                  </div>
                   <p>
                     <strong>Style:</strong> {entry.analysis?.style_label || "Unlabeled"}
                   </p>

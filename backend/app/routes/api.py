@@ -6,9 +6,11 @@ from app.config import settings
 from app.services.gemini_service import (
     GeminiNotConfiguredError,
     analyze_outfit_with_gemini,
+    generate_item_image_with_gemini,
     probe_gemini_connectivity,
 )
 from app.services.supabase_service import (
+    delete_wardrobe_photo,
     SupabaseNotConfiguredError,
     get_supabase_client,
     get_user_id_from_token,
@@ -55,11 +57,36 @@ def analyze_outfit():
 
         mime_type = image.mimetype or "image/jpeg"
         analysis = analyze_outfit_with_gemini(image_bytes, mime_type)
+        analysis_items = analysis.get("items", [])
+
+        analysis_with_images = {
+            "style": analysis.get("style"),
+            "items": [dict(item) for item in analysis_items]
+        }
+        for item in analysis_with_images["items"]:
+            try:
+                item["image_data_url"] = generate_item_image_with_gemini(item)
+            except Exception:  # noqa: BLE001
+                item["image_data_url"] = None
+
+        # Persist core analysis only (avoid storing large base64 image strings in DB).
+        analysis_for_persistence = {
+            "style": analysis.get("style"),
+            "items": [
+                {
+                    "category": item.get("category"),
+                    "name": item.get("name"),
+                    "color": item.get("color")
+                }
+                for item in analysis_items
+            ]
+        }
+
         image.stream.seek(0)
         storage_path = upload_photo_for_user(image, user_id)
-        persistence = persist_analysis(user_id, storage_path, analysis)
+        persistence = persist_analysis(user_id, storage_path, analysis_for_persistence)
 
-        return jsonify({**analysis, **persistence}), 200
+        return jsonify({**analysis_with_images, **persistence}), 200
     except SupabaseNotConfiguredError as exc:
         return jsonify({"error": str(exc)}), 500
     except GeminiNotConfiguredError as exc:
@@ -130,6 +157,30 @@ def get_wardrobe():
         return jsonify({"error": "Invalid or expired token."}), 401
     except Exception as exc:  # noqa: BLE001
         return jsonify({"error": f"Wardrobe lookup failed: {exc}"}), 500
+
+
+@api_bp.delete("/wardrobe/<photo_id>")
+def delete_wardrobe_entry(photo_id: str):
+    access_token = _extract_access_token()
+    if not access_token:
+        return jsonify({"error": "Missing bearer token."}), 401
+
+    try:
+        user_id = get_user_id_from_token(access_token)
+        if not user_id:
+            return jsonify({"error": "Invalid or expired token."}), 401
+
+        deleted = delete_wardrobe_photo(user_id, photo_id)
+        if not deleted:
+            return jsonify({"error": "Wardrobe item not found."}), 404
+
+        return jsonify({"deleted": True, "photo_id": photo_id}), 200
+    except SupabaseNotConfiguredError as exc:
+        return jsonify({"error": str(exc)}), 500
+    except AuthApiError:
+        return jsonify({"error": "Invalid or expired token."}), 401
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"error": f"Wardrobe delete failed: {exc}"}), 500
 
 
 @api_bp.get("/diagnostics")

@@ -44,6 +44,8 @@ SUPABASE_SECRET_KEY=
 SUPABASE_BUCKET=outfit-images
 GEMINI_API_KEY=
 GEMINI_MODEL=gemini-2.5-flash
+GEMINI_IMAGE_MODEL=gemini-2.5-flash-image
+ITEM_IMAGE_MAX=3
 ```
 
 ## Run Locally
@@ -80,6 +82,7 @@ Frontend: `http://localhost:3000`
 - `POST /api/analyze` (requires Bearer token + multipart `image`)
 - `POST /api/similar` (requires Bearer token + JSON `items`)
 - `GET /api/wardrobe` (requires Bearer token; returns signed image URLs + saved analyses/items)
+- `DELETE /api/wardrobe/:photo_id` (requires Bearer token; deletes wardrobe entry + stored image)
 
 ## Testing
 

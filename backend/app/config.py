@@ -21,6 +21,11 @@ class Settings:
     SUPABASE_BUCKET = _clean_env(os.getenv("SUPABASE_BUCKET", "outfit-images"), "outfit-images")
     GEMINI_API_KEY = _clean_env(os.getenv("GEMINI_API_KEY", ""))
     GEMINI_MODEL = _clean_env(os.getenv("GEMINI_MODEL", "gemini-2.5-flash"), "gemini-2.5-flash")
+    GEMINI_IMAGE_MODEL = _clean_env(
+        os.getenv("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image"),
+        "gemini-2.5-flash-image"
+    )
+    ITEM_IMAGE_MAX = int(_clean_env(os.getenv("ITEM_IMAGE_MAX", "3"), "3") or "3")
 
 
 settings = Settings()

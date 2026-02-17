@@ -12,13 +12,13 @@ class GeminiNotConfiguredError(RuntimeError):
     pass
 
 
-def _gemini_endpoint() -> str:
-    return f"https://generativelanguage.googleapis.com/v1beta/models/{settings.GEMINI_MODEL}:generateContent"
+def _gemini_endpoint(model: str) -> str:
+    return f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
 
 
-def _post_to_gemini(payload: dict, timeout_seconds: int = 30) -> dict:
+def _post_to_gemini(payload: dict, model: str, timeout_seconds: int = 30) -> dict:
     response = requests.post(
-        _gemini_endpoint(),
+        _gemini_endpoint(model),
         params={"key": settings.GEMINI_API_KEY},
         headers={"Content-Type": "application/json"},
         data=json.dumps(payload),
@@ -115,7 +115,7 @@ def analyze_outfit_with_gemini(image_bytes: bytes, mime_type: str) -> dict:
         }
     }
 
-    response_json = _post_to_gemini(payload, timeout_seconds=30)
+    response_json = _post_to_gemini(payload, model=settings.GEMINI_MODEL, timeout_seconds=30)
     return _parse_gemini_json(response_json)
 
 
@@ -135,7 +135,53 @@ def probe_gemini_connectivity() -> dict:
             "responseMimeType": "application/json"
         }
     }
-    response_json = _post_to_gemini(payload, timeout_seconds=15)
+    response_json = _post_to_gemini(payload, model=settings.GEMINI_MODEL, timeout_seconds=15)
 
     model_version = response_json.get("modelVersion", settings.GEMINI_MODEL)
     return {"model": settings.GEMINI_MODEL, "model_version": model_version}
+
+
+def generate_item_image_with_gemini(item: dict) -> str | None:
+    if not settings.GEMINI_API_KEY:
+        raise GeminiNotConfiguredError("GEMINI_API_KEY is required.")
+
+    category = str(item.get("category", "clothing item")).strip() or "clothing item"
+    name = str(item.get("name", "fashion item")).strip() or "fashion item"
+    color = str(item.get("color", "neutral")).strip() or "neutral"
+    prompt = (
+        "Create a clean product-style image on a plain light background. "
+        f"Item category: {category}. Item name: {name}. Dominant color: {color}. "
+        "No text, no watermark, centered single item."
+    )
+
+    payload = {
+        "contents": [
+            {
+                "parts": [
+                    {"text": prompt}
+                ]
+            }
+        ],
+        "generationConfig": {
+            "responseModalities": ["TEXT", "IMAGE"]
+        }
+    }
+
+    response_json = _post_to_gemini(payload, model=settings.GEMINI_IMAGE_MODEL, timeout_seconds=30)
+
+    candidates = response_json.get("candidates", [])
+    if not candidates:
+        return None
+
+    parts = candidates[0].get("content", {}).get("parts", [])
+    for part in parts:
+        inline = part.get("inline_data") or part.get("inlineData")
+        if not isinstance(inline, dict):
+            continue
+        data = inline.get("data")
+        if not data:
+            continue
+        mime = inline.get("mime_type") or inline.get("mimeType") or "image/png"
+        return f"data:{mime};base64,{data}"
+
+    return None

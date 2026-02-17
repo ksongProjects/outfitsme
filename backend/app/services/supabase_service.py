@@ -175,3 +175,32 @@ def list_wardrobe(user_id: str, limit: int = 20) -> list[dict]:
         )
 
     return wardrobe
+
+
+def delete_wardrobe_photo(user_id: str, photo_id: str) -> bool:
+    client = get_supabase_client()
+
+    photo_response = (
+        client.table("photos")
+        .select("id,storage_path")
+        .eq("id", photo_id)
+        .eq("user_id", user_id)
+        .limit(1)
+        .execute()
+    )
+    photo_row = (photo_response.data or [None])[0]
+    if not photo_row:
+        return False
+
+    storage_path = photo_row.get("storage_path")
+    if storage_path:
+        client.storage.from_(settings.SUPABASE_BUCKET).remove([storage_path])
+
+    (
+        client.table("photos")
+        .delete()
+        .eq("id", photo_id)
+        .eq("user_id", user_id)
+        .execute()
+    )
+    return True

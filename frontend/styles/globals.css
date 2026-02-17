@@ -202,14 +202,21 @@ input[type="file"] {
 
 .preview,
 .wardrobe-image {
-  width: 100%;
   border-radius: 12px;
   border: 1px solid var(--line);
   background: #fff;
 }
 
 .preview {
+  width: 100%;
   margin-bottom: 12px;
+}
+
+.wardrobe-image {
+  width: 150px;
+  height: 150px;
+  object-fit: cover;
+  display: block;
 }
 
 .toolbar-row {
@@ -232,6 +239,18 @@ input[type="file"] {
   padding: 12px;
 }
 
+.wardrobe-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+  margin-bottom: 8px;
+}
+
+.danger-btn {
+  color: #8f1d1d;
+  border-color: #e0b4b4;
+}
+
 .info {
   color: var(--accent);
   margin: 10px 0 0;
@@ -245,6 +264,28 @@ input[type="file"] {
 ul {
   margin: 8px 0 0;
   padding-left: 18px;
+}
+
+.analysis-items {
+  list-style: none;
+  padding-left: 0;
+}
+
+.analysis-item {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.item-thumb {
+  width: 56px;
+  height: 56px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  object-fit: cover;
+  background: #fff;
+  flex-shrink: 0;
 }
 
 @media (max-width: 900px) {
