@@ -5,7 +5,7 @@ OutfitMe is a web app where users upload outfit photos, identify clothing items,
 ## Current Local MVP
 
 Implemented in this repo:
-- `frontend/`: Next.js UI with landing auth and a tabbed app (`Dashboard`, `Photo analysis`, `Outfits`, `Items`, `Settings`)
+- `frontend/`: Next.js UI with landing auth and a tabbed app (`Home`, `Photo analysis`, `My Outfits`, `Item catalog`, `Settings`)
 - `backend/`: Flask API with authenticated endpoints, Gemini + Bedrock analysis routing, Supabase token verification, private bucket upload, and DB persistence
 
 Frontend data/state stack:
@@ -113,7 +113,7 @@ See `infra/README.md` for step-by-step usage (`init`, `plan`, `apply`), required
 - `GET /api/wardrobe/:photo_id/details?outfit_index=<n>` (requires Bearer token; returns signed original photo URL + selected outfit details)
 - `GET /api/items` (requires Bearer token; returns items plus `style_label` used by catalog filters)
 - `GET /api/stats` (requires Bearer token; returns dashboard metrics including photos analyzed, outfits saved, item-type/color breakdowns, and highlights)
-- `DELETE /api/wardrobe/:outfit_id` (requires Bearer token; deletes a single outfit and removes the photo only when no outfits remain)
+- `DELETE /api/wardrobe/:outfit_id` (requires Bearer token; deletes a single outfit row and its related item rows only)
 - `GET /api/models` (requires Bearer token; returns model capability + per-user availability)
 - `GET /api/settings/model-keys` (requires Bearer token; returns masked model settings)
 - `PUT /api/settings/model-keys` (requires Bearer token; saves encrypted model credentials/preferences)
@@ -145,7 +145,7 @@ npm test
 
 ## Next Steps
 
-1. Replace mock analysis in `backend/app/routes/api.py` with real model inference.
+1. Add a cleanup workflow for orphaned photos/analyses after outfit-level deletes (optional retention policy).
 2. Normalize and persist real similar-item search results.
 3. Add server-side pagination/filtering on wardrobe and items endpoints.
 4. Add richer wardrobe details and user actions (favorites, tags, notes).
