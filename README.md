@@ -33,6 +33,7 @@ Gemini and AWS Bedrock Agent are supported for analysis. Similar-item results ar
    - `supabase/migrations/20260217_000004_drop_unused_bedrock_model_id.sql`
    - `supabase/migrations/20260217_000005_drop_unused_aws_credentials.sql`
    - `supabase/migrations/20260217_000006_outfits_table_and_itemized_deletes.sql`
+   - `supabase/migrations/20260222_000007_analysis_jobs.sql`
 
 ## Environment Variables
 
@@ -48,7 +49,13 @@ Backend: `backend/.env`
 
 ```env
 FLASK_ENV=development
+DEBUG=true
 PORT=5000
+CORS_ALLOWED_ORIGINS=http://localhost:3000
+DIAGNOSTICS_ENABLED=true
+RATE_LIMIT_STORAGE_URI=memory://
+MONTHLY_ANALYSIS_LIMIT=100
+ENABLE_BEDROCK_ANALYSIS=false
 SUPABASE_URL=
 SUPABASE_SECRET_KEY=
 SUPABASE_BUCKET=outfit-images
@@ -59,6 +66,13 @@ ITEM_IMAGE_MAX=3
 SETTINGS_ENCRYPTION_KEY=
 DEFAULT_ANALYSIS_MODEL=gemini-2.5-flash
 ```
+
+Production defaults/safety:
+- `FLASK_ENV=production` disables diagnostics unless explicitly enabled.
+- Set `CORS_ALLOWED_ORIGINS` to your exact frontend domain(s), comma-separated.
+- For multi-instance deployments, use Redis for shared rate-limit state (for example, `RATE_LIMIT_STORAGE_URI=redis://...`).
+- `MONTHLY_ANALYSIS_LIMIT` enforces per-user monthly analyze quota (`0` disables the cap).
+- `ENABLE_BEDROCK_ANALYSIS=false` keeps analysis provider scope to Gemini-only. Set to `true` to re-enable Bedrock model options.
 
 Generate `SETTINGS_ENCRYPTION_KEY` once (Fernet key) and keep it private:
 
@@ -97,22 +111,43 @@ Frontend: `http://localhost:3000`
 
 Terraform templates are available in `infra/`:
 - `infra/aws` for AWS Bedrock Agent creation
+- `infra/aws-minimal` for low-cost AWS production app deployment (EC2 + Docker + TLS + optional CloudFront/WAF)
 - `infra/google` for Google Cloud setup template
 - `infra/openai` for OpenAI config template
 
 See `infra/README.md` for step-by-step usage (`init`, `plan`, `apply`), required variables, and outputs.
 
+## Production Runtime (Docker + Gunicorn)
+
+Production deploy assets:
+- `backend/Dockerfile` (Flask served by Gunicorn)
+- `frontend/Dockerfile` (Next.js production build/start)
+- `deploy/docker-compose.prod.yml` (frontend + backend + Caddy reverse proxy)
+
+For local production-like test:
+
+```bash
+# ensure frontend/.env.production exists with NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
+# and NEXT_PUBLIC_API_BASE_URL (or add it in the file before build)
+cd deploy
+# edit Caddyfile if you are not using app.example.com
+cp Caddyfile.example Caddyfile
+docker compose -f docker-compose.prod.yml up --build
+```
+
 ## API Endpoints
 
 - `GET /health`
 - `GET /api/diagnostics` (dev config checks for Supabase + Gemini)
-- `POST /api/analyze` (requires Bearer token + multipart `image`)
+- `POST /api/analyze` (requires Bearer token + multipart `image`; enqueues async analyze job and returns `job_id`)
+- `GET /api/analyze/jobs/:job_id?wait_seconds=<0-20>` (requires Bearer token; long-poll job status/result)
 - `POST /api/similar` (requires Bearer token + JSON `items`)
 - `POST /api/outfits/compose` (requires Bearer token + JSON `item_ids`; creates a virtual/composed outfit from selected items)
 - `GET /api/wardrobe` (requires Bearer token; returns one row per detected outfit)
 - `GET /api/wardrobe/:photo_id/details?outfit_index=<n>` (requires Bearer token; returns signed original photo URL + selected outfit details)
 - `GET /api/items` (requires Bearer token; returns items plus `style_label` used by catalog filters)
 - `GET /api/stats` (requires Bearer token; returns dashboard metrics including photos analyzed, outfits saved, item-type/color breakdowns, and highlights)
+- `GET /api/limits` (requires Bearer token; returns per-user analysis quota usage and remaining monthly quota)
 - `DELETE /api/wardrobe/:outfit_id` (requires Bearer token; deletes a single outfit row and its related item rows only)
 - `GET /api/models` (requires Bearer token; returns model capability + per-user availability)
 - `GET /api/settings/model-keys` (requires Bearer token; returns masked model settings)

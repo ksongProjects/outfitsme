@@ -1,0 +1,5 @@
+bucket         = "your-terraform-state-bucket"
+key            = "outfitme/prod/terraform.tfstate"
+region         = "us-east-1"
+dynamodb_table = "your-terraform-locks"
+encrypt        = true

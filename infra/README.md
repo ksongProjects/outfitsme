@@ -2,6 +2,7 @@
 
 This folder contains Terraform templates for:
 - `infra/aws`: AWS Bedrock Agent creation (plus IAM role/policy).
+- `infra/aws-minimal`: Minimal AWS production app stack (EC2 + TLS + optional CloudFront/WAF).
 - `infra/google`: Google Cloud setup template for Gemini/Vertex usage.
 - `infra/openai`: OpenAI app configuration template.
 

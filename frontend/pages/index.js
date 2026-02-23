@@ -42,6 +42,7 @@ export default function HomePage() {
     }
     statsState.loadStats();
     analysisState.loadModels();
+    analysisState.loadAnalysisLimits();
     settingsState.loadModelSettings();
   }, [accessToken]);
 
@@ -91,6 +92,9 @@ export default function HomePage() {
     selectedModel: analysisState.selectedModel,
     setSelectedModel: analysisState.setSelectedModel,
     modelOptions: analysisState.modelOptions,
+    jobStatus: analysisState.jobStatus,
+    analysisLimits: analysisState.analysisLimits,
+    limitsLoading: analysisState.limitsLoading,
     error: analysisState.error,
     info: analysisState.info
   }), [
@@ -102,6 +106,9 @@ export default function HomePage() {
     analysisState.similarResults,
     analysisState.selectedModel,
     analysisState.modelOptions,
+    analysisState.jobStatus,
+    analysisState.analysisLimits,
+    analysisState.limitsLoading,
     analysisState.error,
     analysisState.info
   ]);

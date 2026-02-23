@@ -13,10 +13,45 @@ export function useAnalysisState({ accessToken, onAnalysisSaved }) {
   const [info, setInfo] = useState("");
   const [modelOptions, setModelOptions] = useState([]);
   const [selectedModel, setSelectedModel] = useState("gemini-2.5-flash");
+  const [analysisLimits, setAnalysisLimits] = useState(null);
+  const [jobStatus, setJobStatus] = useState(null);
   const queryClient = useQueryClient();
 
   const analyzeMutation = useMutation({
     mutationFn: async ({ fileToAnalyze, modelId }) => {
+      const pollAnalyzeJob = async (jobId) => {
+        for (let attempt = 0; attempt < 30; attempt += 1) {
+          const pollRes = await fetch(`${API_BASE}/api/analyze/jobs/${jobId}?wait_seconds=20`, {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${accessToken}`
+            }
+          });
+
+          if (!pollRes.ok) {
+            const errorBody = await pollRes.json().catch(() => ({}));
+            throw new Error(errorBody.error || "Failed to fetch analysis job status.");
+          }
+
+          const pollJson = await pollRes.json();
+          const status = pollJson.status || "queued";
+          setJobStatus({
+            jobId,
+            status,
+            updatedAt: pollJson.updated_at || null
+          });
+
+          if (status === "completed") {
+            return pollJson.result || {};
+          }
+          if (status === "failed") {
+            throw new Error(pollJson.error_message || "Analysis job failed.");
+          }
+        }
+
+        throw new Error("Analysis timed out while waiting for job completion.");
+      };
+
       const formData = new FormData();
       formData.append("image", fileToAnalyze);
       formData.append("analysis_model", modelId);
@@ -31,10 +66,30 @@ export function useAnalysisState({ accessToken, onAnalysisSaved }) {
 
       if (!analyzeRes.ok) {
         const errorBody = await analyzeRes.json().catch(() => ({}));
+        if (
+          analyzeRes.status === 429 &&
+          typeof errorBody.monthly_limit === "number" &&
+          typeof errorBody.used_this_month === "number"
+        ) {
+          throw new Error(
+            `Monthly analysis limit reached (${errorBody.used_this_month}/${errorBody.monthly_limit}).`
+          );
+        }
         throw new Error(errorBody.error || "Failed to analyze photo.");
       }
 
-      const analyzeJson = await analyzeRes.json();
+      const analyzePayload = await analyzeRes.json();
+      let analyzeJson = analyzePayload;
+      if (!Array.isArray(analyzePayload?.items) && analyzePayload?.job_id) {
+        setJobStatus({
+          jobId: analyzePayload.job_id,
+          status: analyzePayload.status || "queued",
+          updatedAt: analyzePayload.created_at || null
+        });
+        analyzeJson = await pollAnalyzeJob(analyzePayload.job_id);
+      } else if (!Array.isArray(analyzePayload?.items)) {
+        throw new Error("Analyze request did not return a valid result payload.");
+      }
 
       const similarRes = await fetch(`${API_BASE}/api/similar`, {
         method: "POST",
@@ -54,6 +109,7 @@ export function useAnalysisState({ accessToken, onAnalysisSaved }) {
       return { analyzeJson, similarJson };
     },
     onSuccess: async ({ analyzeJson, similarJson }) => {
+      setJobStatus((current) => (current ? { ...current, status: "completed" } : current));
       setAnalysis(analyzeJson);
       setSimilarResults(similarJson.results || []);
       setInfo("Analysis complete and saved to your outfits.");
@@ -64,6 +120,7 @@ export function useAnalysisState({ accessToken, onAnalysisSaved }) {
       if (onAnalysisSaved) {
         onAnalysisSaved();
       }
+      await loadAnalysisLimits();
     }
   });
 
@@ -88,6 +145,15 @@ export function useAnalysisState({ accessToken, onAnalysisSaved }) {
     }
     if (raw.includes("missing bearer token") || raw.includes("invalid or expired token")) {
       return "Your session expired. Please sign in again.";
+    }
+    if (raw.includes("monthly analysis limit reached")) {
+      return message || "You've reached your monthly analysis limit.";
+    }
+    if (raw.includes("analysis timed out")) {
+      return "Analysis is taking longer than expected. Please check back in a moment.";
+    }
+    if (raw.includes("analysis job failed")) {
+      return message || "Analysis job failed. Please try again.";
     }
     if (raw.includes("quota") || raw.includes("rate-limit") || raw.includes("429")) {
       return "The AI service is busy right now. Please try again shortly.";
@@ -136,6 +202,7 @@ export function useAnalysisState({ accessToken, onAnalysisSaved }) {
     setInfo("");
     setAnalysis(null);
     setSimilarResults([]);
+    setJobStatus(null);
 
     if (!selected) {
       setFile(null);
@@ -176,6 +243,7 @@ export function useAnalysisState({ accessToken, onAnalysisSaved }) {
     setPreviewUrl("");
     setAnalysis(null);
     setSimilarResults([]);
+    setJobStatus(null);
     setError("");
     setInfo("");
   };
@@ -199,11 +267,13 @@ export function useAnalysisState({ accessToken, onAnalysisSaved }) {
     }
 
     setError("");
-    setInfo("");
+    setInfo("Analysis request submitted. Waiting for queue processing...");
+    setJobStatus({ jobId: null, status: "submitting", updatedAt: null });
 
     try {
       await analyzeMutation.mutateAsync({ fileToAnalyze: file, modelId: selectedModel });
     } catch (err) {
+      setJobStatus((current) => (current ? { ...current, status: "failed" } : current));
       const friendly = toUserFriendlyAnalyzeError(err.message);
       setError(friendly);
       toast.error(friendly);
@@ -225,6 +295,27 @@ export function useAnalysisState({ accessToken, onAnalysisSaved }) {
       });
       if (!response.ok) {
         throw new Error("Unable to load models.");
+      }
+      return await response.json();
+    },
+    enabled: false,
+    staleTime: 20_000
+  });
+
+  const limitsQuery = useQuery({
+    queryKey: ["limits", accessToken],
+    queryFn: async () => {
+      if (!accessToken) {
+        return null;
+      }
+      const response = await fetch(`${API_BASE}/api/limits`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        }
+      });
+      if (!response.ok) {
+        throw new Error("Unable to load usage limits.");
       }
       return await response.json();
     },
@@ -257,6 +348,19 @@ export function useAnalysisState({ accessToken, onAnalysisSaved }) {
     }
   };
 
+  const loadAnalysisLimits = async () => {
+    if (!accessToken) {
+      setAnalysisLimits(null);
+      return;
+    }
+
+    const result = await limitsQuery.refetch();
+    if (result.isError) {
+      return;
+    }
+    setAnalysisLimits(result.data?.analysis || null);
+  };
+
   const resetAnalysisState = () => {
     setAnalysis(null);
     setSimilarResults([]);
@@ -264,6 +368,8 @@ export function useAnalysisState({ accessToken, onAnalysisSaved }) {
     setPreviewUrl("");
     setModelOptions([]);
     setSelectedModel("gemini-2.5-flash");
+    setAnalysisLimits(null);
+    setJobStatus(null);
     setError("");
     setInfo("");
   };
@@ -283,6 +389,10 @@ export function useAnalysisState({ accessToken, onAnalysisSaved }) {
     setSelectedModel,
     modelOptions,
     loadModels,
+    jobStatus,
+    analysisLimits,
+    limitsLoading: limitsQuery.isFetching,
+    loadAnalysisLimits,
     resetAnalysisState,
     error,
     info

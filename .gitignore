@@ -9,7 +9,25 @@ backend/**/__pycache__/
 
 # Environment files
 frontend/.env.local
+frontend/.env.production
+frontend/.env.production.local
 backend/.env
+backend/.env.local
+backend/.env.production
+deploy/Caddyfile
+
+# Terraform
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+crash.log
+backend.hcl
+
+# Credentials / keys
+.aws/
+*.pem
+*.key
 
 # OS/editor
 .DS_Store

@@ -17,9 +17,16 @@ export default function AnalyzeTab() {
     similarResults,
     selectedModel,
     setSelectedModel,
-    modelOptions
+    modelOptions,
+    jobStatus,
+    analysisLimits,
+    limitsLoading
   } = useAnalysisContext();
   const detectedOutfits = analysis?.outfits || [];
+  const monthlyLimit = analysisLimits?.monthly_limit ?? 0;
+  const usedThisMonth = analysisLimits?.used_this_month ?? 0;
+  const remainingThisMonth = analysisLimits?.remaining_this_month;
+  const hasMonthlyCap = monthlyLimit > 0;
 
   const handleDragOver = (event) => {
     event.preventDefault();
@@ -71,6 +78,22 @@ export default function AnalyzeTab() {
               .filter((model) => model.supports_image && !model.available)
               .map((model) => `${model.label} - ${model.unavailable_reason}`)
               .join(" | ")}
+          </p>
+        ) : null}
+        <div className="quota-pill" role="status" aria-live="polite">
+          {limitsLoading ? (
+            <span>Loading usage limits...</span>
+          ) : hasMonthlyCap ? (
+            <span>
+              Monthly quota: {usedThisMonth}/{monthlyLimit} used ({remainingThisMonth} left)
+            </span>
+          ) : (
+            <span>Monthly quota: unlimited</span>
+          )}
+        </div>
+        {jobStatus ? (
+          <p className="subtext">
+            Queue status: <strong>{jobStatus.status}</strong>{jobStatus.jobId ? ` (job ${jobStatus.jobId.slice(0, 8)})` : ""}
           </p>
         ) : null}
         <label
