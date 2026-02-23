@@ -303,16 +303,23 @@ def upload_photo_for_user(file_storage, user_id: str) -> str:
     return storage_path
 
 
-def persist_analysis(user_id: str, storage_path: str, analysis: dict) -> dict:
+def create_photo_record(user_id: str, storage_path: str, client: Client | None = None) -> dict:
+    effective_client = client or get_supabase_client()
+    photo_insert = effective_client.table("photos").insert({"user_id": user_id, "storage_path": storage_path}).execute()
+    return photo_insert.data[0]
+
+
+def download_photo_bytes(storage_path: str) -> bytes:
     client = get_supabase_client()
+    response = client.storage.from_(settings.SUPABASE_BUCKET).download(storage_path)
+    if isinstance(response, bytes):
+        return response
+    if isinstance(response, str):
+        return response.encode("utf-8")
+    return b""
 
-    photo_insert = (
-        client.table("photos")
-        .insert({"user_id": user_id, "storage_path": storage_path})
-        .execute()
-    )
-    photo_row = photo_insert.data[0]
 
+def _persist_analysis_for_photo(client: Client, user_id: str, photo_row: dict, analysis: dict) -> dict:
     analysis_insert = (
         client.table("outfit_analyses")
         .insert(
@@ -384,8 +391,30 @@ def persist_analysis(user_id: str, storage_path: str, analysis: dict) -> dict:
     return {
         "photo_id": photo_row["id"],
         "analysis_id": analysis_row["id"],
-        "storage_path": storage_path
+        "storage_path": photo_row["storage_path"]
     }
+
+
+def persist_analysis_for_photo(user_id: str, photo_id: str, analysis: dict) -> dict:
+    client = get_supabase_client()
+    photo_response = (
+        client.table("photos")
+        .select("id,storage_path")
+        .eq("id", photo_id)
+        .eq("user_id", user_id)
+        .limit(1)
+        .execute()
+    )
+    photo_row = (photo_response.data or [None])[0]
+    if not photo_row:
+        raise ValueError("Photo not found for user.")
+    return _persist_analysis_for_photo(client, user_id, photo_row, analysis)
+
+
+def persist_analysis(user_id: str, storage_path: str, analysis: dict) -> dict:
+    client = get_supabase_client()
+    photo_row = create_photo_record(user_id, storage_path, client=client)
+    return _persist_analysis_for_photo(client, user_id, photo_row, analysis)
 
 
 def _normalize_signed_url(signed_data: dict) -> str | None:
@@ -533,6 +562,132 @@ def list_user_items(user_id: str, limit: int = 200) -> list[dict]:
         }
         for item in items
     ]
+
+
+def get_user_monthly_analysis_count(user_id: str, month_start_iso: str) -> int:
+    client = get_supabase_client()
+    response = (
+        client.table("outfit_analyses")
+        .select("id")
+        .eq("user_id", user_id)
+        .gte("created_at", month_start_iso)
+        .execute()
+    )
+    return len(response.data or [])
+
+
+def create_analysis_job(
+    user_id: str,
+    *,
+    photo_id: str,
+    storage_path: str,
+    mime_type: str,
+    analysis_model: str
+) -> dict:
+    client = get_supabase_client()
+    response = (
+        client.table("analysis_jobs")
+        .insert(
+            {
+                "user_id": user_id,
+                "photo_id": photo_id,
+                "storage_path": storage_path,
+                "mime_type": mime_type,
+                "analysis_model": analysis_model,
+                "status": "queued",
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            }
+        )
+        .execute()
+    )
+    return (response.data or [None])[0]
+
+
+def get_analysis_job_for_user(user_id: str, job_id: str) -> dict | None:
+    client = get_supabase_client()
+    response = (
+        client.table("analysis_jobs")
+        .select(
+            "id,user_id,photo_id,storage_path,mime_type,analysis_model,status,error_message,result_json,"
+            "created_at,started_at,completed_at,updated_at"
+        )
+        .eq("id", job_id)
+        .eq("user_id", user_id)
+        .limit(1)
+        .execute()
+    )
+    return (response.data or [None])[0]
+
+
+def claim_analysis_job(job_id: str) -> dict | None:
+    client = get_supabase_client()
+    now_iso = datetime.now(timezone.utc).isoformat()
+    response = (
+        client.table("analysis_jobs")
+        .update(
+            {
+                "status": "processing",
+                "started_at": now_iso,
+                "updated_at": now_iso
+            }
+        )
+        .eq("id", job_id)
+        .eq("status", "queued")
+        .execute()
+    )
+    return (response.data or [None])[0]
+
+
+def mark_analysis_job_completed(job_id: str, result_json: dict) -> None:
+    client = get_supabase_client()
+    now_iso = datetime.now(timezone.utc).isoformat()
+    (
+        client.table("analysis_jobs")
+        .update(
+            {
+                "status": "completed",
+                "result_json": result_json,
+                "error_message": None,
+                "completed_at": now_iso,
+                "updated_at": now_iso
+            }
+        )
+        .eq("id", job_id)
+        .execute()
+    )
+
+
+def mark_analysis_job_failed(job_id: str, error_message: str) -> None:
+    client = get_supabase_client()
+    now_iso = datetime.now(timezone.utc).isoformat()
+    (
+        client.table("analysis_jobs")
+        .update(
+            {
+                "status": "failed",
+                "error_message": (error_message or "Unknown error.")[:500],
+                "completed_at": now_iso,
+                "updated_at": now_iso
+            }
+        )
+        .eq("id", job_id)
+        .execute()
+    )
+
+
+def get_analysis_job_by_id(job_id: str) -> dict | None:
+    client = get_supabase_client()
+    response = (
+        client.table("analysis_jobs")
+        .select(
+            "id,user_id,photo_id,storage_path,mime_type,analysis_model,status,error_message,result_json,"
+            "created_at,started_at,completed_at,updated_at"
+        )
+        .eq("id", job_id)
+        .limit(1)
+        .execute()
+    )
+    return (response.data or [None])[0]
 
 
 def delete_wardrobe_photo(user_id: str, photo_id: str) -> bool:

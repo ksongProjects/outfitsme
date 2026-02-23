@@ -9,7 +9,10 @@ MODEL_CATALOG = [
         "label": "Gemini 2.5 Flash",
         "provider": "gemini",
         "supports_image": True
-    },
+    }
+]
+
+OPTIONAL_MODEL_CATALOG = [
     {
         "id": "bedrock-agent",
         "label": "AWS Bedrock Agent",
@@ -20,7 +23,10 @@ MODEL_CATALOG = [
 
 
 def get_model_catalog() -> list[dict]:
-    return [dict(model) for model in MODEL_CATALOG]
+    models = [dict(model) for model in MODEL_CATALOG]
+    if settings.ENABLE_BEDROCK_ANALYSIS:
+        models.extend(dict(model) for model in OPTIONAL_MODEL_CATALOG)
+    return models
 
 
 def build_model_availability(model_settings: dict) -> list[dict]:
@@ -30,7 +36,7 @@ def build_model_availability(model_settings: dict) -> list[dict]:
     bedrock_agent_alias_id = (model_settings.get("aws_bedrock_agent_alias_id") or "").strip()
 
     models = []
-    for model in MODEL_CATALOG:
+    for model in get_model_catalog():
         provider = model["provider"]
         available = True
         unavailable_reason = ""
@@ -56,6 +62,10 @@ def build_model_availability(model_settings: dict) -> list[dict]:
 
 def get_preferred_model(model_settings: dict) -> str:
     preferred = (model_settings.get("preferred_model") or "").strip()
-    if preferred:
+    catalog_ids = {model["id"] for model in get_model_catalog()}
+    if preferred and preferred in catalog_ids:
         return preferred
-    return settings.DEFAULT_ANALYSIS_MODEL
+    default_model = settings.DEFAULT_ANALYSIS_MODEL
+    if default_model in catalog_ids:
+        return default_model
+    return next(iter(catalog_ids), "gemini-2.5-flash")

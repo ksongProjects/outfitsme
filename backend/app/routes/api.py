@@ -1,23 +1,26 @@
 import requests
+from datetime import datetime, timezone
+from time import monotonic, sleep
 from flask import Blueprint, jsonify, request
 from gotrue.errors import AuthApiError
 
+from app.services.analysis_jobs_service import enqueue_analysis_job_processing
 from app.config import settings
-from app.services.bedrock_service import (
-    BedrockNotConfiguredError,
-    analyze_outfit_with_bedrock_agent,
-)
+from app.extensions import limiter
+from app.services.bedrock_service import BedrockNotConfiguredError
 from app.services.gemini_service import (
     GeminiNotConfiguredError,
-    analyze_outfit_with_gemini,
     probe_gemini_connectivity,
 )
 from app.services.models_service import build_model_availability, get_preferred_model
 from app.services.secrets_service import SettingsEncryptionError
 from app.services.supabase_service import (
     compose_outfit_from_items,
+    create_analysis_job,
+    create_photo_record,
     delete_wardrobe_outfit,
     get_dashboard_stats,
+    get_analysis_job_for_user,
     get_wardrobe_photo_details,
     get_user_model_settings,
     get_user_model_settings_masked,
@@ -25,8 +28,8 @@ from app.services.supabase_service import (
     SupabaseNotConfiguredError,
     get_supabase_client,
     get_user_id_from_token,
+    get_user_monthly_analysis_count,
     list_wardrobe,
-    persist_analysis,
     upsert_user_model_settings,
     upload_photo_for_user,
 )
@@ -41,13 +44,43 @@ def _extract_access_token() -> str | None:
     return header.removeprefix("Bearer ").strip() or None
 
 
-def _mask_shape(value: str) -> dict:
-    if not value:
-        return {"set": False, "prefix": "", "length": 0}
-    return {"set": True, "prefix": value[:8], "length": len(value)}
+def _rate_limit_key() -> str:
+    token = _extract_access_token()
+    if not token:
+        return request.remote_addr or "anonymous"
+    try:
+        user_id = get_user_id_from_token(token)
+        return f"user:{user_id}" if user_id else (request.remote_addr or "anonymous")
+    except Exception:  # noqa: BLE001
+        return request.remote_addr or "anonymous"
+
+
+def _current_month_window_utc() -> tuple[str, str]:
+    now = datetime.now(timezone.utc)
+    month_start_dt = datetime(now.year, now.month, 1, tzinfo=timezone.utc)
+    if now.month == 12:
+        next_month_start_dt = datetime(now.year + 1, 1, 1, tzinfo=timezone.utc)
+    else:
+        next_month_start_dt = datetime(now.year, now.month + 1, 1, tzinfo=timezone.utc)
+    return month_start_dt.isoformat(), next_month_start_dt.isoformat()
+
+
+def _build_analysis_usage(user_id: str) -> dict:
+    monthly_limit = settings.MONTHLY_ANALYSIS_LIMIT
+    month_start_iso, next_month_start_iso = _current_month_window_utc()
+    monthly_count = get_user_monthly_analysis_count(user_id, month_start_iso)
+    remaining = None if monthly_limit <= 0 else max(monthly_limit - monthly_count, 0)
+    return {
+        "monthly_limit": monthly_limit,
+        "used_this_month": monthly_count,
+        "remaining_this_month": remaining,
+        "month_start_utc": month_start_iso,
+        "next_month_start_utc": next_month_start_iso
+    }
 
 
 @api_bp.post("/analyze")
+@limiter.limit("5 per minute", key_func=_rate_limit_key)
 def analyze_outfit():
     access_token = _extract_access_token()
     if not access_token:
@@ -62,6 +95,22 @@ def analyze_outfit():
         user_id = get_user_id_from_token(access_token)
         if not user_id:
             return jsonify({"error": "Invalid or expired token."}), 401
+
+        usage = _build_analysis_usage(user_id)
+        monthly_limit = usage["monthly_limit"]
+        monthly_count = usage["used_this_month"]
+        if monthly_limit > 0 and monthly_count >= monthly_limit:
+                return (
+                    jsonify(
+                        {
+                            "error": "Monthly analysis limit reached.",
+                            "monthly_limit": monthly_limit,
+                            "used_this_month": monthly_count,
+                            "remaining_this_month": usage["remaining_this_month"]
+                        }
+                    ),
+                    429
+                )
 
         image_bytes = image.read()
         if not image_bytes:
@@ -79,67 +128,27 @@ def analyze_outfit():
         if not model_entry.get("available"):
             return jsonify({"error": model_entry.get("unavailable_reason") or "Selected model is unavailable."}), 400
 
-        if model_entry["provider"] == "gemini":
-            gemini_key = user_settings.get("gemini_api_key") or settings.GEMINI_API_KEY
-            analysis = analyze_outfit_with_gemini(
-                image_bytes,
-                mime_type,
-                model=chosen_model_id,
-                api_key=gemini_key
-            )
-        elif model_entry["provider"] == "bedrock_agent":
-            analysis = analyze_outfit_with_bedrock_agent(
-                image_bytes=image_bytes,
-                mime_type=mime_type,
-                agent_id=user_settings.get("aws_bedrock_agent_id", ""),
-                agent_alias_id=user_settings.get("aws_bedrock_agent_alias_id", ""),
-                aws_region=user_settings.get("aws_region", "")
-            )
-        else:
-            return jsonify({"error": f"Unsupported model provider: {model_entry['provider']}"}), 400
-        analysis_items = analysis.get("items", [])
-        analysis_outfits = analysis.get("outfits", [])
-        analysis_response = {
-            "style": analysis.get("style"),
-            "items": [dict(item) for item in analysis_items],
-            "outfits": [dict(outfit) for outfit in analysis_outfits],
-            "analysis_model": chosen_model_id
-        }
-
-        # Persist core analysis only (avoid storing large base64 image strings in DB).
-        analysis_for_persistence = {
-            "style": analysis.get("style"),
-            "items": [
-                {
-                    "category": item.get("category"),
-                    "name": item.get("name"),
-                    "color": item.get("color")
-                }
-                for item in analysis_items
-            ],
-            "outfits": [
-                {
-                    "style": outfit.get("style"),
-                    "items": [
-                        {
-                            "category": item.get("category"),
-                            "name": item.get("name"),
-                            "color": item.get("color")
-                        }
-                        for item in (outfit.get("items") or [])
-                        if isinstance(item, dict)
-                    ]
-                }
-                for outfit in analysis_outfits
-                if isinstance(outfit, dict)
-            ]
-        }
-
         image.stream.seek(0)
         storage_path = upload_photo_for_user(image, user_id)
-        persistence = persist_analysis(user_id, storage_path, analysis_for_persistence)
+        photo_row = create_photo_record(user_id, storage_path)
+        job_row = create_analysis_job(
+            user_id,
+            photo_id=photo_row["id"],
+            storage_path=storage_path,
+            mime_type=mime_type,
+            analysis_model=chosen_model_id
+        )
+        enqueue_analysis_job_processing(job_row["id"])
 
-        return jsonify({**analysis_response, **persistence}), 200
+        return jsonify(
+            {
+                "job_id": job_row["id"],
+                "status": job_row.get("status", "queued"),
+                "analysis_model": chosen_model_id,
+                "photo_id": photo_row["id"],
+                "created_at": job_row.get("created_at")
+            }
+        ), 202
     except SupabaseNotConfiguredError as exc:
         return jsonify({"error": str(exc)}), 500
     except GeminiNotConfiguredError as exc:
@@ -171,6 +180,58 @@ def analyze_outfit():
         return jsonify({"error": "Invalid or expired token."}), 401
     except Exception as exc:  # noqa: BLE001
         return jsonify({"error": f"Analyze failed: {exc}"}), 500
+
+
+@api_bp.get("/analyze/jobs/<job_id>")
+def get_analyze_job(job_id: str):
+    access_token = _extract_access_token()
+    if not access_token:
+        return jsonify({"error": "Missing bearer token."}), 401
+
+    try:
+        user_id = get_user_id_from_token(access_token)
+        if not user_id:
+            return jsonify({"error": "Invalid or expired token."}), 401
+
+        wait_seconds_raw = request.args.get("wait_seconds", "0")
+        try:
+            wait_seconds = int(wait_seconds_raw)
+        except ValueError:
+            wait_seconds = 0
+        wait_seconds = max(0, min(wait_seconds, 20))
+
+        deadline = monotonic() + wait_seconds
+        job_row = None
+        while True:
+            job_row = get_analysis_job_for_user(user_id, job_id)
+            if not job_row:
+                return jsonify({"error": "Job not found."}), 404
+            if job_row.get("status") == "queued":
+                enqueue_analysis_job_processing(job_id)
+            if job_row.get("status") in {"completed", "failed"}:
+                break
+            if monotonic() >= deadline:
+                break
+            sleep(1)
+
+        return jsonify(
+            {
+                "job_id": job_row.get("id"),
+                "status": job_row.get("status"),
+                "error_message": job_row.get("error_message"),
+                "result": job_row.get("result_json"),
+                "created_at": job_row.get("created_at"),
+                "started_at": job_row.get("started_at"),
+                "completed_at": job_row.get("completed_at"),
+                "updated_at": job_row.get("updated_at")
+            }
+        ), 200
+    except SupabaseNotConfiguredError as exc:
+        return jsonify({"error": str(exc)}), 500
+    except AuthApiError:
+        return jsonify({"error": "Invalid or expired token."}), 401
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"error": f"Analyze job lookup failed: {exc}"}), 500
 
 
 @api_bp.post("/similar")
@@ -365,8 +426,38 @@ def get_stats():
         return jsonify({"error": f"Stats lookup failed: {exc}"}), 500
 
 
+@api_bp.get("/limits")
+def get_limits():
+    access_token = _extract_access_token()
+    if not access_token:
+        return jsonify({"error": "Missing bearer token."}), 401
+
+    try:
+        user_id = get_user_id_from_token(access_token)
+        if not user_id:
+            return jsonify({"error": "Invalid or expired token."}), 401
+
+        usage = _build_analysis_usage(user_id)
+        return jsonify(
+            {
+                "user_id": user_id,
+                "analysis": usage,
+                "rate_limit": {"analyze": "5 per minute"}
+            }
+        ), 200
+    except SupabaseNotConfiguredError as exc:
+        return jsonify({"error": str(exc)}), 500
+    except AuthApiError:
+        return jsonify({"error": "Invalid or expired token."}), 401
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"error": f"Limits lookup failed: {exc}"}), 500
+
+
 @api_bp.get("/diagnostics")
 def diagnostics():
+    if not settings.DIAGNOSTICS_ENABLED:
+        return jsonify({"error": "Not found."}), 404
+
     checks = {
         "supabase": {"ok": False, "message": ""},
         "gemini": {"ok": False, "message": ""}
@@ -405,8 +496,6 @@ def diagnostics():
         "supabase_secret_key_set": bool(settings.SUPABASE_SECRET_KEY),
         "gemini_api_key_set": bool(settings.GEMINI_API_KEY),
         "gemini_model": settings.GEMINI_MODEL,
-        "supabase_key_shape": _mask_shape(settings.SUPABASE_SECRET_KEY),
-        "gemini_key_shape": _mask_shape(settings.GEMINI_API_KEY),
         "config_env_path": "backend/.env"
     }
 
