@@ -60,6 +60,12 @@ export default function HomePage() {
     }
   }, [dashboardTab, accessToken]);
 
+  useEffect(() => {
+    if (dashboardTab === "analyze" && accessToken) {
+      historyState.loadHistory();
+    }
+  }, [dashboardTab, accessToken]);
+
   const handleSignOut = useCallback(async () => {
     await auth.signOut();
     analysisState.resetAnalysisState();

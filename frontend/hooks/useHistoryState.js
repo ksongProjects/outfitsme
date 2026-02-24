@@ -27,7 +27,7 @@ export function useHistoryState({ accessToken }) {
       const payload = await response.json();
       return payload.history || [];
     },
-    enabled: Boolean(accessToken),
+    enabled: false,
     staleTime: 20_000
   });
 

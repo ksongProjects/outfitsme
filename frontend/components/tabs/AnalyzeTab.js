@@ -379,7 +379,7 @@ export default function AnalyzeTab() {
         ) : null}
         </section>
       </div>
-      <div style={{ marginTop: "18px" }}>
+      <div className="analysis-history-wrap">
         <HistoryTab />
       </div>
     </section>

@@ -262,6 +262,10 @@ input {
   grid-template-columns: 1fr 1fr;
 }
 
+.analysis-history-wrap {
+  margin-top: 18px;
+}
+
 input[type="file"] {
   margin: 10px 0 12px;
 }
@@ -509,7 +513,7 @@ input[type="file"] {
 .stats-grid {
   margin-top: 12px;
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
   gap: 10px;
 }
 
