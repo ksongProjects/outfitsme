@@ -9,6 +9,17 @@
   --accent: #0d5f4f;
   --accent-2: #e08b4b;
   --shadow: 0 10px 30px rgba(16, 36, 63, 0.08);
+  --btn-primary-bg: #0b5d4b;
+  --btn-primary-hover: #084a3c;
+  --btn-primary-disabled: #8ea9a2;
+  --btn-ghost-bg: #ffffff;
+  --btn-ghost-border: #cfc7b8;
+  --btn-ghost-text: #1a2e2a;
+  --btn-ghost-hover: #f7f3ea;
+  --btn-danger-bg: #b83232;
+  --btn-danger-hover: #982727;
+  --btn-danger-border: #a52a2a;
+  --btn-focus-ring: rgba(11, 93, 75, 0.25);
 }
 
 * {
@@ -76,6 +87,7 @@ select {
   display: inline-flex;
   align-items: center;
   gap: 10px;
+  position: relative;
 }
 
 .hero-badge {
@@ -86,6 +98,20 @@ select {
   background: #fff;
   overflow: hidden;
   flex-shrink: 0;
+}
+
+.hero-badge-button {
+  border: 0;
+  background: transparent;
+  border-radius: 999px;
+  padding: 0;
+  line-height: 0;
+  cursor: pointer;
+}
+
+.hero-badge-button:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--btn-focus-ring);
 }
 
 .hero-badge-image {
@@ -104,6 +130,39 @@ select {
   color: var(--muted);
 }
 
+.account-menu {
+  position: absolute;
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 160px;
+  background: #fff;
+  border: 1px solid var(--btn-ghost-border);
+  border-radius: 12px;
+  box-shadow: var(--shadow);
+  padding: 6px;
+  z-index: 1200;
+}
+
+.account-menu-item {
+  width: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--btn-ghost-text);
+  border-radius: 8px;
+  padding: 9px 10px;
+  text-align: left;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.account-menu-item:hover {
+  background: var(--btn-ghost-hover);
+}
+
+.account-menu-item.danger {
+  color: #8f1d1d;
+}
+
 .brand {
   font-size: 1.45rem;
   font-weight: 800;
@@ -120,6 +179,19 @@ select {
 
 .dashboard-header .eyebrow {
   font-size: 1.25rem;
+}
+
+.outfitme-home-btn {
+  border: 0;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+}
+
+.outfitme-home-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--btn-focus-ring);
+  border-radius: 6px;
 }
 
 .hero {
@@ -299,10 +371,11 @@ select.text-input {
 .ghost-btn,
 .primary-btn {
   border-radius: 999px;
-  padding: 10px 14px;
+  padding: 10px 16px;
   border: 1px solid transparent;
   cursor: pointer;
   transition: all 0.2s ease;
+  font-weight: 600;
 }
 
 .link-btn {
@@ -324,9 +397,9 @@ select.text-input {
   width: 34px;
   height: 34px;
   border-radius: 999px;
-  border: 1px solid var(--line);
-  background: #fff;
-  color: var(--ink);
+  border: 1px solid var(--btn-ghost-border);
+  background: var(--btn-ghost-bg);
+  color: var(--btn-ghost-text);
   cursor: pointer;
 }
 
@@ -335,41 +408,63 @@ select.text-input {
   cursor: not-allowed;
 }
 
+.primary-btn:focus-visible,
+.ghost-btn:focus-visible,
+.tab-btn:focus-visible,
+.icon-btn:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px var(--btn-focus-ring);
+}
+
 .danger-icon-btn {
-  color: #8f1d1d;
-  border-color: #e0b4b4;
+  color: #fff;
+  border-color: var(--btn-danger-border);
+  background: var(--btn-danger-bg);
+}
+
+.danger-icon-btn:hover {
+  background: var(--btn-danger-hover);
 }
 
 .primary-btn {
-  background: var(--accent);
+  background: var(--btn-primary-bg);
   color: #fff;
+  border-color: var(--btn-primary-bg);
 }
 
 .primary-btn:hover {
-  background: #0a4f42;
+  background: var(--btn-primary-hover);
+  border-color: var(--btn-primary-hover);
 }
 
 .ghost-btn,
 .tab-btn {
-  background: #fff;
-  border-color: var(--line);
-  color: var(--ink);
+  background: var(--btn-ghost-bg);
+  border-color: var(--btn-ghost-border);
+  color: var(--btn-ghost-text);
+}
+
+.ghost-btn:hover,
+.tab-btn:hover {
+  background: var(--btn-ghost-hover);
 }
 
 .tab-btn.active {
-  background: var(--ink);
+  background: var(--btn-primary-bg);
   color: #fff;
-  border-color: var(--ink);
+  border-color: var(--btn-primary-bg);
 }
 
 .tab-btn[data-active] {
-  background: var(--ink);
+  background: var(--btn-primary-bg);
   color: #fff;
-  border-color: var(--ink);
+  border-color: var(--btn-primary-bg);
 }
 
 .primary-btn:disabled {
-  background: #9eb8b2;
+  background: var(--btn-primary-disabled);
+  border-color: var(--btn-primary-disabled);
+  color: #f8f8f8;
   cursor: not-allowed;
 }
 

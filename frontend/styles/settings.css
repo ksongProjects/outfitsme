@@ -42,17 +42,22 @@
 
 .settings-menu-btn {
   text-align: left;
-  border: 1px solid var(--line);
-  background: #fff;
-  color: var(--ink);
+  border: 1px solid var(--btn-ghost-border);
+  background: var(--btn-ghost-bg);
+  color: var(--btn-ghost-text);
   border-radius: 10px;
   padding: 10px 12px;
   cursor: pointer;
+  font-weight: 600;
+}
+
+.settings-menu-btn:hover {
+  background: var(--btn-ghost-hover);
 }
 
 .settings-menu-btn.active {
-  border-color: var(--ink);
-  background: var(--ink);
+  border-color: var(--btn-primary-bg);
+  background: var(--btn-primary-bg);
   color: #fff;
 }
 

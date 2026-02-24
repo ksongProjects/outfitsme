@@ -154,7 +154,7 @@ export default function OutfitsTab() {
                 type="button"
                 variant="ghost"
                 onClick={handleGenerateOutfitMe}
-                disabled={outfitMeLoading || !profilePhotoUrl}
+                disabled={outfitMeLoading}
                 title={profilePhotoUrl ? "Generate OutfitMe preview" : "Profile photo required for OutfitMe"}
               >
                 {outfitMeLoading ? "OutfitMe..." : "OutfitMe"}

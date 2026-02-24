@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Tabs } from "@base-ui/react/tabs";
 import { User } from "lucide-react";
 
@@ -8,7 +8,6 @@ import AnalyzeTab from "../components/tabs/AnalyzeTab";
 import OutfitsTab from "../components/tabs/OutfitsTab";
 import ItemsTab from "../components/tabs/ItemsTab";
 import SettingsTab from "../components/tabs/SettingsTab";
-import BaseButton from "../components/ui/BaseButton";
 import { DashboardProviders } from "../context/DashboardContext";
 import { useAuthState } from "../hooks/useAuthState";
 import { useStatsState } from "../hooks/useStatsState";
@@ -20,6 +19,8 @@ import { useSettingsState } from "../hooks/useSettingsState";
 
 export default function HomePage() {
   const [dashboardTab, setDashboardTab] = useState("dashboard");
+  const [accountMenuOpen, setAccountMenuOpen] = useState(false);
+  const accountMenuRef = useRef(null);
 
   const auth = useAuthState();
   const accessToken = auth.session?.access_token || "";
@@ -77,6 +78,7 @@ export default function HomePage() {
   }, [dashboardTab, accessToken]);
 
   const handleSignOut = useCallback(async () => {
+    setAccountMenuOpen(false);
     await auth.signOut();
     analysisState.resetAnalysisState();
     wardrobeState.resetWardrobeState();
@@ -90,6 +92,34 @@ export default function HomePage() {
     itemsState.resetItemsState,
     historyState.resetHistoryState
   ]);
+
+  useEffect(() => {
+    if (!accountMenuOpen) {
+      return undefined;
+    }
+
+    const handleDocumentPointerDown = (event) => {
+      if (!accountMenuRef.current) {
+        return;
+      }
+      if (!accountMenuRef.current.contains(event.target)) {
+        setAccountMenuOpen(false);
+      }
+    };
+
+    const handleDocumentKeyDown = (event) => {
+      if (event.key === "Escape") {
+        setAccountMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleDocumentPointerDown);
+    document.addEventListener("keydown", handleDocumentKeyDown);
+    return () => {
+      document.removeEventListener("mousedown", handleDocumentPointerDown);
+      document.removeEventListener("keydown", handleDocumentKeyDown);
+    };
+  }, [accountMenuOpen]);
 
   const authValue = useMemo(() => ({
     authTab: auth.authTab,
@@ -253,7 +283,13 @@ export default function HomePage() {
         <main className="dashboard">
           <header className="dashboard-header">
             <div>
-              <p className="eyebrow">OutfitMe</p>
+              <button
+                type="button"
+                className="eyebrow outfitme-home-btn"
+                onClick={() => setDashboardTab("dashboard")}
+              >
+                OutfitMe
+              </button>
               <h1>{userFullName ? `Welcome back, ${userFullName}` : "Welcome back"}</h1>
               <p className="subtext">
                 {userFullName
@@ -261,17 +297,48 @@ export default function HomePage() {
                   : `Signed in as ${userLabel}`}
               </p>
             </div>
-            <div className="dashboard-user-actions">
-              <div className="hero-badge" aria-label={settingsState.profilePhotoUrl ? "Profile photo uploaded" : "Default profile badge"}>
-                {settingsState.profilePhotoUrl ? (
-                  <img src={settingsState.profilePhotoUrl} alt="Profile badge" className="hero-badge-image" />
-                ) : (
-                  <span className="hero-badge-fallback" aria-hidden="true">
-                    <User size={22} />
-                  </span>
-                )}
-              </div>
-              <BaseButton variant="ghost" onClick={handleSignOut}>Sign out</BaseButton>
+            <div className="dashboard-user-actions" ref={accountMenuRef}>
+              <button
+                type="button"
+                className="hero-badge-button"
+                aria-label="Account menu"
+                aria-haspopup="menu"
+                aria-expanded={accountMenuOpen}
+                onClick={() => setAccountMenuOpen((current) => !current)}
+              >
+                <div className="hero-badge" aria-label={settingsState.profilePhotoUrl ? "Profile photo uploaded" : "Default profile badge"}>
+                  {settingsState.profilePhotoUrl ? (
+                    <img src={settingsState.profilePhotoUrl} alt="Profile badge" className="hero-badge-image" />
+                  ) : (
+                    <span className="hero-badge-fallback" aria-hidden="true">
+                      <User size={22} />
+                    </span>
+                  )}
+                </div>
+              </button>
+              {accountMenuOpen ? (
+                <div className="account-menu" role="menu" aria-label="Account actions">
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="account-menu-item"
+                    onClick={() => {
+                      setDashboardTab("settings");
+                      setAccountMenuOpen(false);
+                    }}
+                  >
+                    Settings
+                  </button>
+                  <button
+                    type="button"
+                    role="menuitem"
+                    className="account-menu-item danger"
+                    onClick={handleSignOut}
+                  >
+                    Sign out
+                  </button>
+                </div>
+              ) : null}
             </div>
           </header>
 
@@ -282,7 +349,6 @@ export default function HomePage() {
                 <Tabs.Tab className="tab-btn" value="analyze">Photo analysis</Tabs.Tab>
                 <Tabs.Tab className="tab-btn" value="wardrobe">My Outfits</Tabs.Tab>
                 <Tabs.Tab className="tab-btn" value="items">Item catalog</Tabs.Tab>
-                <Tabs.Tab className="tab-btn" value="settings">Settings</Tabs.Tab>
               </Tabs.List>
 
               <Tabs.Panel value="dashboard">

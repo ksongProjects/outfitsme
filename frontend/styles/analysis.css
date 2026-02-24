@@ -191,8 +191,14 @@ input[type="file"] {
 }
 
 .danger-btn {
-  color: #8f1d1d;
-  border-color: #e0b4b4;
+  color: #fff;
+  border-color: var(--btn-danger-border);
+  background: var(--btn-danger-bg);
+}
+
+.danger-btn:hover {
+  background: var(--btn-danger-hover);
+  border-color: var(--btn-danger-border);
 }
 
 .data-table {
