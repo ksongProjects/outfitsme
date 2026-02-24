@@ -368,7 +368,7 @@ export default function AnalyzeTab() {
                 {detectedOutfits.map((outfit, index) => (
                   <div key={`outfit-${index}`} className="outfit-group">
                     <p>
-                      <strong>Outfit {index + 1}:</strong> {outfit.style}
+                      <strong>Outfit :</strong> {outfit.style}
                     </p>
                     <div className="button-row">
                       <BaseButton

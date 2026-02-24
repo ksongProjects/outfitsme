@@ -246,9 +246,6 @@ export default function OutfitsTab() {
               <img src={outfitDetails.outfitme_image_url} alt="OutfitMe preview" className="modal-image" />
             ) : null}
             <div>
-              <h4>
-                Outfit {(outfitDetails?.selected_outfit?.outfit_index ?? 0) + 1}
-              </h4>
               {outfitDetails?.selected_outfit ? (
                 <div className="outfit-group">
                   {isEditingName ? (
