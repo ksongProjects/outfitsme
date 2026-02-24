@@ -39,10 +39,6 @@ export function useHistoryState({ accessToken }) {
     const result = await historyQuery.refetch();
     if (result.isError) {
       toast.error("Couldn't load history.");
-      return;
-    }
-    if ((result.data || []).length === 0) {
-      toast.info("No history yet.");
     }
   };
 

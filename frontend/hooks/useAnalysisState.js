@@ -59,10 +59,12 @@ export function useAnalysisState({ accessToken, onAnalysisSaved }) {
 
           const pollJson = await pollRes.json();
           const status = pollJson.status || "queued";
+          const progress = pollJson?.result?.progress || null;
           setJobStatus({
             jobId,
             status,
-            updatedAt: pollJson.updated_at || null
+            updatedAt: pollJson.updated_at || null,
+            progress
           });
 
           if (status === "completed") {
@@ -109,7 +111,8 @@ export function useAnalysisState({ accessToken, onAnalysisSaved }) {
         setJobStatus({
           jobId: analyzePayload.job_id,
           status: analyzePayload.status || "queued",
-          updatedAt: analyzePayload.created_at || null
+          updatedAt: analyzePayload.created_at || null,
+          progress: analyzePayload?.result?.progress || null
         });
         analyzeJson = await pollAnalyzeJob(analyzePayload.job_id);
       } else if (!Array.isArray(analyzePayload?.items)) {

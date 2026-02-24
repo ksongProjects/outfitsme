@@ -46,10 +46,6 @@ export function useItemsState({ accessToken }) {
     const result = await itemsQuery.refetch();
     if (result.isError) {
       toast.error("Couldn't load item catalog.");
-      return;
-    }
-    if ((result.data || []).length === 0) {
-      toast.info("No items yet.");
     }
   };
 

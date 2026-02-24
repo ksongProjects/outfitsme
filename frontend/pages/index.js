@@ -200,19 +200,25 @@ export default function HomePage() {
     savePassword: settingsState.savePassword,
     settingsForm: settingsState.settingsForm,
     setSettingsForm: settingsState.setSettingsForm,
+    profilePhotoUrl: settingsState.profilePhotoUrl,
+    profilePhotoUploading: settingsState.profilePhotoUploading,
     saveModelSettings: settingsState.saveModelSettings,
     costSummary: settingsState.costSummary,
     costSummaryLoading: settingsState.costSummaryLoading,
     loadCosts: settingsState.loadCosts,
+    uploadProfilePhoto: settingsState.uploadProfilePhoto,
     modelOptions: analysisState.modelOptions
   }), [
     settingsState.profileName,
     settingsState.newEmail,
     settingsState.newPassword,
     settingsState.settingsForm,
+    settingsState.profilePhotoUrl,
+    settingsState.profilePhotoUploading,
     settingsState.costSummary,
     settingsState.costSummaryLoading,
     settingsState.loadCosts,
+    settingsState.uploadProfilePhoto,
     analysisState.modelOptions
   ]);
 

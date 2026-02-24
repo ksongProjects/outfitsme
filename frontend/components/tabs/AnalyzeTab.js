@@ -4,13 +4,12 @@ import { useAnalysisContext } from "../../context/DashboardContext";
 import HistoryTab from "./HistoryTab";
 import BaseButton from "../ui/BaseButton";
 import BaseSelect from "../ui/BaseSelect";
+import ImageUploadField from "../ui/ImageUploadField";
 
 export default function AnalyzeTab() {
-  const [isDragOver, setIsDragOver] = useState(false);
   const [interaction, setInteraction] = useState(null);
   const {
     previewUrl,
-    onFileChange,
     onFileDrop,
     fileName,
     clearSelectedFile,
@@ -20,7 +19,6 @@ export default function AnalyzeTab() {
     disabled,
     loading,
     analysis,
-    similarResults,
     selectedModel,
     setSelectedModel,
     modelOptions,
@@ -35,6 +33,9 @@ export default function AnalyzeTab() {
   const usedThisMonth = analysisLimits?.used_this_month ?? 0;
   const remainingThisMonth = analysisLimits?.remaining_this_month;
   const hasMonthlyCap = monthlyLimit > 0;
+  const progress = jobStatus?.progress || null;
+  const progressCounts = progress?.counts || null;
+  const progressCurrentItem = progress?.current_item || null;
 
   const clamp01 = (value) => Math.min(1, Math.max(0, value));
   const MIN_CROP_SIZE = 0.01;
@@ -197,26 +198,6 @@ export default function AnalyzeTab() {
     }
   };
 
-  const handleDragOver = (event) => {
-    event.preventDefault();
-    setIsDragOver(true);
-  };
-
-  const handleDragLeave = (event) => {
-    event.preventDefault();
-    setIsDragOver(false);
-  };
-
-  const handleDrop = async (event) => {
-    event.preventDefault();
-    setIsDragOver(false);
-    const droppedFile = event.dataTransfer?.files?.[0];
-    if (!droppedFile) {
-      return;
-    }
-    await onFileDrop(droppedFile);
-  };
-
   return (
     <section>
       <div className="tab-header">
@@ -262,27 +243,44 @@ export default function AnalyzeTab() {
           )}
         </div>
         {jobStatus ? (
-          <p className="subtext">
-            Queue status: <strong>{jobStatus.status}</strong>{jobStatus.jobId ? ` (job ${jobStatus.jobId.slice(0, 8)})` : ""}
-          </p>
+          <>
+            <p className="subtext">
+              Queue status: <strong>{jobStatus.status}</strong>{jobStatus.jobId ? ` (job ${jobStatus.jobId.slice(0, 8)})` : ""}
+            </p>
+            {progress?.message ? (
+              <p className="subtext">{progress.message}</p>
+            ) : null}
+            {progress?.stage ? (
+              <p className="subtext">Current stage: {progress.stage}</p>
+            ) : null}
+            {progressCounts && progressCounts.disabled ? (
+              <p className="subtext">Item image generation is disabled.</p>
+            ) : null}
+            {progressCounts && typeof progressCounts.total_items === "number" && progressCounts.total_items > 0 ? (
+              <p className="subtext">
+                Item images: {progressCounts.processed_items || 0}/{progressCounts.total_items || 0} processed, {progressCounts.generated_items || 0} generated, {progressCounts.failed_items || 0} failed
+              </p>
+            ) : null}
+            {progressCurrentItem?.index ? (
+              <p className="subtext">
+                Current item {progressCurrentItem.index}: {formatItemLabel(progressCurrentItem)}
+              </p>
+            ) : null}
+          </>
         ) : null}
         {activeAnalysisCount > 0 ? (
           <p className="subtext">
             Active analysis jobs: <strong>{activeAnalysisCount}</strong> / {maxConcurrentAnalysisJobs}
           </p>
         ) : null}
-        <label
-          htmlFor="image-upload"
-          className={`dropzone ${isDragOver ? "is-dragover" : ""}`}
-          onDragOver={handleDragOver}
-          onDragLeave={handleDragLeave}
-          onDrop={handleDrop}
-        >
-          <p className="dropzone-title">Drag and drop an image here</p>
-          <p className="dropzone-subtext">or click to browse files</p>
-          <p className="dropzone-file">{fileName || "No file selected"}</p>
-        </label>
-        <input id="image-upload" className="file-input-hidden" type="file" accept="image/*" onChange={onFileChange} />
+        <ImageUploadField
+          id="image-upload"
+          fileName={fileName}
+          onFileSelect={onFileDrop}
+          title="Drag and drop an image here"
+          subtext="or click to browse files"
+          emptyText="No file selected"
+        />
         {previewUrl ? (
           <div className="crop-preview-wrap">
             <img className="preview" src={previewUrl} alt="Selected outfit" draggable={false} />
@@ -349,6 +347,9 @@ export default function AnalyzeTab() {
                     <ul className="analysis-items">
                       {(outfit.items || []).map((item, itemIndex) => (
                         <li key={`${index}-${item.name}-${itemIndex}`} className="analysis-item">
+                          {item.image_url ? (
+                            <img src={item.image_url} alt={item.name || "Detected item"} className="analysis-item-thumb" />
+                          ) : null}
                           <span className="item-icon" aria-hidden="true">{getItemIcon(item)}</span>
                           <span>{formatItemLabel(item)}</span>
                         </li>
@@ -365,6 +366,9 @@ export default function AnalyzeTab() {
                 <ul className="analysis-items">
                   {analysis.items.map((item, itemIndex) => (
                     <li key={`${item.name}-${itemIndex}`} className="analysis-item">
+                      {item.image_url ? (
+                        <img src={item.image_url} alt={item.name || "Detected item"} className="analysis-item-thumb" />
+                      ) : null}
                       <span className="item-icon" aria-hidden="true">{getItemIcon(item)}</span>
                       <span>{formatItemLabel(item)}</span>
                     </li>
@@ -372,19 +376,6 @@ export default function AnalyzeTab() {
                 </ul>
               </>
             )}
-          </>
-        ) : null}
-
-        {similarResults.length > 0 ? (
-          <>
-            <h3>Similar items</h3>
-            <ul>
-              {similarResults.map((result) => (
-                <li key={`${result.store}-${result.item}`}>
-                  <strong>{result.item}</strong> - {result.store} - {result.price} - {result.availability}
-                </li>
-              ))}
-            </ul>
           </>
         ) : null}
         </section>

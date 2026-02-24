@@ -31,6 +31,7 @@ from app.services.supabase_service import (
     get_user_monthly_analysis_count,
     get_user_monthly_composed_outfit_count,
     get_user_cost_summary,
+    save_user_profile_photo,
     list_wardrobe,
     upsert_user_model_settings,
     upload_photo_for_user,
@@ -622,3 +623,30 @@ def get_settings_costs():
         return jsonify({"error": "Invalid or expired token."}), 401
     except Exception as exc:  # noqa: BLE001
         return jsonify({"error": f"Costs lookup failed: {exc}"}), 500
+
+
+@api_bp.post("/settings/profile-photo")
+def upload_profile_photo():
+    access_token = _extract_access_token()
+    if not access_token:
+        return jsonify({"error": "Missing bearer token."}), 401
+
+    image = request.files.get("image")
+    if image is None or image.filename == "":
+        return jsonify({"error": "Image file is required."}), 400
+
+    try:
+        user_id = get_user_id_from_token(access_token)
+        if not user_id:
+            return jsonify({"error": "Invalid or expired token."}), 401
+
+        result = save_user_profile_photo(user_id, image)
+        return jsonify(result), 200
+    except SupabaseNotConfiguredError as exc:
+        return jsonify({"error": str(exc)}), 500
+    except SettingsEncryptionError as exc:
+        return jsonify({"error": str(exc)}), 500
+    except AuthApiError:
+        return jsonify({"error": "Invalid or expired token."}), 401
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"error": f"Profile photo upload failed: {exc}"}), 500

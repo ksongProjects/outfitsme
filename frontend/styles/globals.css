@@ -736,6 +736,17 @@ ul {
   margin-bottom: 10px;
 }
 
+.analysis-item-thumb,
+.item-thumb {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  object-fit: cover;
+  background: #fff;
+  flex-shrink: 0;
+}
+
 .outfit-group + .outfit-group {
   margin-top: 14px;
   padding-top: 10px;
@@ -860,6 +871,15 @@ ul {
 
 .feature-disabled {
   opacity: 0.65;
+}
+
+.profile-photo-preview {
+  width: 180px;
+  height: 180px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  object-fit: cover;
+  background: #fff;
 }
 
 .compact-list {

@@ -10,6 +10,8 @@ export function useSettingsState({ session, accessToken, onModelSettingsUpdated 
   const [profileName, setProfileName] = useState("");
   const [newEmail, setNewEmail] = useState("");
   const [newPassword, setNewPassword] = useState("");
+  const [profilePhotoUrl, setProfilePhotoUrl] = useState("");
+  const [profilePhotoUploading, setProfilePhotoUploading] = useState(false);
   const [settingsForm, setSettingsForm] = useState({
     preferred_model: "gemini-2.5-flash",
     gemini_api_key: "",
@@ -91,6 +93,7 @@ export function useSettingsState({ session, accessToken, onModelSettingsUpdated 
       enable_outfit_image_generation: Boolean(current.enable_outfit_image_generation),
       enable_online_store_search: Boolean(current.enable_online_store_search)
     }));
+    setProfilePhotoUrl(current.profile_photo_url || "");
   };
 
   const loadCosts = async () => {
@@ -114,7 +117,12 @@ export function useSettingsState({ session, accessToken, onModelSettingsUpdated 
       return;
     }
     try {
-      await saveModelSettingsMutation.mutateAsync(settingsForm);
+      await saveModelSettingsMutation.mutateAsync({
+        profile_gender: settingsForm.profile_gender,
+        profile_age: settingsForm.profile_age,
+        enable_outfit_image_generation: settingsForm.enable_outfit_image_generation,
+        enable_online_store_search: settingsForm.enable_online_store_search
+      });
       toast.success("Profile updated.");
     } catch (err) {
       toast.error(err.message || "Profile updated, but feature profile settings failed to save.");
@@ -156,7 +164,21 @@ export function useSettingsState({ session, accessToken, onModelSettingsUpdated 
     }
 
     try {
-      await saveModelSettingsMutation.mutateAsync(settingsForm);
+      const payload = {
+        preferred_model: settingsForm.preferred_model,
+        aws_region: settingsForm.aws_region,
+        aws_bedrock_agent_id: settingsForm.aws_bedrock_agent_id,
+        aws_bedrock_agent_alias_id: settingsForm.aws_bedrock_agent_alias_id,
+        profile_gender: settingsForm.profile_gender,
+        profile_age: settingsForm.profile_age,
+        enable_outfit_image_generation: settingsForm.enable_outfit_image_generation,
+        enable_online_store_search: settingsForm.enable_online_store_search
+      };
+      const nextGeminiKey = String(settingsForm.gemini_api_key || "").trim();
+      if (nextGeminiKey) {
+        payload.gemini_api_key = nextGeminiKey;
+      }
+      await saveModelSettingsMutation.mutateAsync(payload);
       setSettingsForm((prev) => ({
         ...prev,
         gemini_api_key: ""
@@ -168,6 +190,36 @@ export function useSettingsState({ session, accessToken, onModelSettingsUpdated 
       loadModelSettings();
     } catch (err) {
       toast.error(err.message || "Failed to save model settings.");
+    }
+  };
+
+  const uploadProfilePhoto = async (file) => {
+    if (!accessToken || !file) {
+      return;
+    }
+    setProfilePhotoUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append("image", file);
+      const response = await fetch(`${API_BASE}/api/settings/profile-photo`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        },
+        body: formData
+      });
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}));
+        throw new Error(errorBody.error || "Failed to upload profile photo.");
+      }
+      const payload = await response.json();
+      setProfilePhotoUrl(payload.profile_photo_url || "");
+      toast.success("Profile photo updated.");
+      await queryClient.invalidateQueries({ queryKey: ["model-settings", accessToken] });
+    } catch (err) {
+      toast.error(err.message || "Failed to upload profile photo.");
+    } finally {
+      setProfilePhotoUploading(false);
     }
   };
 
@@ -206,10 +258,13 @@ export function useSettingsState({ session, accessToken, onModelSettingsUpdated 
     setNewPassword,
     settingsForm,
     setSettingsForm,
+    profilePhotoUrl,
+    profilePhotoUploading,
     costSummary: costsQuery.data?.costs || null,
     costSummaryLoading: costsQuery.isFetching,
     loadModelSettings,
     loadCosts,
+    uploadProfilePhoto,
     saveProfile,
     saveEmail,
     savePassword,

@@ -667,7 +667,22 @@ def list_items_for_analysis(user_id: str, analysis_id: str) -> list[dict]:
         .order("created_at", desc=False)
         .execute()
     )
-    return response.data or []
+    rows = response.data or []
+    enriched = []
+    for row in rows:
+        attributes = _coerce_dict(row.get("attributes_json") or {})
+        image_path = attributes.get("generated_item_image_path") or ""
+        enriched.append(
+            {
+                **row,
+                "image_url": (
+                    get_signed_image_url(image_path, expires_in_seconds=3600)
+                    if image_path
+                    else None
+                )
+            }
+        )
+    return enriched
 
 
 def _decode_image_data_uri(data_uri: str) -> tuple[bytes, str]:
@@ -730,10 +745,11 @@ def save_generated_item_image(user_id: str, item_id: str, data_uri: str) -> dict
 def get_user_monthly_analysis_count(user_id: str, month_start_iso: str) -> int:
     client = get_supabase_client()
     response = (
-        client.table("outfit_analyses")
+        client.table("analysis_jobs")
         .select("id")
         .eq("user_id", user_id)
-        .gte("created_at", month_start_iso)
+        .eq("status", "completed")
+        .gte("completed_at", month_start_iso)
         .execute()
     )
     return len(response.data or [])
@@ -847,6 +863,22 @@ def mark_analysis_job_failed(job_id: str, error_message: str) -> None:
             }
         )
         .eq("id", job_id)
+        .execute()
+    )
+
+
+def mark_analysis_job_progress(job_id: str, progress: dict) -> None:
+    client = get_supabase_client()
+    (
+        client.table("analysis_jobs")
+        .update(
+            {
+                "result_json": {"progress": progress},
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            }
+        )
+        .eq("id", job_id)
+        .eq("status", "processing")
         .execute()
     )
 
@@ -1338,6 +1370,7 @@ def _empty_model_settings() -> dict:
         "aws_bedrock_agent_alias_id": "",
         "profile_gender": "",
         "profile_age": None,
+        "profile_photo_path": "",
         "enable_outfit_image_generation": False,
         "enable_online_store_search": False
     }
@@ -1349,7 +1382,7 @@ def get_user_model_settings(user_id: str) -> dict:
         client.table("user_settings")
         .select(
             "preferred_model,gemini_api_key_enc,aws_region,aws_bedrock_agent_id,aws_bedrock_agent_alias_id,"
-            "profile_gender,profile_age,enable_outfit_image_generation,enable_online_store_search"
+            "profile_gender,profile_age,profile_photo_path,enable_outfit_image_generation,enable_online_store_search"
         )
         .eq("user_id", user_id)
         .limit(1)
@@ -1367,6 +1400,7 @@ def get_user_model_settings(user_id: str) -> dict:
         "aws_bedrock_agent_alias_id": row.get("aws_bedrock_agent_alias_id") or "",
         "profile_gender": row.get("profile_gender") or "",
         "profile_age": row.get("profile_age"),
+        "profile_photo_path": row.get("profile_photo_path") or "",
         "enable_outfit_image_generation": bool(row.get("enable_outfit_image_generation")),
         "enable_online_store_search": bool(row.get("enable_online_store_search"))
     }
@@ -1382,6 +1416,11 @@ def get_user_model_settings_masked(user_id: str) -> dict:
         "aws_bedrock_agent_alias_id": settings_row.get("aws_bedrock_agent_alias_id", ""),
         "profile_gender": settings_row.get("profile_gender", ""),
         "profile_age": settings_row.get("profile_age"),
+        "profile_photo_url": (
+            get_signed_image_url(settings_row.get("profile_photo_path"), expires_in_seconds=3600)
+            if settings_row.get("profile_photo_path")
+            else None
+        ),
         "enable_outfit_image_generation": bool(settings_row.get("enable_outfit_image_generation")),
         "enable_online_store_search": bool(settings_row.get("enable_online_store_search"))
     }
@@ -1399,6 +1438,7 @@ def upsert_user_model_settings(user_id: str, payload: dict) -> dict:
     aws_bedrock_agent_alias_id = payload.get("aws_bedrock_agent_alias_id")
     profile_gender = payload.get("profile_gender")
     profile_age = payload.get("profile_age")
+    profile_photo_path = payload.get("profile_photo_path")
     enable_outfit_image_generation = payload.get("enable_outfit_image_generation")
     enable_online_store_search = payload.get("enable_online_store_search")
 
@@ -1431,6 +1471,11 @@ def upsert_user_model_settings(user_id: str, payload: dict) -> dict:
             if str(profile_age).strip().isdigit() and 0 < int(profile_age) < 121
             else current.get("profile_age")
         ) if profile_age is not None else current.get("profile_age"),
+        "profile_photo_path": (
+            str(profile_photo_path).strip()
+            if profile_photo_path is not None
+            else current.get("profile_photo_path", "")
+        ),
         "enable_outfit_image_generation": (
             _to_bool(enable_outfit_image_generation, bool(current.get("enable_outfit_image_generation")))
         ),
@@ -1446,6 +1491,51 @@ def upsert_user_model_settings(user_id: str, payload: dict) -> dict:
         .execute()
     )
     return get_user_model_settings_masked(user_id)
+
+
+def save_user_profile_photo(user_id: str, file_storage) -> dict:
+    client = get_supabase_client()
+    current = get_user_model_settings(user_id)
+    previous_path = current.get("profile_photo_path", "")
+
+    ext = ".jpg"
+    if file_storage.filename and "." in file_storage.filename:
+        ext = "." + file_storage.filename.rsplit(".", 1)[-1].lower()
+    if ext not in {".jpg", ".jpeg", ".png", ".webp"}:
+        ext = ".jpg"
+
+    storage_path = f"{user_id}/profile/reference-{uuid4().hex}{ext}"
+    content = file_storage.read()
+    content_type = file_storage.mimetype or mimetypes.guess_type(file_storage.filename or "")[0] or "application/octet-stream"
+    client.storage.from_(settings.SUPABASE_BUCKET).upload(
+        path=storage_path,
+        file=content,
+        file_options={"content-type": content_type}
+    )
+
+    (
+        client.table("user_settings")
+        .upsert(
+            {
+                "user_id": user_id,
+                "profile_photo_path": storage_path,
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            },
+            on_conflict="user_id"
+        )
+        .execute()
+    )
+
+    if previous_path:
+        try:
+            client.storage.from_(settings.SUPABASE_BUCKET).remove([previous_path])
+        except Exception:  # noqa: BLE001
+            pass
+
+    return {
+        "profile_photo_path": storage_path,
+        "profile_photo_url": get_signed_image_url(storage_path, expires_in_seconds=3600)
+    }
 
 
 def get_user_cost_summary(user_id: str, month_start_iso: str) -> dict:

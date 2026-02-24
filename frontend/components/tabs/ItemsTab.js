@@ -31,6 +31,7 @@ export default function ItemsTab() {
   const [colorFilter, setColorFilter] = useState("all");
   const [styleFilter, setStyleFilter] = useState("all");
   const [confirmModalOpen, setConfirmModalOpen] = useState(false);
+  const [activeItem, setActiveItem] = useState(null);
 
   const normalizeFilterValue = (value) => (
     (value || "Unknown").trim().replace(/\s+/g, " ").toLowerCase()
@@ -106,9 +107,12 @@ export default function ItemsTab() {
       accessorKey: "name",
       header: "Name",
       cell: ({ row }) => (
-        <span>
-          <span className="item-icon" aria-hidden="true">{getItemIcon(row.original)}</span>{" "}
-          {row.original.name || "Unknown"}
+        <span className="wardrobe-item-row">
+          {row.original.image_url ? (
+            <img src={row.original.image_url} alt={row.original.name || "Item"} className="item-thumb" />
+          ) : null}
+          <span className="item-icon" aria-hidden="true">{getItemIcon(row.original)}</span>
+          <span>{row.original.name || "Unknown"}</span>
         </span>
       )
     },
@@ -151,7 +155,7 @@ export default function ItemsTab() {
       <div className="tab-header">
         <div className="tab-header-title">
           <h2>Item catalog</h2>
-          <p className="tab-header-subtext">Filter, select, and compose outfits from saved items.</p>
+          <p className="tab-header-subtext">Filter items, select with checkboxes, and click a row to view item details.</p>
         </div>
         <BaseButton variant="ghost" onClick={loadItems} disabled={itemsLoading}>
           {itemsLoading ? "Loading..." : "Refresh"}
@@ -227,7 +231,7 @@ export default function ItemsTab() {
               <tr
                 key={row.id}
                 className={selectedItemIds.includes(row.original.id) ? "table-row-selected" : ""}
-                onClick={() => toggleSelectItem(row.original.id)}
+                onClick={() => setActiveItem(row.original)}
               >
                 {row.getVisibleCells().map((cell) => (
                   <td key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>
@@ -311,6 +315,41 @@ export default function ItemsTab() {
             </div>
           </div>
         </div>
+      </BaseDialog>
+
+      <BaseDialog
+        open={Boolean(activeItem)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setActiveItem(null);
+          }
+        }}
+        title="Item details"
+        size="sm"
+      >
+        {activeItem ? (
+          <>
+            {activeItem.image_url ? (
+              <img src={activeItem.image_url} alt={activeItem.name || "Item"} className="modal-image" />
+            ) : (
+              <p className="subtext">Image generation disabled.</p>
+            )}
+            <ul className="compact-list">
+              <li>
+                <strong>Name:</strong> {activeItem.name || "Unknown"}
+              </li>
+              <li>
+                <strong>Category:</strong> {activeItem.category || "Item"}
+              </li>
+              <li>
+                <strong>Color:</strong> {activeItem.color || "Unknown"}
+              </li>
+              <li>
+                <strong>Style:</strong> {activeItem.style_label || "Unknown"}
+              </li>
+            </ul>
+          </>
+        ) : null}
       </BaseDialog>
     </section>
   );

@@ -5,6 +5,7 @@ import BaseButton from "../ui/BaseButton";
 import BaseCheckbox from "../ui/BaseCheckbox";
 import BaseInput from "../ui/BaseInput";
 import BaseSelect from "../ui/BaseSelect";
+import ImageUploadField from "../ui/ImageUploadField";
 
 const SETTINGS_SECTIONS = [
   { id: "profile", label: "Profile" },
@@ -27,15 +28,19 @@ export default function SettingsTab() {
     savePassword,
     settingsForm,
     setSettingsForm,
+    profilePhotoUrl,
+    profilePhotoUploading,
     saveModelSettings,
     modelOptions,
     costSummary,
     costSummaryLoading,
-    loadCosts
+    loadCosts,
+    uploadProfilePhoto
   } = useSettingsContext();
 
   const [credentialsModelId, setCredentialsModelId] = useState(settingsForm.preferred_model || "");
   const [activeSection, setActiveSection] = useState("profile");
+  const [profilePhotoFile, setProfilePhotoFile] = useState(null);
 
   useEffect(() => {
     loadCosts();
@@ -96,6 +101,30 @@ export default function SettingsTab() {
       <div className="settings-scroll-sections">
         <article id="settings-profile" className="settings-card settings-section-card">
           <h2>Profile</h2>
+          <label>Reference photo</label>
+          {profilePhotoUrl ? (
+            <img src={profilePhotoUrl} alt="Profile reference" className="profile-photo-preview" />
+          ) : (
+            <p className="subtext">No reference photo uploaded yet.</p>
+          )}
+          <ImageUploadField
+            id="profile-photo-upload"
+            fileName={profilePhotoFile?.name || ""}
+            onFileSelect={(selectedFile) => setProfilePhotoFile(selectedFile)}
+            title="Drag and drop a profile reference photo"
+            subtext="or click to browse files"
+            emptyText="No profile photo selected"
+            disabled={profilePhotoUploading}
+          />
+          <div className="button-row">
+            <BaseButton
+              variant="ghost"
+              onClick={() => uploadProfilePhoto(profilePhotoFile)}
+              disabled={!profilePhotoFile || profilePhotoUploading}
+            >
+              {profilePhotoUploading ? "Uploading..." : "Upload reference photo"}
+            </BaseButton>
+          </div>
           <label htmlFor="settings-name">Display name</label>
           <BaseInput
             id="settings-name"
