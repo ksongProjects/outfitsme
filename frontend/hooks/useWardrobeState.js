@@ -93,6 +93,7 @@ export function useWardrobeState({ accessToken, onWardrobeChanged }) {
       if (
         Array.isArray(cachedWardrobe)
         && typeof queryState?.dataUpdatedAt === "number"
+        && !queryState?.isInvalidated
         && (Date.now() - queryState.dataUpdatedAt) < CACHE_STALE_MS
       ) {
         const entries = cachedWardrobe;

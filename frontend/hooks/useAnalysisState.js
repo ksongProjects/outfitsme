@@ -42,11 +42,53 @@ export function useAnalysisState({ accessToken, onAnalysisSaved }) {
     }
   };
 
+  const refreshWardrobeCache = async () => {
+    if (!accessToken) {
+      return;
+    }
+    try {
+      const response = await fetch(`${API_BASE}/api/wardrobe`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        }
+      });
+      if (!response.ok) {
+        return;
+      }
+      const payload = await response.json();
+      queryClient.setQueryData(["wardrobe", accessToken], payload.wardrobe || []);
+    } catch (_err) {
+      // Best effort only.
+    }
+  };
+
+  const refreshItemsCache = async () => {
+    if (!accessToken) {
+      return;
+    }
+    try {
+      const response = await fetch(`${API_BASE}/api/items`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        }
+      });
+      if (!response.ok) {
+        return;
+      }
+      const payload = await response.json();
+      queryClient.setQueryData(["items", accessToken], payload.items || []);
+    } catch (_err) {
+      // Best effort only.
+    }
+  };
+
   const analyzeMutation = useMutation({
     mutationFn: async ({ fileToAnalyze, modelId }) => {
       const pollAnalyzeJob = async (jobId) => {
-        for (let attempt = 0; attempt < 120; attempt += 1) {
-          const pollRes = await fetch(`${API_BASE}/api/analyze/jobs/${jobId}?wait_seconds=3`, {
+        for (let attempt = 0; attempt < 180; attempt += 1) {
+          const pollRes = await fetch(`${API_BASE}/api/analyze/jobs/${jobId}?wait_seconds=2`, {
             method: "GET",
             headers: {
               Authorization: `Bearer ${accessToken}`
@@ -146,7 +188,11 @@ export function useAnalysisState({ accessToken, onAnalysisSaved }) {
       await queryClient.invalidateQueries({ queryKey: ["stats", accessToken] });
       await queryClient.invalidateQueries({ queryKey: ["wardrobe", accessToken] });
       await queryClient.invalidateQueries({ queryKey: ["items", accessToken] });
-      await refreshHistoryCache();
+      await Promise.all([
+        refreshHistoryCache(),
+        refreshWardrobeCache(),
+        refreshItemsCache()
+      ]);
       if (onAnalysisSaved) {
         onAnalysisSaved();
       }

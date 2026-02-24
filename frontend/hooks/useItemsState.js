@@ -53,6 +53,7 @@ export function useItemsState({ accessToken }) {
     if (
       Array.isArray(cachedItems)
       && typeof queryState?.dataUpdatedAt === "number"
+      && !queryState?.isInvalidated
       && (Date.now() - queryState.dataUpdatedAt) < CACHE_STALE_MS
     ) {
       return;

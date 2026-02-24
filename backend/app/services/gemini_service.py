@@ -208,7 +208,8 @@ def generate_item_sprite_with_gemini(
         "Create one composite product sprite image with separate items in a strict grid. "
         f"Grid: {grid_cols} columns x {grid_rows} rows. "
         "Use plain light background. Put exactly one item per cell, centered, no overlap, no cropping off edges, "
-        "consistent scale, no text, no labels, no watermark. "
+        "consistent scale, and show each garment fully visible in an unfolded, natural full silhouette (not folded, crumpled, or stacked), "
+        "no text, no labels, no watermark. "
         "Render items in this exact order from top-left to bottom-right cells:\n"
         + "\n".join(item_lines)
     )
@@ -330,6 +331,7 @@ def generate_item_image_with_gemini(
     prompt = (
         "Create a clean product-style image on a plain light background with one centered garment item. "
         f"Item category: {category}. Item name: {name}. Dominant color: {color}. "
+        "Show the full garment in an unfolded, natural full silhouette (not folded, crumpled, or stacked). "
         "No text, no watermark. "
     )
     if use_reference:
