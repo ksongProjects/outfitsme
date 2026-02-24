@@ -1,10 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Trash2 } from "lucide-react";
 
 import { formatItemLabel, getItemIcon } from "../../utils/formatters";
 import { useWardrobeContext } from "../../context/DashboardContext";
 import BaseButton from "../ui/BaseButton";
 import BaseDialog from "../ui/BaseDialog";
+import BaseInput from "../ui/BaseInput";
 
 export default function OutfitsTab() {
   const {
@@ -14,12 +15,22 @@ export default function OutfitsTab() {
     loadWardrobe,
     deleteWardrobeEntry,
     deletingOutfitId,
+    renameOutfit,
+    updatingOutfitId,
     openOutfitDetails,
     closeOutfitDetails,
     outfitDetails,
     outfitDetailsLoading
   } = useWardrobeContext();
   const [pendingDelete, setPendingDelete] = useState(null);
+  const [isEditingName, setIsEditingName] = useState(false);
+  const [editedName, setEditedName] = useState("");
+
+  useEffect(() => {
+    const selectedStyle = outfitDetails?.selected_outfit?.style || "";
+    setEditedName(selectedStyle);
+    setIsEditingName(false);
+  }, [outfitDetails?.selected_outfit?.outfit_id, outfitDetails?.selected_outfit?.style]);
 
   const handleDelete = async () => {
     if (!pendingDelete) {
@@ -34,9 +45,21 @@ export default function OutfitsTab() {
   const getOutfitDisplayName = (entry) => {
     const style = entry.style_label || "Unlabeled";
     if ((entry.outfit_count || 1) > 1) {
-      return `${style} - Outfit ${(entry.outfit_index || 0) + 1}`;
+      return `${style} (${(entry.outfit_index || 0) + 1})`;
     }
-    return `${style} - Outfit`;
+    return style;
+  };
+
+  const handleSaveOutfitName = async () => {
+    const outfitId = outfitDetails?.selected_outfit?.outfit_id;
+    const nextName = editedName.trim();
+    if (!outfitId || !nextName) {
+      return;
+    }
+    const saved = await renameOutfit(outfitId, nextName);
+    if (saved) {
+      setIsEditingName(false);
+    }
   };
 
   return (
@@ -102,10 +125,22 @@ export default function OutfitsTab() {
         open={Boolean(outfitDetails || outfitDetailsLoading)}
         onOpenChange={(open) => {
           if (!open) {
+            setIsEditingName(false);
             closeOutfitDetails();
           }
         }}
         title="Outfit details"
+        headerActions={
+          !outfitDetailsLoading && outfitDetails?.selected_outfit && !isEditingName ? (
+            <BaseButton
+              type="button"
+              variant="ghost"
+              onClick={() => setIsEditingName(true)}
+            >
+              Edit
+            </BaseButton>
+          ) : null
+        }
       >
         {outfitDetailsLoading ? (
           <p className="subtext">Loading outfit details...</p>
@@ -122,9 +157,46 @@ export default function OutfitsTab() {
               </h4>
               {outfitDetails?.selected_outfit ? (
                 <div className="outfit-group">
-                  <p>
-                    <strong>Style:</strong> {outfitDetails.selected_outfit.style || "Unlabeled"}
-                  </p>
+                  {isEditingName ? (
+                    <>
+                      <label htmlFor="outfit-name-input"><strong>Name:</strong></label>
+                      <BaseInput
+                        id="outfit-name-input"
+                        value={editedName}
+                        onChange={(event) => setEditedName(event.target.value)}
+                        placeholder="Outfit name"
+                        maxLength={80}
+                      />
+                      <div className="button-row">
+                        <BaseButton
+                          type="button"
+                          variant="ghost"
+                          onClick={() => {
+                            setEditedName(outfitDetails.selected_outfit.style || "");
+                            setIsEditingName(false);
+                          }}
+                          disabled={updatingOutfitId === outfitDetails.selected_outfit.outfit_id}
+                        >
+                          Cancel
+                        </BaseButton>
+                        <BaseButton
+                          type="button"
+                          variant="primary"
+                          onClick={handleSaveOutfitName}
+                          disabled={
+                            !editedName.trim()
+                            || updatingOutfitId === outfitDetails.selected_outfit.outfit_id
+                          }
+                        >
+                          {updatingOutfitId === outfitDetails.selected_outfit.outfit_id ? "Saving..." : "Save"}
+                        </BaseButton>
+                      </div>
+                    </>
+                  ) : (
+                    <p>
+                      <strong>Name:</strong> {outfitDetails.selected_outfit.style || "Unlabeled"}
+                    </p>
+                  )}
                   {(outfitDetails.selected_outfit.items || []).length ? (
                     <ul className="analysis-items">
                       {outfitDetails.selected_outfit.items.map((item, index) => (

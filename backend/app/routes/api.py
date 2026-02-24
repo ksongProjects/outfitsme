@@ -18,6 +18,7 @@ from app.services.supabase_service import (
     create_analysis_job,
     create_photo_record,
     delete_wardrobe_outfit,
+    update_wardrobe_outfit_style_label,
     get_dashboard_stats,
     get_analysis_job_for_user,
     list_analysis_history,
@@ -366,6 +367,35 @@ def delete_wardrobe_entry(outfit_id: str):
         return jsonify({"error": "Invalid or expired token."}), 401
     except Exception as exc:  # noqa: BLE001
         return jsonify({"error": f"Wardrobe delete failed: {exc}"}), 500
+
+
+@api_bp.put("/wardrobe/<outfit_id>")
+def update_wardrobe_entry(outfit_id: str):
+    access_token = _extract_access_token()
+    if not access_token:
+        return jsonify({"error": "Missing bearer token."}), 401
+
+    payload = request.get_json(silent=True) or {}
+    style_label = payload.get("style_label", "")
+    if not str(style_label or "").strip():
+        return jsonify({"error": "style_label is required."}), 400
+
+    try:
+        user_id = get_user_id_from_token(access_token)
+        if not user_id:
+            return jsonify({"error": "Invalid or expired token."}), 401
+
+        updated = update_wardrobe_outfit_style_label(user_id, outfit_id, style_label)
+        if not updated:
+            return jsonify({"error": "Wardrobe item not found."}), 404
+
+        return jsonify({"updated": True, "outfit": updated}), 200
+    except SupabaseNotConfiguredError as exc:
+        return jsonify({"error": str(exc)}), 500
+    except AuthApiError:
+        return jsonify({"error": "Invalid or expired token."}), 401
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"error": f"Wardrobe update failed: {exc}"}), 500
 
 
 @api_bp.get("/wardrobe/<photo_id>/details")

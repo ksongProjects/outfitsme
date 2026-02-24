@@ -47,6 +47,10 @@ class Settings:
         "gemini-2.5-flash-image"
     )
     ITEM_IMAGE_MAX = int(_clean_env(os.getenv("ITEM_IMAGE_MAX", "3"), "3") or "3")
+    MONTHLY_CUSTOM_OUTFIT_LIMIT = int(_clean_env(os.getenv("MONTHLY_CUSTOM_OUTFIT_LIMIT", "5"), "5") or "5")
+    ANALYSIS_COST_USD = float(_clean_env(os.getenv("ANALYSIS_COST_USD", "0.02"), "0.02") or "0.02")
+    OUTFIT_IMAGE_COST_USD = float(_clean_env(os.getenv("OUTFIT_IMAGE_COST_USD", "0.05"), "0.05") or "0.05")
+    ITEM_IMAGE_COST_USD = float(_clean_env(os.getenv("ITEM_IMAGE_COST_USD", "0.01"), "0.01") or "0.01")
     SETTINGS_ENCRYPTION_KEY = _clean_env(os.getenv("SETTINGS_ENCRYPTION_KEY", ""))
     DEFAULT_ANALYSIS_MODEL = _clean_env(os.getenv("DEFAULT_ANALYSIS_MODEL", "gemini-2.5-flash"), "gemini-2.5-flash")
 

@@ -618,11 +618,19 @@ input[type="file"] {
   position: fixed;
   inset: 0;
   background: rgba(16, 36, 63, 0.45);
+  z-index: 1000;
+}
+
+.modal-viewport {
+  position: fixed;
+  inset: 0;
+  z-index: 1001;
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 1000;
   padding: 16px;
+  overflow-y: auto;
+  pointer-events: none;
 }
 
 .modal-panel {
@@ -632,7 +640,21 @@ input[type="file"] {
   width: min(900px, 100%);
   max-height: 90vh;
   overflow: auto;
-  padding: 12px;
+  padding: 16px;
+  box-shadow: var(--shadow);
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.modal-panel-no-scroll {
+  max-height: 80vh;
+  overflow: hidden;
+}
+
+.modal-panel-no-scroll .modal-image {
+  max-height: calc(80vh - 72px);
 }
 
 .modal-panel-sm {
@@ -643,6 +665,18 @@ input[type="file"] {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 10px;
+}
+
+.modal-header-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.modal-body {
+  display: flex;
+  flex-direction: column;
   gap: 10px;
 }
 
@@ -662,7 +696,7 @@ input[type="file"] {
   height: auto;
   max-height: 80vh;
   object-fit: contain;
-  margin-top: 10px;
+  margin-top: 0;
   border: 1px solid var(--line);
   border-radius: 10px;
   background: #fff;
@@ -792,6 +826,11 @@ ul {
   overflow: hidden;
 }
 
+.quota-scroll-card {
+  max-height: 320px;
+  overflow-y: auto;
+}
+
 .settings-card h2 {
   margin-top: 0;
   margin-bottom: 8px;
@@ -904,6 +943,15 @@ ul {
   object-fit: cover;
   background: #fff;
   display: block;
+}
+
+.history-preview-body {
+  padding: 4px;
+}
+
+.history-preview-body .modal-image {
+  margin: 0;
+  max-height: calc(80vh - 96px);
 }
 
 @media (max-width: 900px) {

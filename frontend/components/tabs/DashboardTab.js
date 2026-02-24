@@ -1,6 +1,14 @@
 import BaseButton from "../ui/BaseButton";
 
-export default function DashboardTab({ stats, refreshStats, loading }) {
+export default function DashboardTab({
+  stats,
+  refreshStats,
+  loading,
+  analysisLimits,
+  limitsLoading,
+  history,
+  historyLoading
+}) {
   const highlights = stats?.highlights || {};
   const clothingItemTypes = stats?.clothing_item_types || [];
   const accessoryItemTypes = stats?.accessory_item_types || [];
@@ -8,7 +16,11 @@ export default function DashboardTab({ stats, refreshStats, loading }) {
   const categorySplit = stats?.category_split || {};
   const clothingItemsCount = categorySplit.clothing_items_count ?? 0;
   const accessoriesItemsCount = categorySplit.accessories_items_count ?? 0;
-  const latestOutfit = stats?.latest_outfit || null;
+  const monthlyLimit = analysisLimits?.monthly_limit ?? 0;
+  const usedThisMonth = analysisLimits?.used_this_month ?? 0;
+  const remainingThisMonth = analysisLimits?.remaining_this_month;
+  const hasMonthlyCap = monthlyLimit > 0;
+  const recentActions = (history || []).slice(0, 5);
 
   return (
     <section>
@@ -75,16 +87,33 @@ export default function DashboardTab({ stats, refreshStats, loading }) {
           </ul>
         </article>
 
-        <article className="settings-card">
-          <h3>Latest outfit snapshot</h3>
-          {latestOutfit?.image_url ? (
-            <img src={latestOutfit.image_url} alt="Latest outfit" className="preview dashboard-preview" />
+        <article className="settings-card quota-scroll-card">
+          <h3>Quota and recent actions</h3>
+          {limitsLoading ? (
+            <p className="subtext">Loading usage limits...</p>
+          ) : hasMonthlyCap ? (
+            <p className="subtext">
+              Monthly quota: <strong>{usedThisMonth}/{monthlyLimit}</strong> used ({remainingThisMonth} left)
+            </p>
           ) : (
-            <p className="subtext">No outfit photo yet. Analyze your first look to start your dashboard.</p>
+            <p className="subtext">Monthly quota: <strong>unlimited</strong></p>
           )}
-          {latestOutfit?.created_at ? (
-            <p className="subtext">Captured {new Date(latestOutfit.created_at).toLocaleString()}</p>
-          ) : null}
+          {historyLoading ? (
+            <p className="subtext">Loading recent actions...</p>
+          ) : recentActions.length === 0 ? (
+            <p className="subtext">No recent activity yet. Analyze a photo to get started.</p>
+          ) : (
+            <ul className="compact-list">
+              {recentActions.map((entry) => (
+                <li key={`recent-action-${entry.job_id}`}>
+                  <strong>{entry.status || "Unknown"}</strong> via {entry.analysis_model || "Unknown"}{" "}
+                  <span className="subtext">
+                    ({entry.created_at ? new Date(entry.created_at).toLocaleString() : "-"})
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
         </article>
       </div>
     </section>

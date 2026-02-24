@@ -3,7 +3,7 @@ from __future__ import annotations
 import json
 import mimetypes
 import re
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 from supabase import Client, create_client
@@ -836,6 +836,44 @@ def delete_wardrobe_outfit(user_id: str, outfit_id: str) -> bool:
     return True
 
 
+def update_wardrobe_outfit_style_label(user_id: str, outfit_id: str, style_label: str) -> dict | None:
+    client = get_supabase_client()
+    normalized_style_label = _normalize_label(style_label, "Unlabeled")
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    existing_response = (
+        client.table("outfits")
+        .select("id,photo_id,outfit_index")
+        .eq("id", outfit_id)
+        .eq("user_id", user_id)
+        .limit(1)
+        .execute()
+    )
+    existing_row = (existing_response.data or [None])[0]
+    if not existing_row:
+        return None
+
+    (
+        client.table("outfits")
+        .update(
+            {
+                "style_label": normalized_style_label,
+                "updated_at": now_iso
+            }
+        )
+        .eq("id", outfit_id)
+        .eq("user_id", user_id)
+        .execute()
+    )
+
+    return {
+        "outfit_id": existing_row.get("id"),
+        "photo_id": existing_row.get("photo_id"),
+        "outfit_index": _safe_outfit_index(existing_row.get("outfit_index")),
+        "style_label": normalized_style_label
+    }
+
+
 def get_wardrobe_photo_details(user_id: str, photo_id: str, outfit_index: int | None = None) -> dict | None:
     client = get_supabase_client()
 
@@ -862,6 +900,20 @@ def get_wardrobe_photo_details(user_id: str, photo_id: str, outfit_index: int | 
     )
     analysis_row = (analysis_response.data or [None])[0]
 
+    outfit_rows_response = (
+        client.table("outfits")
+        .select("id,outfit_index,style_label")
+        .eq("photo_id", photo_id)
+        .eq("user_id", user_id)
+        .execute()
+    )
+    outfit_rows = outfit_rows_response.data or []
+    outfits_by_index = {
+        _safe_outfit_index(row.get("outfit_index")): row
+        for row in outfit_rows
+        if isinstance(row, dict)
+    }
+
     outfits = []
     if analysis_row:
         raw_json = analysis_row.get("raw_json") or {}
@@ -871,20 +923,30 @@ def get_wardrobe_photo_details(user_id: str, photo_id: str, outfit_index: int | 
                 if not isinstance(outfit, dict):
                     continue
                 outfit_items = [item for item in (outfit.get("items") or []) if isinstance(item, dict)]
+                outfit_row = outfits_by_index.get(index) or {}
                 outfits.append(
                     {
+                        "outfit_id": outfit_row.get("id"),
                         "outfit_index": index,
-                        "style": _normalize_label(outfit.get("style"), "Unlabeled"),
+                        "style": _normalize_label(
+                            outfit_row.get("style_label") or outfit.get("style"),
+                            "Unlabeled"
+                        ),
                         "items": [_normalize_item_fields(item) for item in outfit_items]
                     }
                 )
 
         if not outfits:
             fallback_items = raw_json.get("items") if isinstance(raw_json, dict) else []
+            fallback_row = outfits_by_index.get(0) or {}
             outfits = [
                 {
+                    "outfit_id": fallback_row.get("id"),
                     "outfit_index": 0,
-                    "style": _normalize_label(analysis_row.get("style_label"), "Unlabeled"),
+                    "style": _normalize_label(
+                        fallback_row.get("style_label") or analysis_row.get("style_label"),
+                        "Unlabeled"
+                    ),
                     "items": [_normalize_item_fields(item) for item in (fallback_items or []) if isinstance(item, dict)]
                 }
             ]
@@ -915,6 +977,8 @@ def get_wardrobe_photo_details(user_id: str, photo_id: str, outfit_index: int | 
 
 def get_dashboard_stats(user_id: str) -> dict:
     client = get_supabase_client()
+    now_utc = datetime.now(timezone.utc)
+    week_start_iso = (now_utc - timedelta(days=7)).isoformat()
 
     photos = (
         client.table("photos")
@@ -953,6 +1017,34 @@ def get_dashboard_stats(user_id: str) -> dict:
         .execute()
     ).data
     latest_photo = (latest_photo_row or [None])[0]
+
+    weekly_analyses_count = len(
+        (
+            client.table("outfit_analyses")
+            .select("id")
+            .eq("user_id", user_id)
+            .gte("created_at", week_start_iso)
+            .execute()
+        ).data or []
+    )
+    weekly_outfits_count = len(
+        (
+            client.table("outfits")
+            .select("id")
+            .eq("user_id", user_id)
+            .gte("created_at", week_start_iso)
+            .execute()
+        ).data or []
+    )
+    weekly_items_count = len(
+        (
+            client.table("items")
+            .select("id")
+            .eq("user_id", user_id)
+            .gte("created_at", week_start_iso)
+            .execute()
+        ).data or []
+    )
 
     detailed_type_counts = {}
     clothing_type_counts = {}
@@ -1010,6 +1102,12 @@ def get_dashboard_stats(user_id: str) -> dict:
         "outfits_count": outfits_count,
         "analyses_count": analyses_count,
         "items_count": items_count,
+        "weekly_activity": {
+            "analyses_count": weekly_analyses_count,
+            "outfits_count": weekly_outfits_count,
+            "items_count": weekly_items_count,
+            "window_start_utc": week_start_iso
+        },
         "category_split": {
             "clothing_items_count": clothing_items_count,
             "accessories_items_count": accessories_items_count

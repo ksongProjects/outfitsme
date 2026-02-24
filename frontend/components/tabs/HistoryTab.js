@@ -73,18 +73,15 @@ export default function HistoryTab() {
         open={Boolean(previewEntry)}
         onOpenChange={(open) => setPreviewEntry(open ? previewEntry : null)}
         title="Analysis photo preview"
+        scrollable={false}
       >
-        {previewEntry?.image_url ? (
-          <img src={previewEntry.image_url} alt="Analyzed outfit preview" className="modal-image" />
-        ) : (
-          <p className="subtext">Preview unavailable for this photo.</p>
-        )}
-        <p className="subtext">
-          Model: {previewEntry?.analysis_model || "Unknown"} | Status: {previewEntry?.status || "Unknown"}
-        </p>
-        <p className="subtext">
-          Created: {previewEntry?.created_at ? new Date(previewEntry.created_at).toLocaleString() : "-"}
-        </p>
+        <div className="history-preview-body">
+          {previewEntry?.image_url ? (
+            <img src={previewEntry.image_url} alt="Analyzed outfit preview" className="modal-image" />
+          ) : (
+            <p className="subtext">Preview unavailable for this photo.</p>
+          )}
+        </div>
       </BaseDialog>
     </section>
   );

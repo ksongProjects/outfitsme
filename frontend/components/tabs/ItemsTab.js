@@ -24,7 +24,8 @@ export default function ItemsTab() {
     composeOutfitLoading,
     selectedItemIds,
     toggleSelectItem,
-    selectedItems
+    selectedItems,
+    resetItemsState
   } = useItemsContext();
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [colorFilter, setColorFilter] = useState("all");
@@ -85,11 +86,15 @@ export default function ItemsTab() {
       accessorKey: "select",
       header: "Select",
       cell: ({ row }) => (
-        <BaseCheckbox
-          checked={selectedItemIds.includes(row.original.id)}
+        <span
+          onPointerDown={(event) => event.stopPropagation()}
           onClick={(event) => event.stopPropagation()}
-          onCheckedChange={() => toggleSelectItem(row.original.id)}
-        />
+        >
+          <BaseCheckbox
+            checked={selectedItemIds.includes(row.original.id)}
+            onCheckedChange={() => toggleSelectItem(row.original.id)}
+          />
+        </span>
       )
     },
     {
@@ -243,6 +248,14 @@ export default function ItemsTab() {
           </BaseButton>
           <BaseButton type="button" variant="ghost" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}>
             Next
+          </BaseButton>
+          <BaseButton
+            type="button"
+            variant="ghost"
+            onClick={resetItemsState}
+            disabled={selectedItems.length === 0}
+          >
+            Unselect all
           </BaseButton>
           <BaseButton
             type="button"

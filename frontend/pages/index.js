@@ -63,6 +63,12 @@ export default function HomePage() {
   }, [dashboardTab, accessToken]);
 
   useEffect(() => {
+    if (dashboardTab === "dashboard" && accessToken) {
+      historyState.loadHistory();
+    }
+  }, [dashboardTab, accessToken]);
+
+  useEffect(() => {
     if (dashboardTab === "analyze" && accessToken) {
       historyState.loadHistory();
     }
@@ -144,6 +150,8 @@ export default function HomePage() {
     loadWardrobe: wardrobeState.loadWardrobe,
     deleteWardrobeEntry: wardrobeState.deleteWardrobeEntry,
     deletingOutfitId: wardrobeState.deletingOutfitId,
+    renameOutfit: wardrobeState.renameOutfit,
+    updatingOutfitId: wardrobeState.updatingOutfitId,
     openOutfitDetails: wardrobeState.openOutfitDetails,
     closeOutfitDetails: wardrobeState.closeOutfitDetails,
     outfitDetails: wardrobeState.outfitDetails,
@@ -153,6 +161,7 @@ export default function HomePage() {
     wardrobeState.wardrobeLoading,
     wardrobeState.wardrobeMessage,
     wardrobeState.deletingOutfitId,
+    wardrobeState.updatingOutfitId,
     wardrobeState.outfitDetails,
     wardrobeState.outfitDetailsLoading
   ]);
@@ -166,14 +175,16 @@ export default function HomePage() {
     composeOutfitLoading: itemsState.composeOutfitLoading,
     selectedItemIds: itemsState.selectedItemIds,
     toggleSelectItem: itemsState.toggleSelectItem,
-    selectedItems: itemsState.selectedItems
+    selectedItems: itemsState.selectedItems,
+    resetItemsState: itemsState.resetItemsState
   }), [
     itemsState.items,
     itemsState.itemsLoading,
     itemsState.itemsMessage,
     itemsState.composeOutfitLoading,
     itemsState.selectedItemIds,
-    itemsState.selectedItems
+    itemsState.selectedItems,
+    itemsState.resetItemsState
   ]);
 
   const settingsValue = useMemo(() => ({
@@ -252,8 +263,16 @@ export default function HomePage() {
               <Tabs.Panel value="dashboard">
                 <DashboardTab
                   stats={statsState.stats}
-                  refreshStats={() => statsState.loadStats()}
-                  loading={statsState.statsLoading}
+                  refreshStats={async () => {
+                    await statsState.loadStats();
+                    await analysisState.loadAnalysisLimits();
+                    await historyState.loadHistory();
+                  }}
+                  loading={statsState.statsLoading || analysisState.limitsLoading || historyState.historyLoading}
+                  analysisLimits={analysisState.analysisLimits}
+                  limitsLoading={analysisState.limitsLoading}
+                  history={historyState.history}
+                  historyLoading={historyState.historyLoading}
                 />
               </Tabs.Panel>
               <Tabs.Panel value="analyze">

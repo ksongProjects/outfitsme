@@ -7,6 +7,7 @@ import { API_BASE } from "../lib/apiBase";
 export function useWardrobeState({ accessToken, onWardrobeChanged }) {
   const [wardrobeMessage, setWardrobeMessage] = useState("");
   const [deletingOutfitId, setDeletingOutfitId] = useState("");
+  const [updatingOutfitId, setUpdatingOutfitId] = useState("");
   const [outfitDetails, setOutfitDetails] = useState(null);
   const [outfitDetailsLoading, setOutfitDetailsLoading] = useState(false);
   const queryClient = useQueryClient();
@@ -119,6 +120,80 @@ export function useWardrobeState({ accessToken, onWardrobeChanged }) {
     }
   });
 
+  const renameOutfitMutation = useMutation({
+    mutationFn: async ({ outfitId, styleLabel }) => {
+      const response = await fetch(`${API_BASE}/api/wardrobe/${outfitId}`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`
+        },
+        body: JSON.stringify({ style_label: styleLabel })
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}));
+        throw new Error(errorBody.error || "Failed to update outfit name.");
+      }
+      const payload = await response.json();
+      return payload.outfit;
+    },
+    onSuccess: async (updatedOutfit) => {
+      queryClient.setQueryData(["wardrobe", accessToken], (current) => {
+        const entries = Array.isArray(current) ? current : [];
+        return entries.map((entry) => (
+          entry.outfit_id === updatedOutfit.outfit_id
+            ? { ...entry, style_label: updatedOutfit.style_label }
+            : entry
+        ));
+      });
+
+      setOutfitDetails((current) => {
+        if (!current || !current.selected_outfit) {
+          return current;
+        }
+        const selectedOutfit = current.selected_outfit;
+        if (selectedOutfit.outfit_id !== updatedOutfit.outfit_id) {
+          return current;
+        }
+        return {
+          ...current,
+          outfits: (current.outfits || []).map((outfit) => (
+            outfit.outfit_id === updatedOutfit.outfit_id
+              ? { ...outfit, style: updatedOutfit.style_label }
+              : outfit
+          )),
+          selected_outfit: {
+            ...selectedOutfit,
+            style: updatedOutfit.style_label
+          }
+        };
+      });
+
+      toast.success("Outfit name updated.");
+      if (onWardrobeChanged) {
+        onWardrobeChanged();
+      }
+    }
+  });
+
+  const renameOutfit = async (outfitId, styleLabel) => {
+    if (!accessToken) {
+      return false;
+    }
+    setUpdatingOutfitId(outfitId);
+    try {
+      await renameOutfitMutation.mutateAsync({ outfitId, styleLabel });
+      return true;
+    } catch (err) {
+      setWardrobeMessage("Could not update outfit name right now.");
+      toast.error(err.message || "Could not update outfit name right now.");
+      return false;
+    } finally {
+      setUpdatingOutfitId("");
+    }
+  };
+
   const openOutfitDetails = async (photoId, outfitIndex = null) => {
     if (!accessToken) {
       return;
@@ -157,6 +232,7 @@ export function useWardrobeState({ accessToken, onWardrobeChanged }) {
   const resetWardrobeState = () => {
     setWardrobeMessage("");
     setDeletingOutfitId("");
+    setUpdatingOutfitId("");
     setOutfitDetails(null);
     setOutfitDetailsLoading(false);
     queryClient.removeQueries({ queryKey: ["wardrobe", accessToken] });
@@ -169,6 +245,8 @@ export function useWardrobeState({ accessToken, onWardrobeChanged }) {
     loadWardrobe,
     deleteWardrobeEntry,
     deletingOutfitId,
+    renameOutfit,
+    updatingOutfitId,
     openOutfitDetails,
     closeOutfitDetails,
     outfitDetails,
