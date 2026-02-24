@@ -333,6 +333,65 @@ input[type="file"] {
   margin-bottom: 12px;
 }
 
+.crop-preview-wrap {
+  position: relative;
+  margin-bottom: 12px;
+}
+
+.crop-preview-wrap .preview {
+  margin-bottom: 0;
+  display: block;
+}
+
+.crop-overlay {
+  position: absolute;
+  inset: 0;
+  cursor: crosshair;
+  user-select: none;
+  touch-action: none;
+}
+
+.crop-selection {
+  position: absolute;
+  border: 2px solid var(--accent);
+  background: rgba(13, 95, 79, 0.18);
+  box-shadow: 0 0 0 9999px rgba(16, 36, 63, 0.25);
+  cursor: move;
+}
+
+.crop-handle {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  border: 2px solid #fff;
+  background: var(--accent);
+}
+
+.crop-handle.nw {
+  top: -7px;
+  left: -7px;
+  cursor: nwse-resize;
+}
+
+.crop-handle.ne {
+  top: -7px;
+  right: -7px;
+  cursor: nesw-resize;
+}
+
+.crop-handle.sw {
+  bottom: -7px;
+  left: -7px;
+  cursor: nesw-resize;
+}
+
+.crop-handle.se {
+  bottom: -7px;
+  right: -7px;
+  cursor: nwse-resize;
+}
+
 .wardrobe-image {
   width: 150px;
   height: 150px;
@@ -539,6 +598,15 @@ input[type="file"] {
   margin: 10px 0 0;
 }
 
+.danger-note {
+  margin: 10px 0 0;
+  color: #8f1d1d;
+  background: #fff4f4;
+  border: 1px solid #e5b8b8;
+  border-radius: 10px;
+  padding: 10px 12px;
+}
+
 ul {
   margin: 8px 0 0;
   padding-left: 18px;
@@ -713,6 +781,20 @@ ul {
   border-radius: 999px;
   padding: 4px 10px;
   background: #fff;
+}
+
+.history-photo-cell {
+  min-width: 72px;
+}
+
+.history-thumb {
+  width: 64px;
+  height: 64px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  object-fit: cover;
+  background: #fff;
+  display: block;
 }
 
 @media (max-width: 900px) {

@@ -7,6 +7,7 @@ import { API_BASE } from "../lib/apiBase";
 export function useAnalysisState({ accessToken, onAnalysisSaved }) {
   const [file, setFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState("");
+  const [cropArea, setCropArea] = useState(null);
   const [analysis, setAnalysis] = useState(null);
   const [similarResults, setSimilarResults] = useState([]);
   const [error, setError] = useState("");
@@ -197,12 +198,78 @@ export function useAnalysisState({ accessToken, onAnalysisSaved }) {
     });
   };
 
+  const _loadImage = (url) => new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error("Unable to decode image."));
+    image.src = url;
+  });
+
+  const buildCroppedFile = async (candidate, crop) => {
+    if (!crop || crop.width <= 0 || crop.height <= 0) {
+      return candidate;
+    }
+
+    let objectUrl = "";
+    try {
+      objectUrl = URL.createObjectURL(candidate);
+      const image = await _loadImage(objectUrl);
+      const originalWidth = Number(image.naturalWidth || image.width || 0);
+      const originalHeight = Number(image.naturalHeight || image.height || 0);
+
+      if (originalWidth <= 0 || originalHeight <= 0) {
+        throw new Error("Unable to read image dimensions.");
+      }
+
+      const cropX = Math.max(0, Math.min(1, Number(crop.x) || 0));
+      const cropY = Math.max(0, Math.min(1, Number(crop.y) || 0));
+      const cropWidth = Math.max(0, Math.min(1 - cropX, Number(crop.width) || 0));
+      const cropHeight = Math.max(0, Math.min(1 - cropY, Number(crop.height) || 0));
+      if (cropWidth <= 0 || cropHeight <= 0) {
+        return candidate;
+      }
+
+      const srcX = Math.max(0, Math.round(cropX * originalWidth));
+      const srcY = Math.max(0, Math.round(cropY * originalHeight));
+      const srcWidth = Math.max(1, Math.round(cropWidth * originalWidth));
+      const srcHeight = Math.max(1, Math.round(cropHeight * originalHeight));
+
+      const canvas = document.createElement("canvas");
+      canvas.width = srcWidth;
+      canvas.height = srcHeight;
+      const context = canvas.getContext("2d");
+      if (!context) {
+        throw new Error("Unable to initialize image crop context.");
+      }
+      context.drawImage(image, srcX, srcY, srcWidth, srcHeight, 0, 0, srcWidth, srcHeight);
+      const outputType = candidate.type && candidate.type.startsWith("image/") ? candidate.type : "image/jpeg";
+      const blob = await new Promise((resolve) => {
+        canvas.toBlob((value) => resolve(value), outputType, 0.9);
+      });
+
+      if (!blob) {
+        throw new Error("Failed to encode resized image.");
+      }
+
+      const fileName = candidate.name || "image";
+      const dotIndex = fileName.lastIndexOf(".");
+      const baseName = dotIndex > 0 ? fileName.slice(0, dotIndex) : fileName;
+      const extension = outputType === "image/png" ? "png" : outputType === "image/webp" ? "webp" : "jpg";
+      return new File([blob], `${baseName}-crop.${extension}`, { type: outputType });
+    } finally {
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
+    }
+  };
+
   const processSelectedFile = async (selected) => {
     setError("");
     setInfo("");
     setAnalysis(null);
     setSimilarResults([]);
     setJobStatus(null);
+    setCropArea(null);
 
     if (!selected) {
       setFile(null);
@@ -244,6 +311,7 @@ export function useAnalysisState({ accessToken, onAnalysisSaved }) {
     setAnalysis(null);
     setSimilarResults([]);
     setJobStatus(null);
+    setCropArea(null);
     setError("");
     setInfo("");
   };
@@ -271,7 +339,11 @@ export function useAnalysisState({ accessToken, onAnalysisSaved }) {
     setJobStatus({ jobId: null, status: "submitting", updatedAt: null });
 
     try {
-      await analyzeMutation.mutateAsync({ fileToAnalyze: file, modelId: selectedModel });
+      const fileToAnalyze = await buildCroppedFile(file, cropArea);
+      if (fileToAnalyze !== file) {
+        setInfo("Using selected crop area for analysis.");
+      }
+      await analyzeMutation.mutateAsync({ fileToAnalyze, modelId: selectedModel });
     } catch (err) {
       setJobStatus((current) => (current ? { ...current, status: "failed" } : current));
       const friendly = toUserFriendlyAnalyzeError(err.message);
@@ -370,6 +442,7 @@ export function useAnalysisState({ accessToken, onAnalysisSaved }) {
     setSelectedModel("gemini-2.5-flash");
     setAnalysisLimits(null);
     setJobStatus(null);
+    setCropArea(null);
     setError("");
     setInfo("");
   };
@@ -380,6 +453,8 @@ export function useAnalysisState({ accessToken, onAnalysisSaved }) {
     onFileDrop,
     fileName: file?.name || "",
     clearSelectedFile,
+    cropArea,
+    setCropArea,
     runAnalysis,
     disabled,
     loading,

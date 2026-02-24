@@ -49,6 +49,18 @@ DETAILED_ITEM_TYPE_KEYWORDS = [
     ("Sunglasses", ["sunglass", "sunglasses", "eyewear", "glasses"]),
 ]
 
+ACCESSORY_ITEM_TYPES = {
+    "Tie",
+    "Belt",
+    "Scarf",
+    "Hat",
+    "Socks",
+    "Bag",
+    "Jewelry",
+    "Watch",
+    "Sunglasses",
+}
+
 
 def _title_case_label(value: str) -> str:
     cleaned = " ".join((value or "").strip().split())
@@ -525,6 +537,76 @@ def list_wardrobe(user_id: str, limit: int = 20) -> list[dict]:
     return wardrobe
 
 
+def list_analysis_history(user_id: str, limit: int = 50) -> list[dict]:
+    client = get_supabase_client()
+    jobs_response = (
+        client.table("analysis_jobs")
+        .select("id,photo_id,analysis_model,status,error_message,created_at,completed_at,updated_at")
+        .eq("user_id", user_id)
+        .order("created_at", desc=True)
+        .limit(limit)
+        .execute()
+    )
+    jobs = jobs_response.data or []
+    if not jobs:
+        return []
+
+    photo_ids = list({job.get("photo_id") for job in jobs if job.get("photo_id")})
+    photos_by_id = {}
+    if photo_ids:
+        photos_response = (
+            client.table("photos")
+            .select("id,storage_path,created_at")
+            .in_("id", photo_ids)
+            .eq("user_id", user_id)
+            .execute()
+        )
+        photos_by_id = {photo.get("id"): photo for photo in (photos_response.data or []) if photo.get("id")}
+
+    outfit_counts_by_photo = {}
+    if photo_ids:
+        outfits_response = (
+            client.table("outfits")
+            .select("photo_id")
+            .in_("photo_id", photo_ids)
+            .eq("user_id", user_id)
+            .execute()
+        )
+        for row in (outfits_response.data or []):
+            photo_id = row.get("photo_id")
+            if not photo_id:
+                continue
+            outfit_counts_by_photo[photo_id] = outfit_counts_by_photo.get(photo_id, 0) + 1
+
+    history = []
+    for job in jobs:
+        photo_id = job.get("photo_id")
+        photo = photos_by_id.get(photo_id) or {}
+        storage_path = photo.get("storage_path") or ""
+        image_url = (
+            get_signed_image_url(storage_path, expires_in_seconds=3600)
+            if storage_path and not str(storage_path).startswith("virtual/")
+            else None
+        )
+        history.append(
+            {
+                "job_id": job.get("id"),
+                "photo_id": photo_id,
+                "analysis_model": job.get("analysis_model"),
+                "status": job.get("status"),
+                "error_message": job.get("error_message"),
+                "created_at": job.get("created_at"),
+                "completed_at": job.get("completed_at"),
+                "updated_at": job.get("updated_at"),
+                "photo_created_at": photo.get("created_at"),
+                "storage_path": storage_path,
+                "image_url": image_url,
+                "outfit_count": outfit_counts_by_photo.get(photo_id, 0)
+            }
+        )
+    return history
+
+
 def list_user_items(user_id: str, limit: int = 200) -> list[dict]:
     client = get_supabase_client()
     items_response = (
@@ -873,16 +955,34 @@ def get_dashboard_stats(user_id: str) -> dict:
     latest_photo = (latest_photo_row or [None])[0]
 
     detailed_type_counts = {}
+    clothing_type_counts = {}
+    accessory_type_counts = {}
     color_counts = {}
+    accessories_items_count = 0
+    clothing_items_count = 0
     for item in items:
         item_type = _classify_item_type(item.get("category") or "", item.get("name") or "")
         color = _normalize_label(item.get("color"), "Unknown")
         detailed_type_counts[item_type] = detailed_type_counts.get(item_type, 0) + 1
         color_counts[color] = color_counts.get(color, 0) + 1
+        if item_type in ACCESSORY_ITEM_TYPES:
+            accessories_items_count += 1
+            accessory_type_counts[item_type] = accessory_type_counts.get(item_type, 0) + 1
+        else:
+            clothing_items_count += 1
+            clothing_type_counts[item_type] = clothing_type_counts.get(item_type, 0) + 1
 
     detailed_item_types = [
         {"label": label, "count": count}
         for label, count in sorted(detailed_type_counts.items(), key=lambda pair: pair[1], reverse=True)
+    ]
+    clothing_item_types = [
+        {"label": label, "count": count}
+        for label, count in sorted(clothing_type_counts.items(), key=lambda pair: pair[1], reverse=True)
+    ]
+    accessory_item_types = [
+        {"label": label, "count": count}
+        for label, count in sorted(accessory_type_counts.items(), key=lambda pair: pair[1], reverse=True)
     ]
     top_item_types = detailed_item_types[:10]
     top_colors = [
@@ -905,21 +1005,25 @@ def get_dashboard_stats(user_id: str) -> dict:
     items_count = len(items)
     outfits_count = len(outfits)
 
-    avg_items_per_outfit = round(items_count / outfits_count, 1) if outfits_count > 0 else 0
-
     return {
         "photos_count": photos_count,
         "outfits_count": outfits_count,
         "analyses_count": analyses_count,
         "items_count": items_count,
+        "category_split": {
+            "clothing_items_count": clothing_items_count,
+            "accessories_items_count": accessories_items_count
+        },
         "top_item_types": top_item_types,
         "detailed_item_types": detailed_item_types,
+        "clothing_item_types": clothing_item_types,
+        "accessory_item_types": accessory_item_types,
         "top_colors": top_colors,
         "latest_outfit": latest_outfit,
         "highlights": {
             "most_common_item_type": top_item_types[0]["label"] if top_item_types else "N/A",
             "most_common_color": top_colors[0]["label"] if top_colors else "N/A",
-            "avg_items_per_outfit": avg_items_per_outfit
+            "most_common_accessory_type": accessory_item_types[0]["label"] if accessory_item_types else "N/A"
         }
     }
 

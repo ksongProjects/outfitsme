@@ -146,7 +146,7 @@ docker compose -f docker-compose.prod.yml up --build
 - `GET /api/wardrobe` (requires Bearer token; returns one row per detected outfit)
 - `GET /api/wardrobe/:photo_id/details?outfit_index=<n>` (requires Bearer token; returns signed original photo URL + selected outfit details)
 - `GET /api/items` (requires Bearer token; returns items plus `style_label` used by catalog filters)
-- `GET /api/stats` (requires Bearer token; returns dashboard metrics including photos analyzed, outfits saved, item-type/color breakdowns, and highlights)
+- `GET /api/stats` (requires Bearer token; returns dashboard metrics including photos analyzed, outfits saved, clothing vs accessories split, type/color breakdowns, and highlights)
 - `GET /api/limits` (requires Bearer token; returns per-user analysis quota usage and remaining monthly quota)
 - `DELETE /api/wardrobe/:outfit_id` (requires Bearer token; deletes a single outfit row and its related item rows only)
 - `GET /api/models` (requires Bearer token; returns model capability + per-user availability)

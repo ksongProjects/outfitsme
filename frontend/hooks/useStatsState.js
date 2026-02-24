@@ -9,12 +9,18 @@ const emptyStats = {
   items_count: 0,
   top_item_types: [],
   detailed_item_types: [],
+  clothing_item_types: [],
+  accessory_item_types: [],
   top_colors: [],
+  category_split: {
+    clothing_items_count: 0,
+    accessories_items_count: 0
+  },
   latest_outfit: null,
   highlights: {
     most_common_item_type: "N/A",
     most_common_color: "N/A",
-    avg_items_per_outfit: 0
+    most_common_accessory_type: "N/A"
   }
 };
 

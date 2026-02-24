@@ -70,7 +70,13 @@ export function useWardrobeState({ accessToken, onWardrobeChanged }) {
 
     try {
       await deleteWardrobeMutation.mutateAsync(outfitId);
-      setWardrobeMessage("Outfit removed.");
+      const cachedWardrobe = queryClient.getQueryData(["wardrobe", accessToken]);
+      const currentEntries = Array.isArray(cachedWardrobe) ? cachedWardrobe : [];
+      if (currentEntries.length === 0) {
+        setWardrobeMessage("No wardrobe entries yet. Analyze your first outfit photo.");
+      } else {
+        setWardrobeMessage("Outfit removed.");
+      }
       toast.success("Outfit deleted.");
       if (onWardrobeChanged) {
         onWardrobeChanged();
@@ -100,8 +106,15 @@ export function useWardrobeState({ accessToken, onWardrobeChanged }) {
       }
       return await response.json();
     },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["wardrobe", accessToken] });
+    onSuccess: async (_data, deletedOutfitId) => {
+      queryClient.setQueryData(["wardrobe", accessToken], (current) => {
+        const entries = Array.isArray(current) ? current : [];
+        const nextEntries = entries.filter((entry) => entry.outfit_id !== deletedOutfitId);
+        if (nextEntries.length === 0) {
+          setWardrobeMessage("No wardrobe entries yet. Analyze your first outfit photo.");
+        }
+        return nextEntries;
+      });
       await queryClient.invalidateQueries({ queryKey: ["stats", accessToken] });
     }
   });

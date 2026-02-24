@@ -1,8 +1,11 @@
 export default function DashboardTab({ stats, refreshStats, loading }) {
   const highlights = stats?.highlights || {};
-  const detailedItemTypes = stats?.detailed_item_types || [];
-  const topItemTypes = detailedItemTypes.length > 0 ? detailedItemTypes : (stats?.top_item_types || []);
+  const clothingItemTypes = stats?.clothing_item_types || [];
+  const accessoryItemTypes = stats?.accessory_item_types || [];
   const topColors = stats?.top_colors || [];
+  const categorySplit = stats?.category_split || {};
+  const clothingItemsCount = categorySplit.clothing_items_count ?? 0;
+  const accessoriesItemsCount = categorySplit.accessories_items_count ?? 0;
   const latestOutfit = stats?.latest_outfit || null;
 
   return (
@@ -30,20 +33,16 @@ export default function DashboardTab({ stats, refreshStats, loading }) {
           <p className="stats-label">Items cataloged</p>
           <p className="stats-value">{stats.items_count}</p>
         </article>
-        <article className="stats-card">
-          <p className="stats-label">Avg items per outfit</p>
-          <p className="stats-value">{highlights.avg_items_per_outfit || 0}</p>
-        </article>
       </div>
 
       <div className="dashboard-layout">
         <article className="settings-card">
           <h3>Clothing type breakdown</h3>
-          {topItemTypes.length === 0 ? (
+          {clothingItemTypes.length === 0 ? (
             <p className="subtext">Analyze a few outfits to see detailed clothing-type counts.</p>
           ) : (
             <ul className="compact-list">
-              {topItemTypes.map((entry) => (
+              {clothingItemTypes.map((entry) => (
                 <li key={`item-type-${entry.label}`}>
                   <strong>{entry.label}</strong> <span className="subtext">({entry.count})</span>
                 </li>
@@ -53,10 +52,23 @@ export default function DashboardTab({ stats, refreshStats, loading }) {
         </article>
 
         <article className="settings-card">
-          <h3>Interesting facts</h3>
+          <h3>Accessories breakdown</h3>
+          {accessoryItemTypes.length === 0 ? (
+            <p className="subtext">No accessories tracked yet. Analyze more outfits to build this view.</p>
+          ) : (
+            <ul className="compact-list">
+              {accessoryItemTypes.map((entry) => (
+                <li key={`accessory-type-${entry.label}`}>
+                  <strong>{entry.label}</strong> <span className="subtext">({entry.count})</span>
+                </li>
+              ))}
+            </ul>
+          )}
           <ul className="compact-list">
-            <li>Most common item type: <strong>{highlights.most_common_item_type || "N/A"}</strong></li>
+            <li>Most common accessory: <strong>{highlights.most_common_accessory_type || "N/A"}</strong></li>
             <li>Most common color: <strong>{highlights.most_common_color || "N/A"}</strong></li>
+            <li>Clothing items tracked: <strong>{clothingItemsCount}</strong></li>
+            <li>Accessories tracked: <strong>{accessoriesItemsCount}</strong></li>
             <li>Top colors tracked: <strong>{topColors.length}</strong></li>
           </ul>
         </article>

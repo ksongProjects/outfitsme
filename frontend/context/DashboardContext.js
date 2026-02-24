@@ -4,6 +4,7 @@ const AuthContext = createContext(null);
 const AnalysisContext = createContext(null);
 const WardrobeContext = createContext(null);
 const ItemsContext = createContext(null);
+const HistoryContext = createContext(null);
 const SettingsContext = createContext(null);
 
 export function DashboardProviders({
@@ -11,6 +12,7 @@ export function DashboardProviders({
   analysisValue,
   wardrobeValue,
   itemsValue,
+  historyValue,
   settingsValue,
   children
 }) {
@@ -19,9 +21,11 @@ export function DashboardProviders({
       <AnalysisContext.Provider value={analysisValue}>
         <WardrobeContext.Provider value={wardrobeValue}>
           <ItemsContext.Provider value={itemsValue}>
-            <SettingsContext.Provider value={settingsValue}>
-              {children}
-            </SettingsContext.Provider>
+            <HistoryContext.Provider value={historyValue}>
+              <SettingsContext.Provider value={settingsValue}>
+                {children}
+              </SettingsContext.Provider>
+            </HistoryContext.Provider>
           </ItemsContext.Provider>
         </WardrobeContext.Provider>
       </AnalysisContext.Provider>
@@ -57,6 +61,14 @@ export function useItemsContext() {
   const context = useContext(ItemsContext);
   if (!context) {
     throw new Error("useItemsContext must be used within DashboardProviders.");
+  }
+  return context;
+}
+
+export function useHistoryContext() {
+  const context = useContext(HistoryContext);
+  if (!context) {
+    throw new Error("useHistoryContext must be used within DashboardProviders.");
   }
   return context;
 }

@@ -1,15 +1,19 @@
 import { formatItemLabel, getItemIcon } from "../../utils/formatters";
 import { useState } from "react";
 import { useAnalysisContext } from "../../context/DashboardContext";
+import HistoryTab from "./HistoryTab";
 
 export default function AnalyzeTab() {
   const [isDragOver, setIsDragOver] = useState(false);
+  const [interaction, setInteraction] = useState(null);
   const {
     previewUrl,
     onFileChange,
     onFileDrop,
     fileName,
     clearSelectedFile,
+    cropArea,
+    setCropArea,
     runAnalysis,
     disabled,
     loading,
@@ -27,6 +31,167 @@ export default function AnalyzeTab() {
   const usedThisMonth = analysisLimits?.used_this_month ?? 0;
   const remainingThisMonth = analysisLimits?.remaining_this_month;
   const hasMonthlyCap = monthlyLimit > 0;
+
+  const clamp01 = (value) => Math.min(1, Math.max(0, value));
+  const MIN_CROP_SIZE = 0.01;
+
+  const getRelativePoint = (event) => {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    if (!bounds.width || !bounds.height) {
+      return null;
+    }
+    const x = clamp01((event.clientX - bounds.left) / bounds.width);
+    const y = clamp01((event.clientY - bounds.top) / bounds.height);
+    return { x, y };
+  };
+
+  const isPointInsideCrop = (point, crop) => {
+    if (!point || !crop) {
+      return false;
+    }
+    return (
+      point.x >= crop.x &&
+      point.x <= crop.x + crop.width &&
+      point.y >= crop.y &&
+      point.y <= crop.y + crop.height
+    );
+  };
+
+  const normalizeRect = (ax, ay, bx, by) => {
+    const x = clamp01(Math.min(ax, bx));
+    const y = clamp01(Math.min(ay, by));
+    const right = clamp01(Math.max(ax, bx));
+    const bottom = clamp01(Math.max(ay, by));
+    return {
+      x,
+      y,
+      width: Math.max(0, right - x),
+      height: Math.max(0, bottom - y)
+    };
+  };
+
+  const handleCropPointerDown = (event) => {
+    if (event.pointerType === "mouse" && event.button !== 0) {
+      return;
+    }
+    const point = getRelativePoint(event);
+    if (!point) {
+      return;
+    }
+    event.preventDefault();
+    if (typeof event.currentTarget.setPointerCapture === "function") {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
+    const resizeHandle = event.target?.dataset?.handle || null;
+    if (resizeHandle && cropArea) {
+      setInteraction({
+        mode: "resize",
+        pointerId: event.pointerId,
+        startPoint: point,
+        startCrop: cropArea,
+        handle: resizeHandle
+      });
+      return;
+    }
+
+    if (cropArea && isPointInsideCrop(point, cropArea)) {
+      setInteraction({
+        mode: "move",
+        pointerId: event.pointerId,
+        startPoint: point,
+        startCrop: cropArea,
+        handle: null
+      });
+      return;
+    }
+
+    setInteraction({
+      mode: "draw",
+      pointerId: event.pointerId,
+      startPoint: point,
+      startCrop: null,
+      handle: null
+    });
+    setCropArea({ x: point.x, y: point.y, width: 0, height: 0 });
+  };
+
+  const handleCropPointerMove = (event) => {
+    if (!interaction || interaction.pointerId !== event.pointerId) {
+      return;
+    }
+    const point = getRelativePoint(event);
+    if (!point) {
+      return;
+    }
+    if (interaction.mode === "draw") {
+      const nextCrop = normalizeRect(interaction.startPoint.x, interaction.startPoint.y, point.x, point.y);
+      setCropArea(nextCrop);
+      return;
+    }
+
+    if (interaction.mode === "move" && interaction.startCrop) {
+      const deltaX = point.x - interaction.startPoint.x;
+      const deltaY = point.y - interaction.startPoint.y;
+      const nextX = Math.min(
+        Math.max(0, interaction.startCrop.x + deltaX),
+        1 - interaction.startCrop.width
+      );
+      const nextY = Math.min(
+        Math.max(0, interaction.startCrop.y + deltaY),
+        1 - interaction.startCrop.height
+      );
+      setCropArea({
+        x: nextX,
+        y: nextY,
+        width: interaction.startCrop.width,
+        height: interaction.startCrop.height
+      });
+      return;
+    }
+
+    if (interaction.mode === "resize" && interaction.startCrop) {
+      const startLeft = interaction.startCrop.x;
+      const startTop = interaction.startCrop.y;
+      const startRight = interaction.startCrop.x + interaction.startCrop.width;
+      const startBottom = interaction.startCrop.y + interaction.startCrop.height;
+
+      let left = startLeft;
+      let top = startTop;
+      let right = startRight;
+      let bottom = startBottom;
+
+      if (interaction.handle === "nw") {
+        left = point.x;
+        top = point.y;
+      } else if (interaction.handle === "ne") {
+        right = point.x;
+        top = point.y;
+      } else if (interaction.handle === "sw") {
+        left = point.x;
+        bottom = point.y;
+      } else if (interaction.handle === "se") {
+        right = point.x;
+        bottom = point.y;
+      }
+
+      const nextCrop = normalizeRect(left, top, right, bottom);
+      setCropArea(nextCrop);
+    }
+  };
+
+  const handleCropPointerEnd = (event) => {
+    if (!interaction || interaction.pointerId !== event.pointerId) {
+      return;
+    }
+    if (typeof event.currentTarget.releasePointerCapture === "function") {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    setInteraction(null);
+    if (!cropArea || cropArea.width < MIN_CROP_SIZE || cropArea.height < MIN_CROP_SIZE) {
+      setCropArea(null);
+      return;
+    }
+  };
 
   const handleDragOver = (event) => {
     event.preventDefault();
@@ -108,11 +273,49 @@ export default function AnalyzeTab() {
           <p className="dropzone-file">{fileName || "No file selected"}</p>
         </label>
         <input id="image-upload" className="file-input-hidden" type="file" accept="image/*" onChange={onFileChange} />
-        {previewUrl ? <img className="preview" src={previewUrl} alt="Selected outfit" /> : null}
+        {previewUrl ? (
+          <div className="crop-preview-wrap">
+            <img className="preview" src={previewUrl} alt="Selected outfit" draggable={false} />
+            <div
+              className="crop-overlay"
+              onPointerDown={handleCropPointerDown}
+              onPointerMove={handleCropPointerMove}
+              onPointerUp={handleCropPointerEnd}
+              onPointerCancel={handleCropPointerEnd}
+            >
+              {cropArea ? (
+                <div
+                  className="crop-selection"
+                  style={{
+                    left: `${cropArea.x * 100}%`,
+                    top: `${cropArea.y * 100}%`,
+                    width: `${cropArea.width * 100}%`,
+                    height: `${cropArea.height * 100}%`
+                  }}
+                >
+                  <span className="crop-handle nw" data-handle="nw" />
+                  <span className="crop-handle ne" data-handle="ne" />
+                  <span className="crop-handle sw" data-handle="sw" />
+                  <span className="crop-handle se" data-handle="se" />
+                </div>
+              ) : null}
+            </div>
+          </div>
+        ) : null}
+        {previewUrl ? (
+          <p className="subtext">
+            Drag on the preview to select a rectangular area. Only the selected crop is sent to analysis.
+          </p>
+        ) : null}
         <div className="button-row">
           {fileName ? (
             <button type="button" className="ghost-btn" onClick={clearSelectedFile}>
               Cancel
+            </button>
+          ) : null}
+          {fileName && cropArea ? (
+            <button type="button" className="ghost-btn" onClick={() => setCropArea(null)}>
+              Reset crop
             </button>
           ) : null}
           <button className="primary-btn" onClick={runAnalysis} disabled={disabled}>
@@ -175,6 +378,9 @@ export default function AnalyzeTab() {
           </>
         ) : null}
         </section>
+      </div>
+      <div style={{ marginTop: "18px" }}>
+        <HistoryTab />
       </div>
     </section>
   );

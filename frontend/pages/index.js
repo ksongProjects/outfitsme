@@ -12,6 +12,7 @@ import { useStatsState } from "../hooks/useStatsState";
 import { useAnalysisState } from "../hooks/useAnalysisState";
 import { useWardrobeState } from "../hooks/useWardrobeState";
 import { useItemsState } from "../hooks/useItemsState";
+import { useHistoryState } from "../hooks/useHistoryState";
 import { useSettingsState } from "../hooks/useSettingsState";
 
 export default function HomePage() {
@@ -30,6 +31,7 @@ export default function HomePage() {
     onWardrobeChanged: () => statsState.loadStats()
   });
   const itemsState = useItemsState({ accessToken });
+  const historyState = useHistoryState({ accessToken });
   const settingsState = useSettingsState({
     session: auth.session,
     accessToken,
@@ -63,8 +65,15 @@ export default function HomePage() {
     analysisState.resetAnalysisState();
     wardrobeState.resetWardrobeState();
     itemsState.resetItemsState();
+    historyState.resetHistoryState();
     setDashboardTab("dashboard");
-  }, [auth.signOut, analysisState.resetAnalysisState, wardrobeState.resetWardrobeState, itemsState.resetItemsState]);
+  }, [
+    auth.signOut,
+    analysisState.resetAnalysisState,
+    wardrobeState.resetWardrobeState,
+    itemsState.resetItemsState,
+    historyState.resetHistoryState
+  ]);
 
   const authValue = useMemo(() => ({
     authTab: auth.authTab,
@@ -84,6 +93,8 @@ export default function HomePage() {
     onFileDrop: analysisState.onFileDrop,
     fileName: analysisState.fileName,
     clearSelectedFile: analysisState.clearSelectedFile,
+    cropArea: analysisState.cropArea,
+    setCropArea: analysisState.setCropArea,
     runAnalysis: analysisState.runAnalysis,
     disabled: analysisState.disabled,
     loading: analysisState.loading,
@@ -100,6 +111,7 @@ export default function HomePage() {
   }), [
     analysisState.previewUrl,
     analysisState.fileName,
+    analysisState.cropArea,
     analysisState.disabled,
     analysisState.loading,
     analysisState.analysis,
@@ -174,6 +186,20 @@ export default function HomePage() {
     analysisState.modelOptions
   ]);
 
+  const historyValue = useMemo(() => ({
+    history: historyState.history,
+    historyLoading: historyState.historyLoading,
+    historyMessage: historyState.historyMessage,
+    loadHistory: historyState.loadHistory,
+    deleteHistoryPhoto: historyState.deleteHistoryPhoto,
+    deletingPhotoId: historyState.deletingPhotoId
+  }), [
+    historyState.history,
+    historyState.historyLoading,
+    historyState.historyMessage,
+    historyState.deletingPhotoId
+  ]);
+
   const userFullName = (auth.session?.user?.user_metadata?.full_name || "").trim();
   const userEmail = auth.session?.user?.email || "";
   const userLabel = userFullName || userEmail || "your account";
@@ -184,6 +210,7 @@ export default function HomePage() {
       analysisValue={analysisValue}
       wardrobeValue={wardrobeValue}
       itemsValue={itemsValue}
+      historyValue={historyValue}
       settingsValue={settingsValue}
     >
       {!auth.session ? (
