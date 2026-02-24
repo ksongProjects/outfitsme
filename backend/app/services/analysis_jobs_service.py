@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
 from io import BytesIO
+import base64
+import math
 
 import requests
 from PIL import Image, ImageOps
@@ -10,8 +12,7 @@ from app.config import settings
 from app.services.bedrock_service import analyze_outfit_with_bedrock_agent
 from app.services.gemini_service import (
     analyze_outfit_with_gemini,
-    detect_item_bounding_boxes_with_gemini,
-    generate_item_image_with_gemini
+    generate_item_sprite_with_gemini
 )
 from app.services.models_service import build_model_availability
 from app.services.supabase_service import (
@@ -215,76 +216,69 @@ def _mark_job_progress(
         return
 
 
-def _item_signature(item: dict) -> tuple[str, str, str]:
-    return (
-        str(item.get("category", "")).strip().lower(),
-        str(item.get("name", "")).strip().lower(),
-        str(item.get("color", "")).strip().lower()
-    )
-
-
-def _crop_item_reference_image(
-    source_image_bytes: bytes,
-    bbox: dict
-) -> tuple[bytes, str] | None:
+def _decode_data_uri_image(data_uri: str) -> tuple[bytes, str] | None:
+    if not isinstance(data_uri, str) or not data_uri.startswith("data:image/"):
+        return None
+    parts = data_uri.split(",", 1)
+    if len(parts) != 2:
+        return None
+    header, encoded = parts
+    mime_type = header.split(";")[0].replace("data:", "") or "image/png"
     try:
-        with Image.open(BytesIO(source_image_bytes)) as image:
-            source = ImageOps.exif_transpose(image)
-            width, height = source.size
-            if width <= 0 or height <= 0:
-                return None
-
-            x = int(bbox.get("x", 0))
-            y = int(bbox.get("y", 0))
-            w = int(bbox.get("w", 0))
-            h = int(bbox.get("h", 0))
-            if w <= 0 or h <= 0:
-                return None
-
-            left = max(0, min(width - 1, int((x / 1000.0) * width)))
-            top = max(0, min(height - 1, int((y / 1000.0) * height)))
-            right = max(left + 1, min(width, int(((x + w) / 1000.0) * width)))
-            bottom = max(top + 1, min(height, int(((y + h) / 1000.0) * height)))
-            if right <= left or bottom <= top:
-                return None
-
-            crop = source.crop((left, top, right, bottom))
-            if crop.mode not in {"RGB", "L"}:
-                crop = crop.convert("RGB")
-            output = BytesIO()
-            crop.save(output, format="JPEG", quality=90, optimize=True)
-            return output.getvalue(), "image/jpeg"
+        return base64.b64decode(encoded), mime_type
     except Exception:  # noqa: BLE001
         return None
 
 
-def _prepare_item_reference_crops(
-    source_image_bytes: bytes | None,
-    source_mime_type: str | None,
-    items: list[dict],
-    gemini_key: str
-) -> dict[tuple[str, str, str], list[tuple[bytes, str]]]:
-    if not source_image_bytes or not items:
-        return {}
+def _build_sprite_grid(item_count: int) -> tuple[int, int]:
+    if item_count <= 1:
+        return 1, 1
+    if item_count <= 4:
+        return 2, 2
+    if item_count <= 6:
+        return 3, 2
+    cols = 4
+    rows = int(math.ceil(item_count / cols))
+    return cols, rows
 
+
+def _slice_sprite_to_item_data_uris(
+    sprite_data_uri: str,
+    item_count: int,
+    grid_cols: int,
+    grid_rows: int
+) -> list[str]:
+    decoded = _decode_data_uri_image(sprite_data_uri)
+    if not decoded:
+        return []
+    image_bytes, _mime = decoded
     try:
-        detections = detect_item_bounding_boxes_with_gemini(
-            source_image_bytes,
-            source_mime_type or "image/jpeg",
-            items,
-            api_key=gemini_key
-        )
+        with Image.open(BytesIO(image_bytes)) as source:
+            image = ImageOps.exif_transpose(source)
+            width, height = image.size
+            if width <= 0 or height <= 0:
+                return []
+            cell_width = max(1, width // max(1, grid_cols))
+            cell_height = max(1, height // max(1, grid_rows))
+            result = []
+            for index in range(item_count):
+                row = index // grid_cols
+                col = index % grid_cols
+                left = col * cell_width
+                top = row * cell_height
+                right = width if col == grid_cols - 1 else min(width, left + cell_width)
+                bottom = height if row == grid_rows - 1 else min(height, top + cell_height)
+                if right <= left or bottom <= top:
+                    continue
+                crop = image.crop((left, top, right, bottom))
+                if crop.mode not in {"RGB", "L"}:
+                    crop = crop.convert("RGB")
+                output = BytesIO()
+                crop.save(output, format="JPEG", quality=90, optimize=True)
+                result.append(f"data:image/jpeg;base64,{base64.b64encode(output.getvalue()).decode('utf-8')}")
+            return result
     except Exception:  # noqa: BLE001
-        return {}
-
-    by_signature: dict[tuple[str, str, str], list[tuple[bytes, str]]] = {}
-    for detection in detections:
-        signature = _item_signature(detection)
-        cropped = _crop_item_reference_image(source_image_bytes, detection.get("bbox") or {})
-        if not cropped:
-            continue
-        by_signature.setdefault(signature, []).append(cropped)
-    return by_signature
+        return []
 
 
 def _generate_item_images_for_analysis(
@@ -327,12 +321,6 @@ def _generate_item_images_for_analysis(
         }
 
     items = list_items_for_analysis(user_id, analysis_id)
-    crop_map_by_signature = _prepare_item_reference_crops(
-        source_image_bytes,
-        source_mime_type,
-        items,
-        gemini_key
-    )
     total_items = len(items)
     summary = {
         "total_items": total_items,
@@ -345,57 +333,60 @@ def _generate_item_images_for_analysis(
     _mark_job_progress(
         job_id,
         stage="generating_item_images",
-        message=f"Preparing item image generation for {total_items} item(s).",
+        message=f"Preparing sprite generation for {total_items} item(s).",
         counts=summary
     )
+    pending_items = []
     for item in items:
-        item_index = summary["processed_items"] + 1
-        current_item = {
-            "index": item_index,
-            "name": item.get("name"),
-            "category": item.get("category"),
-            "color": item.get("color")
-        }
-        _mark_job_progress(
-            job_id,
-            stage="generating_item_images",
-            message=f"Generating item image {item_index} of {total_items}.",
-            counts=summary,
-            current_item=current_item
-        )
         attributes = item.get("attributes_json") or {}
         if isinstance(attributes, dict) and attributes.get("generated_item_image_path"):
             summary["processed_items"] += 1
             summary["skipped_items"] += 1
             continue
+        pending_items.append(item)
+
+    if pending_items:
+        grid_cols, grid_rows = _build_sprite_grid(len(pending_items))
+        _mark_job_progress(
+            job_id,
+            stage="generating_item_images",
+            message=f"Generating item sprite ({grid_cols}x{grid_rows}) for {len(pending_items)} item(s).",
+            counts=summary
+        )
         try:
-            signature = _item_signature(item)
-            signature_crops = crop_map_by_signature.get(signature) or []
-            crop_reference = signature_crops.pop(0) if signature_crops else None
-            reference_bytes = crop_reference[0] if crop_reference else source_image_bytes
-            reference_mime = crop_reference[1] if crop_reference else source_mime_type
-            image_data_uri = generate_item_image_with_gemini(
-                {
-                    "category": item.get("category"),
-                    "name": item.get("name"),
-                    "color": item.get("color")
-                },
-                api_key=gemini_key,
-                reference_image_bytes=reference_bytes,
-                reference_mime_type=reference_mime
+            sprite_data_uri = generate_item_sprite_with_gemini(
+                [
+                    {
+                        "category": item.get("category"),
+                        "name": item.get("name"),
+                        "color": item.get("color")
+                    }
+                    for item in pending_items
+                ],
+                grid_cols=grid_cols,
+                grid_rows=grid_rows,
+                reference_image_bytes=source_image_bytes,
+                reference_mime_type=source_mime_type,
+                api_key=gemini_key
             )
-            if not image_data_uri:
+            cropped_data_uris = _slice_sprite_to_item_data_uris(
+                sprite_data_uri or "",
+                len(pending_items),
+                grid_cols,
+                grid_rows
+            )
+            for index, item in enumerate(pending_items):
+                image_data_uri = cropped_data_uris[index] if index < len(cropped_data_uris) else None
+                if not image_data_uri:
+                    summary["processed_items"] += 1
+                    summary["failed_items"] += 1
+                    continue
+                save_generated_item_image(user_id, item["id"], image_data_uri)
                 summary["processed_items"] += 1
-                summary["failed_items"] += 1
-                continue
-            save_generated_item_image(user_id, item["id"], image_data_uri)
-            summary["processed_items"] += 1
-            summary["generated_items"] += 1
+                summary["generated_items"] += 1
         except Exception:  # noqa: BLE001
-            # Item image generation is best-effort and should not fail analysis completion.
-            summary["processed_items"] += 1
-            summary["failed_items"] += 1
-            continue
+            summary["processed_items"] += len(pending_items)
+            summary["failed_items"] += len(pending_items)
     _mark_job_progress(
         job_id,
         stage="generating_item_images",
