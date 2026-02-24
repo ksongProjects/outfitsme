@@ -500,9 +500,15 @@ def _build_generated_item_image_lookup(
     *,
     user_id: str,
     analysis_id: str,
-    resolve_signed_url
+    resolve_signed_url,
+    required_counts_by_signature: dict[tuple[str, str, str], int] | None = None
 ) -> dict[tuple[str, str, str], list[str]]:
     images_by_signature: dict[tuple[str, str, str], list[str]] = {}
+    limit_to_required = required_counts_by_signature is not None
+    remaining_by_signature = {
+        signature: max(0, int(count))
+        for signature, count in (required_counts_by_signature or {}).items()
+    }
     analysis_items_response = (
         client.table("items")
         .select("category,name,color,attributes_json")
@@ -523,7 +529,13 @@ def _build_generated_item_image_lookup(
             str(analysis_item.get("name", "")).strip().lower(),
             str(analysis_item.get("color", "")).strip().lower()
         )
+        if limit_to_required:
+            remaining = remaining_by_signature.get(signature, 0)
+            if remaining <= 0:
+                continue
         images_by_signature.setdefault(signature, []).append(image_url)
+        if limit_to_required:
+            remaining_by_signature[signature] = remaining_by_signature.get(signature, 0) - 1
     return images_by_signature
 
 
@@ -1255,17 +1267,6 @@ def get_wardrobe_photo_details(user_id: str, photo_id: str, outfit_index: int | 
     )
     analysis_row = (analysis_response.data or [None])[0]
 
-    images_by_signature = (
-        _build_generated_item_image_lookup(
-            client,
-            user_id=user_id,
-            analysis_id=analysis_row.get("id"),
-            resolve_signed_url=resolve_signed_url
-        )
-        if analysis_row and analysis_row.get("id")
-        else {}
-    )
-
     outfit_rows_response = (
         client.table("outfits")
         .select("id,outfit_index,style_label")
@@ -1284,41 +1285,82 @@ def get_wardrobe_photo_details(user_id: str, photo_id: str, outfit_index: int | 
     if analysis_row:
         raw_json = analysis_row.get("raw_json") or {}
         raw_outfits = raw_json.get("outfits") if isinstance(raw_json, dict) else None
+        selected_indices: list[int] = []
+        if outfit_index is not None:
+            selected_indices = [outfit_index]
+        elif isinstance(raw_outfits, list):
+            selected_indices = list(range(len(raw_outfits)))
+        else:
+            selected_indices = [0]
+
+        prepared_outfits: list[dict] = []
         if isinstance(raw_outfits, list):
-            for index, outfit in enumerate(raw_outfits):
+            for index in selected_indices:
+                if index < 0 or index >= len(raw_outfits):
+                    continue
+                outfit = raw_outfits[index]
                 if not isinstance(outfit, dict):
                     continue
-                outfit_items = [item for item in (outfit.get("items") or []) if isinstance(item, dict)]
-                outfit_row = outfits_by_index.get(index) or {}
-                outfits.append(
+                prepared_outfits.append(
                     {
-                        "outfit_id": outfit_row.get("id"),
                         "outfit_index": index,
-                        "style": _normalize_label(
-                            outfit_row.get("style_label") or outfit.get("style"),
-                            "Unlabeled"
-                        ),
-                        "items": _normalize_items_with_images(outfit_items, images_by_signature)
+                        "style": _normalize_label(outfit.get("style"), "Unlabeled"),
+                        "items": [item for item in (outfit.get("items") or []) if isinstance(item, dict)]
                     }
                 )
 
-        if not outfits:
-            fallback_items = raw_json.get("items") if isinstance(raw_json, dict) else []
-            fallback_row = outfits_by_index.get(0) or {}
-            outfits = [
+        if not prepared_outfits:
+            fallback_items = [item for item in (raw_json.get("items") or []) if isinstance(item, dict)] if isinstance(raw_json, dict) else []
+            fallback_index = outfit_index if outfit_index is not None else 0
+            prepared_outfits = [
                 {
-                    "outfit_id": fallback_row.get("id"),
-                    "outfit_index": 0,
+                    "outfit_index": fallback_index,
+                    "style": _normalize_label(analysis_row.get("style_label"), "Unlabeled"),
+                    "items": fallback_items
+                }
+            ]
+
+        required_counts_by_signature: dict[tuple[str, str, str], int] = {}
+        for prepared in prepared_outfits:
+            for item in prepared.get("items") or []:
+                if not isinstance(item, dict):
+                    continue
+                signature = (
+                    str(item.get("category", "")).strip().lower(),
+                    str(item.get("name", "")).strip().lower(),
+                    str(item.get("color", "")).strip().lower()
+                )
+                required_counts_by_signature[signature] = required_counts_by_signature.get(signature, 0) + 1
+
+        images_by_signature = (
+            _build_generated_item_image_lookup(
+                client,
+                user_id=user_id,
+                analysis_id=analysis_row.get("id"),
+                resolve_signed_url=resolve_signed_url,
+                required_counts_by_signature=required_counts_by_signature
+            )
+            if analysis_row.get("id")
+            else {}
+        )
+
+        for prepared in prepared_outfits:
+            index = _safe_outfit_index(prepared.get("outfit_index"))
+            outfit_row = outfits_by_index.get(index) or {}
+            outfits.append(
+                {
+                    "outfit_id": outfit_row.get("id"),
+                    "outfit_index": index,
                     "style": _normalize_label(
-                        fallback_row.get("style_label") or analysis_row.get("style_label"),
+                        outfit_row.get("style_label") or prepared.get("style"),
                         "Unlabeled"
                     ),
                     "items": _normalize_items_with_images(
-                        [item for item in (fallback_items or []) if isinstance(item, dict)],
+                        [item for item in (prepared.get("items") or []) if isinstance(item, dict)],
                         images_by_signature
                     )
                 }
-            ]
+            )
 
     storage_path = photo_row.get("storage_path") or ""
     image_url = resolve_signed_url(storage_path)

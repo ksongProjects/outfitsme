@@ -9,14 +9,22 @@ export default function BaseDialog({
   size = "md",
   scrollable = true,
   headerActions = null,
+  panelClassName = "",
   children
 }) {
+  const panelClasses = [
+    "modal-panel",
+    size === "sm" ? "modal-panel-sm" : "",
+    scrollable ? "" : "modal-panel-no-scroll",
+    panelClassName
+  ].filter(Boolean).join(" ");
+
   return (
     <Dialog.Root open={open} onOpenChange={onOpenChange}>
       <Dialog.Portal>
         <Dialog.Backdrop className="modal-backdrop" />
         <Dialog.Viewport className="modal-viewport">
-          <Dialog.Popup className={`modal-panel ${size === "sm" ? "modal-panel-sm" : ""} ${scrollable ? "" : "modal-panel-no-scroll"}`}>
+          <Dialog.Popup className={panelClasses}>
             <div className="modal-header">
               <Dialog.Title className="modal-title">{title}</Dialog.Title>
               <div className="modal-header-actions">

@@ -190,7 +190,7 @@ select {
 
 .dashboard-header .outfitme-home-btn {
   display: inline-flex;
-  margin-bottom: 8px;
+  margin-bottom: 16px;
 }
 
 .outfitme-home-btn:focus-visible {
@@ -200,7 +200,7 @@ select {
 }
 
 .hero {
-  margin-top: 22px;
+  margin-top: 16px;
   display: grid;
   gap: 18px;
   grid-template-columns: 1.1fr 0.9fr;
@@ -267,11 +267,15 @@ select {
   margin-top: 4px;
 }
 
+.form-btn-container {
+  display: flex;
+  justify-content: space-between;
+}
+
 .remember-me-row {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  margin: 0 0 8px;
   color: var(--muted);
   font-size: 0.95rem;
 }

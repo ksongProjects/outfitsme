@@ -54,6 +54,7 @@ export default function LandingAuth() {
             onChange={(event) => setPassword(event.target.value)}
           />
 
+<div className="form-btn-container">
           {authTab === "signin" ? (
             <label className="remember-me-row">
               <input
@@ -70,7 +71,7 @@ export default function LandingAuth() {
           ) : (
             <BaseButton type="submit" variant="primary">Create account</BaseButton>
           )}
-
+</div>
         </form>
       </section>
 

@@ -35,6 +35,7 @@ export default function OutfitsTab() {
   const [pendingDelete, setPendingDelete] = useState(null);
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState("");
+  const [itemPreview, setItemPreview] = useState(null);
 
   useEffect(() => {
     const selectedStyle = outfitDetails?.selected_outfit?.style || "";
@@ -66,7 +67,7 @@ export default function OutfitsTab() {
       header: "Photo",
       cell: ({ row }) => (
         row.original.image_url ? (
-          <img src={row.original.image_url} alt={getOutfitDisplayName(row.original)} className="item-thumb" />
+          <img src={row.original.image_url} alt={getOutfitDisplayName(row.original)} className="history-thumb" />
         ) : (
           <span className="subtext">-</span>
         )
@@ -76,11 +77,6 @@ export default function OutfitsTab() {
       accessorKey: "name",
       header: "Name",
       cell: ({ row }) => getOutfitDisplayName(row.original)
-    },
-    {
-      accessorKey: "outfit_items_count",
-      header: "Items",
-      cell: ({ row }) => row.original.outfit_items_count ?? "-"
     },
     {
       accessorKey: "created_at",
@@ -301,7 +297,22 @@ export default function OutfitsTab() {
                         <li key={`detail-item-${outfitDetails.selected_outfit.outfit_index}-${index}`} className="analysis-item">
                           <span className="wardrobe-item-row">
                             {item.image_url ? (
-                              <img src={item.image_url} alt={item.name || "Outfit item"} className="item-thumb" />
+                              <BaseButton
+                                type="button"
+                                variant="ghost"
+                                className="history-thumb-btn"
+                                onClick={(event) => {
+                                  event.stopPropagation();
+                                  setItemPreview({
+                                    image_url: item.image_url,
+                                    name: item.name || "Outfit item"
+                                  });
+                                }}
+                                aria-label="Open item image preview"
+                                title="Open item image preview"
+                              >
+                                <img src={item.image_url} alt={item.name || "Outfit item"} className="item-thumb" />
+                              </BaseButton>
                             ) : null}
                             <span className="item-icon" aria-hidden="true">{getItemIcon(item)}</span>
                             <span>{item.name || formatItemLabel(item)}</span>
@@ -354,6 +365,19 @@ export default function OutfitsTab() {
             {deletingOutfitId === pendingDelete?.outfit_id ? "Deleting..." : "Delete"}
           </BaseButton>
         </div>
+      </BaseDialog>
+
+      <BaseDialog
+        open={Boolean(itemPreview)}
+        onOpenChange={(open) => setItemPreview(open ? itemPreview : null)}
+        title={itemPreview?.name || "Item preview"}
+        size="sm"
+      >
+        {itemPreview?.image_url ? (
+          <img src={itemPreview.image_url} alt={itemPreview.name || "Item preview"} className="modal-image" />
+        ) : (
+          <p className="subtext">Preview unavailable for this item.</p>
+        )}
       </BaseDialog>
     </section>
   );
