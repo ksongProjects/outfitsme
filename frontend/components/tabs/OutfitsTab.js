@@ -86,7 +86,7 @@ export default function OutfitsTab() {
           <h2>My Outfits</h2>
           <p className="tab-header-subtext">Browse saved looks and open outfit details.</p>
         </div>
-        <BaseButton variant="ghost" onClick={loadWardrobe} disabled={wardrobeLoading}>
+        <BaseButton variant="ghost" onClick={() => loadWardrobe(true)} disabled={wardrobeLoading}>
           {wardrobeLoading ? "Loading..." : "Refresh"}
         </BaseButton>
       </div>

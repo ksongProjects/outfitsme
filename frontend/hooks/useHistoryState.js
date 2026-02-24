@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { API_BASE } from "../lib/apiBase";
 
 export function useHistoryState({ accessToken }) {
+  const CACHE_STALE_MS = 5 * 60 * 1000;
   const queryClient = useQueryClient();
 
   const historyQuery = useQuery({
@@ -35,7 +36,22 @@ export function useHistoryState({ accessToken }) {
     ? "Couldn't load history right now."
     : (history.length === 0 ? "No analysis history yet. Analyze a photo to populate this table." : "");
 
-  const loadHistory = async () => {
+  const loadHistory = async (force = false) => {
+    if (!accessToken) {
+      return;
+    }
+    if (!force) {
+      const queryKey = ["history", accessToken];
+      const cachedHistory = queryClient.getQueryData(queryKey);
+      const queryState = queryClient.getQueryState(queryKey);
+      if (
+        Array.isArray(cachedHistory)
+        && typeof queryState?.dataUpdatedAt === "number"
+        && (Date.now() - queryState.dataUpdatedAt) < CACHE_STALE_MS
+      ) {
+        return;
+      }
+    }
     const result = await historyQuery.refetch();
     if (result.isError) {
       toast.error("Couldn't load history.");

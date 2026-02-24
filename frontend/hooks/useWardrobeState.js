@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { API_BASE } from "../lib/apiBase";
 
 export function useWardrobeState({ accessToken, onWardrobeChanged }) {
+  const CACHE_STALE_MS = 5 * 60 * 1000;
   const [wardrobeMessage, setWardrobeMessage] = useState("");
   const [deletingOutfitId, setDeletingOutfitId] = useState("");
   const [updatingOutfitId, setUpdatingOutfitId] = useState("");
@@ -42,11 +43,26 @@ export function useWardrobeState({ accessToken, onWardrobeChanged }) {
   const wardrobe = wardrobeQuery.data || [];
   const wardrobeLoading = wardrobeQuery.isFetching;
 
-  const loadWardrobe = async () => {
+  const loadWardrobe = async (force = false) => {
     if (!accessToken) {
       return;
     }
     setWardrobeMessage("");
+
+    if (!force) {
+      const queryKey = ["wardrobe", accessToken];
+      const cachedWardrobe = queryClient.getQueryData(queryKey);
+      const queryState = queryClient.getQueryState(queryKey);
+      if (
+        Array.isArray(cachedWardrobe)
+        && typeof queryState?.dataUpdatedAt === "number"
+        && (Date.now() - queryState.dataUpdatedAt) < CACHE_STALE_MS
+      ) {
+        const entries = cachedWardrobe;
+        setWardrobeMessage(entries.length === 0 ? "No wardrobe entries yet. Analyze your first outfit photo." : "");
+        return;
+      }
+    }
 
     const result = await wardrobeQuery.refetch();
     if (result.isError) {

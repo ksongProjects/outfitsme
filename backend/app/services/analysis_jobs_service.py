@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 from concurrent.futures import ThreadPoolExecutor
+from io import BytesIO
 
 import requests
+from PIL import Image, ImageOps
 
 from app.config import settings
 from app.services.bedrock_service import analyze_outfit_with_bedrock_agent
-from app.services.gemini_service import analyze_outfit_with_gemini, generate_item_image_with_gemini
+from app.services.gemini_service import (
+    analyze_outfit_with_gemini,
+    detect_item_bounding_boxes_with_gemini,
+    generate_item_image_with_gemini
+)
 from app.services.models_service import build_model_availability
 from app.services.supabase_service import (
     claim_analysis_job,
@@ -209,11 +215,85 @@ def _mark_job_progress(
         return
 
 
+def _item_signature(item: dict) -> tuple[str, str, str]:
+    return (
+        str(item.get("category", "")).strip().lower(),
+        str(item.get("name", "")).strip().lower(),
+        str(item.get("color", "")).strip().lower()
+    )
+
+
+def _crop_item_reference_image(
+    source_image_bytes: bytes,
+    bbox: dict
+) -> tuple[bytes, str] | None:
+    try:
+        with Image.open(BytesIO(source_image_bytes)) as image:
+            source = ImageOps.exif_transpose(image)
+            width, height = source.size
+            if width <= 0 or height <= 0:
+                return None
+
+            x = int(bbox.get("x", 0))
+            y = int(bbox.get("y", 0))
+            w = int(bbox.get("w", 0))
+            h = int(bbox.get("h", 0))
+            if w <= 0 or h <= 0:
+                return None
+
+            left = max(0, min(width - 1, int((x / 1000.0) * width)))
+            top = max(0, min(height - 1, int((y / 1000.0) * height)))
+            right = max(left + 1, min(width, int(((x + w) / 1000.0) * width)))
+            bottom = max(top + 1, min(height, int(((y + h) / 1000.0) * height)))
+            if right <= left or bottom <= top:
+                return None
+
+            crop = source.crop((left, top, right, bottom))
+            if crop.mode not in {"RGB", "L"}:
+                crop = crop.convert("RGB")
+            output = BytesIO()
+            crop.save(output, format="JPEG", quality=90, optimize=True)
+            return output.getvalue(), "image/jpeg"
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _prepare_item_reference_crops(
+    source_image_bytes: bytes | None,
+    source_mime_type: str | None,
+    items: list[dict],
+    gemini_key: str
+) -> dict[tuple[str, str, str], list[tuple[bytes, str]]]:
+    if not source_image_bytes or not items:
+        return {}
+
+    try:
+        detections = detect_item_bounding_boxes_with_gemini(
+            source_image_bytes,
+            source_mime_type or "image/jpeg",
+            items,
+            api_key=gemini_key
+        )
+    except Exception:  # noqa: BLE001
+        return {}
+
+    by_signature: dict[tuple[str, str, str], list[tuple[bytes, str]]] = {}
+    for detection in detections:
+        signature = _item_signature(detection)
+        cropped = _crop_item_reference_image(source_image_bytes, detection.get("bbox") or {})
+        if not cropped:
+            continue
+        by_signature.setdefault(signature, []).append(cropped)
+    return by_signature
+
+
 def _generate_item_images_for_analysis(
     user_id: str,
     analysis_id: str,
     user_settings: dict,
-    job_id: str
+    job_id: str,
+    source_image_bytes: bytes | None = None,
+    source_mime_type: str | None = None
 ) -> dict:
     if not bool(user_settings.get("enable_outfit_image_generation")):
         _mark_job_progress(
@@ -247,6 +327,12 @@ def _generate_item_images_for_analysis(
         }
 
     items = list_items_for_analysis(user_id, analysis_id)
+    crop_map_by_signature = _prepare_item_reference_crops(
+        source_image_bytes,
+        source_mime_type,
+        items,
+        gemini_key
+    )
     total_items = len(items)
     summary = {
         "total_items": total_items,
@@ -283,13 +369,20 @@ def _generate_item_images_for_analysis(
             summary["skipped_items"] += 1
             continue
         try:
+            signature = _item_signature(item)
+            signature_crops = crop_map_by_signature.get(signature) or []
+            crop_reference = signature_crops.pop(0) if signature_crops else None
+            reference_bytes = crop_reference[0] if crop_reference else source_image_bytes
+            reference_mime = crop_reference[1] if crop_reference else source_mime_type
             image_data_uri = generate_item_image_with_gemini(
                 {
                     "category": item.get("category"),
                     "name": item.get("name"),
                     "color": item.get("color")
                 },
-                api_key=gemini_key
+                api_key=gemini_key,
+                reference_image_bytes=reference_bytes,
+                reference_mime_type=reference_mime
             )
             if not image_data_uri:
                 summary["processed_items"] += 1
@@ -379,7 +472,9 @@ def process_analysis_job(job_id: str) -> None:
                 user_id,
                 persistence["analysis_id"],
                 user_settings,
-                job_id
+                job_id,
+                source_image_bytes=image_bytes,
+                source_mime_type=mime_type
             )
             persisted_items = list_items_for_analysis(user_id, persistence["analysis_id"])
             analysis_for_response = _attach_item_images_to_analysis(analysis, persisted_items)

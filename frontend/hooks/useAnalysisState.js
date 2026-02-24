@@ -45,8 +45,8 @@ export function useAnalysisState({ accessToken, onAnalysisSaved }) {
   const analyzeMutation = useMutation({
     mutationFn: async ({ fileToAnalyze, modelId }) => {
       const pollAnalyzeJob = async (jobId) => {
-        for (let attempt = 0; attempt < 30; attempt += 1) {
-          const pollRes = await fetch(`${API_BASE}/api/analyze/jobs/${jobId}?wait_seconds=20`, {
+        for (let attempt = 0; attempt < 120; attempt += 1) {
+          const pollRes = await fetch(`${API_BASE}/api/analyze/jobs/${jobId}?wait_seconds=3`, {
             method: "GET",
             headers: {
               Authorization: `Bearer ${accessToken}`

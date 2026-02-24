@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { API_BASE } from "../lib/apiBase";
 
 export function useItemsState({ accessToken }) {
+  const CACHE_STALE_MS = 5 * 60 * 1000;
   const queryClient = useQueryClient();
   const [selectedItemIds, setSelectedItemIds] = useState([]);
 
@@ -43,6 +44,19 @@ export function useItemsState({ accessToken }) {
     : (items.length === 0 ? "No items yet. Analyze an outfit to populate your item catalog." : "");
 
   const loadItems = async () => {
+    if (!accessToken) {
+      return;
+    }
+    const queryKey = ["items", accessToken];
+    const cachedItems = queryClient.getQueryData(queryKey);
+    const queryState = queryClient.getQueryState(queryKey);
+    if (
+      Array.isArray(cachedItems)
+      && typeof queryState?.dataUpdatedAt === "number"
+      && (Date.now() - queryState.dataUpdatedAt) < CACHE_STALE_MS
+    ) {
+      return;
+    }
     const result = await itemsQuery.refetch();
     if (result.isError) {
       toast.error("Couldn't load item catalog.");

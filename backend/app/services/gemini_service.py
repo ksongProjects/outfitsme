@@ -181,6 +181,132 @@ def _parse_gemini_json(response_json: dict) -> dict:
     return {"style": primary_style, "items": flattened_items, "outfits": outfits}
 
 
+def _extract_gemini_text(response_json: dict) -> str:
+    candidates = response_json.get("candidates", [])
+    if not candidates:
+        return ""
+    parts = candidates[0].get("content", {}).get("parts", [])
+    text_parts = [part.get("text", "") for part in parts if "text" in part]
+    return "\n".join(text_parts).strip()
+
+
+def detect_item_bounding_boxes_with_gemini(
+    image_bytes: bytes,
+    mime_type: str,
+    items: list[dict],
+    api_key: str | None = None,
+    model: str | None = None
+) -> list[dict]:
+    effective_api_key = (api_key or settings.GEMINI_API_KEY or "").strip()
+    if not effective_api_key:
+        raise GeminiNotConfiguredError("GEMINI_API_KEY is required.")
+    if not image_bytes or not items:
+        return []
+
+    resized_image_bytes, resized_mime_type = _resize_image_for_model(
+        image_bytes,
+        mime_type,
+        max_side=settings.GEMINI_ANALYSIS_IMAGE_MAX_SIDE
+    )
+    encoded_image = base64.b64encode(resized_image_bytes).decode("utf-8")
+
+    requested_items = []
+    for item in items:
+        if not isinstance(item, dict):
+            continue
+        requested_items.append(
+            {
+                "category": _normalize_label(item.get("category", "Item"), "Item"),
+                "name": _normalize_label(item.get("name", "Unknown Item"), "Unknown Item"),
+                "color": _normalize_label(item.get("color", "Unknown"), "Unknown")
+            }
+        )
+    if not requested_items:
+        return []
+
+    prompt = (
+        "Locate the requested clothing items in the image. "
+        "Return strict JSON only with schema: "
+        "{\"boxes\":[{\"category\":string,\"name\":string,\"color\":string,"
+        "\"bbox\":{\"x\":int,\"y\":int,\"w\":int,\"h\":int},\"confidence\":number}]}. "
+        "Coordinates must be integers in a 0..1000 normalized canvas where "
+        "(0,0) is top-left and (1000,1000) is bottom-right. "
+        "If an item is not visible, omit it. "
+        f"Requested items: {json.dumps(requested_items, ensure_ascii=True)}"
+    )
+
+    payload = {
+        "contents": [
+            {
+                "parts": [
+                    {"text": prompt},
+                    {
+                        "inline_data": {
+                            "mime_type": resized_mime_type,
+                            "data": encoded_image
+                        }
+                    }
+                ]
+            }
+        ],
+        "generationConfig": {
+            "responseMimeType": "application/json"
+        }
+    }
+
+    response_json = _post_to_gemini(
+        payload,
+        model=(model or settings.GEMINI_MODEL).strip(),
+        api_key=effective_api_key,
+        timeout_seconds=30
+    )
+    raw_text = _extract_gemini_text(response_json)
+    if not raw_text:
+        return []
+
+    try:
+        parsed = json.loads(raw_text)
+    except ValueError:
+        return []
+    if not isinstance(parsed, dict):
+        return []
+
+    raw_boxes = parsed.get("boxes")
+    if not isinstance(raw_boxes, list):
+        return []
+
+    normalized_boxes = []
+    for entry in raw_boxes:
+        if not isinstance(entry, dict):
+            continue
+        bbox = entry.get("bbox")
+        if not isinstance(bbox, dict):
+            continue
+        try:
+            x = int(bbox.get("x"))
+            y = int(bbox.get("y"))
+            w = int(bbox.get("w"))
+            h = int(bbox.get("h"))
+        except (TypeError, ValueError):
+            continue
+        if w <= 0 or h <= 0:
+            continue
+        normalized_boxes.append(
+            {
+                "category": _normalize_label(entry.get("category", "Item"), "Item"),
+                "name": _normalize_label(entry.get("name", "Unknown Item"), "Unknown Item"),
+                "color": _normalize_label(entry.get("color", "Unknown"), "Unknown"),
+                "bbox": {
+                    "x": max(0, min(1000, x)),
+                    "y": max(0, min(1000, y)),
+                    "w": max(1, min(1000, w)),
+                    "h": max(1, min(1000, h))
+                }
+            }
+        )
+    return normalized_boxes
+
+
 def analyze_outfit_with_gemini(image_bytes: bytes, mime_type: str, model: str | None = None, api_key: str | None = None) -> dict:
     effective_api_key = (api_key or settings.GEMINI_API_KEY or "").strip()
     if not effective_api_key:
@@ -217,7 +343,13 @@ def analyze_outfit_with_gemini(image_bytes: bytes, mime_type: str, model: str | 
     return _parse_gemini_json(response_json)
 
 
-def generate_item_image_with_gemini(item: dict, api_key: str | None = None, model: str | None = None) -> str | None:
+def generate_item_image_with_gemini(
+    item: dict,
+    api_key: str | None = None,
+    model: str | None = None,
+    reference_image_bytes: bytes | None = None,
+    reference_mime_type: str | None = None
+) -> str | None:
     effective_api_key = (api_key or settings.GEMINI_API_KEY or "").strip()
     if not effective_api_key:
         raise GeminiNotConfiguredError("GEMINI_API_KEY is required.")
@@ -225,18 +357,42 @@ def generate_item_image_with_gemini(item: dict, api_key: str | None = None, mode
     category = str(item.get("category", "clothing item")).strip() or "clothing item"
     name = str(item.get("name", "fashion item")).strip() or "fashion item"
     color = str(item.get("color", "neutral")).strip() or "neutral"
+    use_reference = bool(reference_image_bytes)
+    if use_reference:
+        reference_image_bytes, reference_mime_type = _resize_image_for_model(
+            reference_image_bytes,
+            reference_mime_type or "image/jpeg",
+            max_side=settings.GEMINI_SOURCE_IMAGE_MAX_SIDE
+        )
+
     prompt = (
-        "Create a clean product-style image on a plain light background. "
+        "Create a clean product-style image on a plain light background with one centered garment item. "
         f"Item category: {category}. Item name: {name}. Dominant color: {color}. "
-        "No text, no watermark, centered single item."
+        "No text, no watermark. "
     )
+    if use_reference:
+        prompt += (
+            "Use the provided reference photo to preserve the clothing style, silhouette, fabric cues, and overall aesthetic, "
+            "while isolating only the requested item."
+        )
+    else:
+        prompt += "Infer style from item metadata."
+
+    parts = [{"text": prompt}]
+    if use_reference:
+        parts.append(
+            {
+                "inline_data": {
+                    "mime_type": reference_mime_type or "image/jpeg",
+                    "data": base64.b64encode(reference_image_bytes).decode("utf-8")
+                }
+            }
+        )
 
     payload = {
         "contents": [
             {
-                "parts": [
-                    {"text": prompt}
-                ]
+                "parts": parts
             }
         ],
         "generationConfig": {

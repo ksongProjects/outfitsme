@@ -357,7 +357,7 @@ export default function HomePage() {
                   refreshStats={async () => {
                     await statsState.loadStats();
                     await analysisState.loadAnalysisLimits();
-                    await historyState.loadHistory();
+                    await historyState.loadHistory(true);
                   }}
                   loading={statsState.statsLoading || analysisState.limitsLoading || historyState.historyLoading}
                   analysisLimits={analysisState.analysisLimits}

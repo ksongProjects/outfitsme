@@ -20,7 +20,7 @@ export default function HistoryTab() {
           <h2>Analysis history</h2>
           <p className="tab-header-subtext">Review past photo analyses and remove stored photos.</p>
         </div>
-        <BaseButton variant="ghost" onClick={loadHistory} disabled={historyLoading}>
+        <BaseButton variant="ghost" onClick={() => loadHistory(true)} disabled={historyLoading}>
           {historyLoading ? "Loading..." : "Refresh"}
         </BaseButton>
       </div>
