@@ -1,6 +1,9 @@
 import { useSettingsContext } from "../../context/DashboardContext";
 import { useState } from "react";
 import { useEffect, useMemo } from "react";
+import BaseButton from "../ui/BaseButton";
+import BaseInput from "../ui/BaseInput";
+import BaseSelect from "../ui/BaseSelect";
 
 export default function SettingsTab() {
   const {
@@ -51,24 +54,27 @@ export default function SettingsTab() {
         </div>
       </div>
       <aside className="settings-menu">
-          <button
-            className={`settings-menu-btn ${activeSection === "profile" ? "active" : ""}`}
+          <BaseButton
+            variant="menu"
+            className={activeSection === "profile" ? "active" : ""}
             onClick={() => setActiveSection("profile")}
           >
             Profile
-          </button>
-          <button
-            className={`settings-menu-btn ${activeSection === "security" ? "active" : ""}`}
+          </BaseButton>
+          <BaseButton
+            variant="menu"
+            className={activeSection === "security" ? "active" : ""}
             onClick={() => setActiveSection("security")}
           >
             Security
-          </button>
-          <button
-            className={`settings-menu-btn ${activeSection === "models" ? "active" : ""}`}
+          </BaseButton>
+          <BaseButton
+            variant="menu"
+            className={activeSection === "models" ? "active" : ""}
             onClick={() => setActiveSection("models")}
           >
             Model keys
-          </button>
+          </BaseButton>
         </aside>
 
         <div>
@@ -76,15 +82,14 @@ export default function SettingsTab() {
           <article className="settings-card">
             <h2>Profile</h2>
             <label htmlFor="settings-name">Display name</label>
-            <input
+            <BaseInput
               id="settings-name"
-              className="text-input"
               value={profileName}
               onChange={(event) => setProfileName(event.target.value)}
               placeholder="Your name"
             />
             <div className="button-row">
-              <button className="primary-btn" onClick={saveProfile}>Save name</button>
+              <BaseButton variant="primary" onClick={saveProfile}>Save name</BaseButton>
             </div>
           </article>
         ) : null}
@@ -93,28 +98,26 @@ export default function SettingsTab() {
           <article className="settings-card">
             <h2>Security</h2>
             <label htmlFor="settings-email">New email</label>
-            <input
+            <BaseInput
               id="settings-email"
-              className="text-input"
               value={newEmail}
               onChange={(event) => setNewEmail(event.target.value)}
               placeholder="new-email@example.com"
             />
             <div className="button-row">
-              <button className="ghost-btn" onClick={saveEmail}>Change email (verification required)</button>
+              <BaseButton variant="ghost" onClick={saveEmail}>Change email (verification required)</BaseButton>
             </div>
 
             <label htmlFor="settings-password">New password</label>
-            <input
+            <BaseInput
               id="settings-password"
               type="password"
-              className="text-input"
               value={newPassword}
               onChange={(event) => setNewPassword(event.target.value)}
               placeholder="New password"
             />
             <div className="button-row">
-              <button className="ghost-btn" onClick={savePassword}>Change password</button>
+              <BaseButton variant="ghost" onClick={savePassword}>Change password</BaseButton>
             </div>
           </article>
         ) : null}
@@ -123,43 +126,31 @@ export default function SettingsTab() {
           <article className="settings-card">
             <h2>Analysis model API keys</h2>
             <label htmlFor="preferred-model">Preferred model</label>
-            <select
+            <BaseSelect
               id="preferred-model"
-              className="text-input"
               value={settingsForm.preferred_model}
-              onChange={(event) => {
-                const value = event.target.value;
+              onValueChange={(value) => {
                 setSettingsForm((prev) => ({ ...prev, preferred_model: value }));
                 setCredentialsModelId(value);
               }}
-            >
-              {modelOptions.map((model) => (
-                <option key={model.id} value={model.id}>
-                  {model.label}
-                </option>
-              ))}
-            </select>
+              options={modelOptions.map((model) => ({ value: model.id, label: model.label }))}
+              placeholder="Select model"
+            />
 
             <label htmlFor="credentials-model">Configure credentials for</label>
-            <select
+            <BaseSelect
               id="credentials-model"
-              className="text-input"
               value={credentialsModelId}
-              onChange={(event) => setCredentialsModelId(event.target.value)}
-            >
-              {modelOptions.map((model) => (
-                <option key={`credentials-${model.id}`} value={model.id}>
-                  {model.label}
-                </option>
-              ))}
-            </select>
+              onValueChange={(value) => setCredentialsModelId(value)}
+              options={modelOptions.map((model) => ({ value: model.id, label: model.label }))}
+              placeholder="Select model"
+            />
 
             {showGeminiInputs ? (
               <>
                 <label htmlFor="gemini-api-key">Gemini API key</label>
-                <input
+                <BaseInput
                   id="gemini-api-key"
-                  className="text-input"
                   value={settingsForm.gemini_api_key}
                   onChange={(event) => setSettingsForm((prev) => ({ ...prev, gemini_api_key: event.target.value }))}
                   placeholder="AIza..."
@@ -170,27 +161,24 @@ export default function SettingsTab() {
             {showBedrockAgentInputs ? (
               <>
                 <label htmlFor="aws-region">AWS region</label>
-                <input
+                <BaseInput
                   id="aws-region"
-                  className="text-input"
                   value={settingsForm.aws_region}
                   onChange={(event) => setSettingsForm((prev) => ({ ...prev, aws_region: event.target.value }))}
                   placeholder="us-east-1"
                 />
 
                 <label htmlFor="aws-bedrock-agent-id">Bedrock agent ID</label>
-                <input
+                <BaseInput
                   id="aws-bedrock-agent-id"
-                  className="text-input"
                   value={settingsForm.aws_bedrock_agent_id}
                   onChange={(event) => setSettingsForm((prev) => ({ ...prev, aws_bedrock_agent_id: event.target.value }))}
                   placeholder="ABCDEFGHIJ"
                 />
 
                 <label htmlFor="aws-bedrock-agent-alias-id">Bedrock agent alias ID</label>
-                <input
+                <BaseInput
                   id="aws-bedrock-agent-alias-id"
-                  className="text-input"
                   value={settingsForm.aws_bedrock_agent_alias_id}
                   onChange={(event) => setSettingsForm((prev) => ({ ...prev, aws_bedrock_agent_alias_id: event.target.value }))}
                   placeholder="TSTALIASID"
@@ -199,7 +187,7 @@ export default function SettingsTab() {
             ) : null}
 
             <div className="button-row">
-              <button className="primary-btn" onClick={saveModelSettings}>Save model settings</button>
+              <BaseButton variant="primary" onClick={saveModelSettings}>Save model settings</BaseButton>
             </div>
           </article>
         ) : null}

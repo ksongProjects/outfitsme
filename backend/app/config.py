@@ -33,10 +33,6 @@ class Settings:
     IS_PRODUCTION = FLASK_ENV == "production"
     PORT = int(_clean_env(os.getenv("PORT", "5000"), "5000") or "5000")
     DEBUG = _to_bool(os.getenv("DEBUG", ""), default=(FLASK_ENV != "production"))
-    DIAGNOSTICS_ENABLED = _to_bool(
-        os.getenv("DIAGNOSTICS_ENABLED", ""),
-        default=(FLASK_ENV != "production")
-    )
     CORS_ALLOWED_ORIGINS = _split_csv(_clean_env(os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:3000")))
     RATE_LIMIT_STORAGE_URI = _clean_env(os.getenv("RATE_LIMIT_STORAGE_URI", "memory://"), "memory://")
     MONTHLY_ANALYSIS_LIMIT = int(_clean_env(os.getenv("MONTHLY_ANALYSIS_LIMIT", "100"), "100") or "100")

@@ -9,6 +9,10 @@ import { toast } from "sonner";
 
 import { formatItemLabel, getItemIcon } from "../../utils/formatters";
 import { useItemsContext } from "../../context/DashboardContext";
+import BaseButton from "../ui/BaseButton";
+import BaseCheckbox from "../ui/BaseCheckbox";
+import BaseDialog from "../ui/BaseDialog";
+import BaseSelect from "../ui/BaseSelect";
 
 export default function ItemsTab() {
   const {
@@ -81,11 +85,10 @@ export default function ItemsTab() {
       accessorKey: "select",
       header: "Select",
       cell: ({ row }) => (
-        <input
-          type="checkbox"
+        <BaseCheckbox
           checked={selectedItemIds.includes(row.original.id)}
           onClick={(event) => event.stopPropagation()}
-          onChange={() => toggleSelectItem(row.original.id)}
+          onCheckedChange={() => toggleSelectItem(row.original.id)}
         />
       )
     },
@@ -145,35 +148,44 @@ export default function ItemsTab() {
           <h2>Item catalog</h2>
           <p className="tab-header-subtext">Filter, select, and compose outfits from saved items.</p>
         </div>
-        <button className="ghost-btn" onClick={loadItems} disabled={itemsLoading}>
+        <BaseButton variant="ghost" onClick={loadItems} disabled={itemsLoading}>
           {itemsLoading ? "Loading..." : "Refresh"}
-        </button>
+        </BaseButton>
       </div>
 
       {itemsMessage ? <p className="subtext">{itemsMessage}</p> : null}
 
       <div className="filter-row">
-        <select className="text-input" value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}>
-          <option value="all">All types</option>
-          {categoryOptions.map((category) => (
-            <option key={`category-${category.value}`} value={category.value}>{category.label}</option>
-          ))}
-        </select>
-        <select className="text-input" value={colorFilter} onChange={(event) => setColorFilter(event.target.value)}>
-          <option value="all">All colors</option>
-          {colorOptions.map((color) => (
-            <option key={`color-${color.value}`} value={color.value}>{color.label}</option>
-          ))}
-        </select>
-        <select className="text-input" value={styleFilter} onChange={(event) => setStyleFilter(event.target.value)}>
-          <option value="all">All styles</option>
-          {styleOptions.map((style) => (
-            <option key={`style-${style.value}`} value={style.value}>{style.label}</option>
-          ))}
-        </select>
-        <button
+        <BaseSelect
+          value={categoryFilter}
+          onValueChange={(nextValue) => setCategoryFilter(nextValue)}
+          options={[
+            { value: "all", label: "All types" },
+            ...categoryOptions.map((category) => ({ value: category.value, label: category.label }))
+          ]}
+          placeholder="All types"
+        />
+        <BaseSelect
+          value={colorFilter}
+          onValueChange={(nextValue) => setColorFilter(nextValue)}
+          options={[
+            { value: "all", label: "All colors" },
+            ...colorOptions.map((color) => ({ value: color.value, label: color.label }))
+          ]}
+          placeholder="All colors"
+        />
+        <BaseSelect
+          value={styleFilter}
+          onValueChange={(nextValue) => setStyleFilter(nextValue)}
+          options={[
+            { value: "all", label: "All styles" },
+            ...styleOptions.map((style) => ({ value: style.value, label: style.label }))
+          ]}
+          placeholder="All styles"
+        />
+        <BaseButton
           type="button"
-          className="ghost-btn"
+          variant="ghost"
           onClick={() => {
             setCategoryFilter("all");
             setColorFilter("all");
@@ -181,7 +193,7 @@ export default function ItemsTab() {
           }}
         >
           Clear filters
-        </button>
+        </BaseButton>
       </div>
 
       {activeFilterChips.length > 0 ? (
@@ -226,71 +238,67 @@ export default function ItemsTab() {
           Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount() || 1}
         </p>
         <div className="button-row">
-          <button type="button" className="ghost-btn" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}>
+          <BaseButton type="button" variant="ghost" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}>
             Previous
-          </button>
-          <button type="button" className="ghost-btn" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}>
+          </BaseButton>
+          <BaseButton type="button" variant="ghost" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}>
             Next
-          </button>
-          <button
+          </BaseButton>
+          <BaseButton
             type="button"
-            className="primary-btn"
+            variant="primary"
             disabled={selectedItems.length === 0}
             onClick={() => setConfirmModalOpen(true)}
           >
             Create new outfit
-          </button>
+          </BaseButton>
         </div>
       </div>
 
-      {confirmModalOpen ? (
-        <div className="modal-backdrop" onClick={() => setConfirmModalOpen(false)}>
-          <div className="modal-panel" onClick={(event) => event.stopPropagation()}>
-            <div className="modal-header">
-              <h3>Confirm new outfit</h3>
-              <button type="button" className="ghost-btn" onClick={() => setConfirmModalOpen(false)}>Close</button>
+      <BaseDialog
+        open={confirmModalOpen}
+        onOpenChange={(open) => setConfirmModalOpen(open)}
+        title="Confirm new outfit"
+      >
+        <div className="outfit-details-layout">
+          <div className="selection-preview">
+            <h4>Preview</h4>
+            <p className="subtext">{selectedItems.length} item{selectedItems.length === 1 ? "" : "s"} selected</p>
+            <div className="selection-preview-grid">
+              {selectedItems.map((item) => (
+                <div key={`preview-${item.id}`} className="selection-preview-pill">
+                  <span className="item-icon" aria-hidden="true">{getItemIcon(item)}</span>
+                  <span>{item.name || "Unknown"}</span>
+                </div>
+              ))}
             </div>
-            <div className="outfit-details-layout">
-              <div className="selection-preview">
-                <h4>Preview</h4>
-                <p className="subtext">{selectedItems.length} item{selectedItems.length === 1 ? "" : "s"} selected</p>
-                <div className="selection-preview-grid">
-                  {selectedItems.map((item) => (
-                    <div key={`preview-${item.id}`} className="selection-preview-pill">
-                      <span className="item-icon" aria-hidden="true">{getItemIcon(item)}</span>
-                      <span>{item.name || "Unknown"}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-              <div>
-                <h4>Selected items</h4>
-                <ul className="analysis-items">
-                  {selectedItems.map((item) => (
-                    <li key={`selected-${item.id}`} className="analysis-item">
-                      <span className="item-icon" aria-hidden="true">{getItemIcon(item)}</span>
-                      <span>{formatItemLabel(item)}</span>
-                    </li>
-                  ))}
-                </ul>
-                <div className="button-row">
-                  <button type="button" className="ghost-btn" onClick={() => setConfirmModalOpen(false)}>
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    className="primary-btn"
-                    onClick={handleConfirmSelectedItems}
-                    disabled={composeOutfitLoading}
-                  >
-                    {composeOutfitLoading ? "Creating..." : "Confirm outfit"}
-                  </button>
-                </div>
-              </div>
+          </div>
+          <div>
+            <h4>Selected items</h4>
+            <ul className="analysis-items">
+              {selectedItems.map((item) => (
+                <li key={`selected-${item.id}`} className="analysis-item">
+                  <span className="item-icon" aria-hidden="true">{getItemIcon(item)}</span>
+                  <span>{formatItemLabel(item)}</span>
+                </li>
+              ))}
+            </ul>
+            <div className="button-row">
+              <BaseButton type="button" variant="ghost" onClick={() => setConfirmModalOpen(false)}>
+                Cancel
+              </BaseButton>
+              <BaseButton
+                type="button"
+                variant="primary"
+                onClick={handleConfirmSelectedItems}
+                disabled={composeOutfitLoading}
+              >
+                {composeOutfitLoading ? "Creating..." : "Confirm outfit"}
+              </BaseButton>
             </div>
           </div>
         </div>
-      ) : null}
+      </BaseDialog>
     </section>
   );
 }

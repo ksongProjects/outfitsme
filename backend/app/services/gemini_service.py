@@ -151,33 +151,6 @@ def analyze_outfit_with_gemini(image_bytes: bytes, mime_type: str, model: str | 
     return _parse_gemini_json(response_json)
 
 
-def probe_gemini_connectivity() -> dict:
-    if not settings.GEMINI_API_KEY:
-        raise GeminiNotConfiguredError("GEMINI_API_KEY is required.")
-
-    payload = {
-        "contents": [
-            {
-                "parts": [
-                    {"text": "Return JSON only: {\"ok\": true}"}
-                ]
-            }
-        ],
-        "generationConfig": {
-            "responseMimeType": "application/json"
-        }
-    }
-    response_json = _post_to_gemini(
-        payload,
-        model=settings.GEMINI_MODEL,
-        api_key=settings.GEMINI_API_KEY,
-        timeout_seconds=15
-    )
-
-    model_version = response_json.get("modelVersion", settings.GEMINI_MODEL)
-    return {"model": settings.GEMINI_MODEL, "model_version": model_version}
-
-
 def generate_item_image_with_gemini(item: dict) -> str | None:
     if not settings.GEMINI_API_KEY:
         raise GeminiNotConfiguredError("GEMINI_API_KEY is required.")

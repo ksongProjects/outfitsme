@@ -1,6 +1,8 @@
 import { useState } from "react";
 
 import { useHistoryContext } from "../../context/DashboardContext";
+import BaseButton from "../ui/BaseButton";
+import BaseDialog from "../ui/BaseDialog";
 
 export default function HistoryTab() {
   const {
@@ -18,9 +20,9 @@ export default function HistoryTab() {
           <h2>Analysis history</h2>
           <p className="tab-header-subtext">Review past photo analyses and remove stored photos.</p>
         </div>
-        <button className="ghost-btn" onClick={loadHistory} disabled={historyLoading}>
+        <BaseButton variant="ghost" onClick={loadHistory} disabled={historyLoading}>
           {historyLoading ? "Loading..." : "Refresh"}
-        </button>
+        </BaseButton>
       </div>
 
       {historyMessage ? <p className="subtext">{historyMessage}</p> : null}
@@ -42,15 +44,16 @@ export default function HistoryTab() {
               <td>
                 <div className="history-photo-cell">
                   {entry.image_url ? (
-                    <button
+                    <BaseButton
                       type="button"
+                      variant="ghost"
                       className="history-thumb-btn"
                       onClick={() => setPreviewEntry(entry)}
                       aria-label="Open photo preview"
                       title="Open photo preview"
                     >
                       <img className="history-thumb" src={entry.image_url} alt="Analyzed outfit" />
-                    </button>
+                    </BaseButton>
                   ) : (
                     <span className="subtext">No preview</span>
                   )}
@@ -66,27 +69,23 @@ export default function HistoryTab() {
         </tbody>
       </table>
 
-      {previewEntry ? (
-        <div className="modal-backdrop" onClick={() => setPreviewEntry(null)}>
-          <div className="modal-panel" onClick={(event) => event.stopPropagation()}>
-            <div className="modal-header">
-              <h3>Analysis photo preview</h3>
-              <button type="button" className="ghost-btn" onClick={() => setPreviewEntry(null)}>Close</button>
-            </div>
-            {previewEntry.image_url ? (
-              <img src={previewEntry.image_url} alt="Analyzed outfit preview" className="modal-image" />
-            ) : (
-              <p className="subtext">Preview unavailable for this photo.</p>
-            )}
-            <p className="subtext">
-              Model: {previewEntry.analysis_model || "Unknown"} | Status: {previewEntry.status || "Unknown"}
-            </p>
-            <p className="subtext">
-              Created: {previewEntry.created_at ? new Date(previewEntry.created_at).toLocaleString() : "-"}
-            </p>
-          </div>
-        </div>
-      ) : null}
+      <BaseDialog
+        open={Boolean(previewEntry)}
+        onOpenChange={(open) => setPreviewEntry(open ? previewEntry : null)}
+        title="Analysis photo preview"
+      >
+        {previewEntry?.image_url ? (
+          <img src={previewEntry.image_url} alt="Analyzed outfit preview" className="modal-image" />
+        ) : (
+          <p className="subtext">Preview unavailable for this photo.</p>
+        )}
+        <p className="subtext">
+          Model: {previewEntry?.analysis_model || "Unknown"} | Status: {previewEntry?.status || "Unknown"}
+        </p>
+        <p className="subtext">
+          Created: {previewEntry?.created_at ? new Date(previewEntry.created_at).toLocaleString() : "-"}
+        </p>
+      </BaseDialog>
     </section>
   );
 }

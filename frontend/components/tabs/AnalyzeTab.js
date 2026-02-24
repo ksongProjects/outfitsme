@@ -2,6 +2,8 @@ import { formatItemLabel, getItemIcon } from "../../utils/formatters";
 import { useState } from "react";
 import { useAnalysisContext } from "../../context/DashboardContext";
 import HistoryTab from "./HistoryTab";
+import BaseButton from "../ui/BaseButton";
+import BaseSelect from "../ui/BaseSelect";
 
 export default function AnalyzeTab() {
   const [isDragOver, setIsDragOver] = useState(false);
@@ -227,18 +229,19 @@ export default function AnalyzeTab() {
         <section>
         <label htmlFor="image-upload">Photo</label>
         <label htmlFor="analysis-model">Analysis model</label>
-        <select
+        <BaseSelect
           id="analysis-model"
-          className="text-input"
           value={selectedModel}
-          onChange={(event) => setSelectedModel(event.target.value)}
-        >
-          {(modelOptions || []).filter((model) => model.supports_image).map((model) => (
-            <option key={model.id} value={model.id} disabled={!model.available}>
-              {model.label}{model.available ? "" : " (Unavailable)"}
-            </option>
-          ))}
-        </select>
+          onValueChange={(nextValue) => setSelectedModel(nextValue)}
+          options={(modelOptions || [])
+            .filter((model) => model.supports_image)
+            .map((model) => ({
+              value: model.id,
+              label: `${model.label}${model.available ? "" : " (Unavailable)"}`,
+              disabled: !model.available
+            }))}
+          placeholder="Select model"
+        />
         {(modelOptions || []).some((model) => model.supports_image && !model.available) ? (
           <p className="subtext">
             Unavailable models: {(modelOptions || [])
@@ -316,18 +319,18 @@ export default function AnalyzeTab() {
         ) : null}
         <div className="button-row">
           {fileName ? (
-            <button type="button" className="ghost-btn" onClick={clearSelectedFile}>
+            <BaseButton type="button" variant="ghost" onClick={clearSelectedFile}>
               Cancel
-            </button>
+            </BaseButton>
           ) : null}
           {fileName && cropArea ? (
-            <button type="button" className="ghost-btn" onClick={() => setCropArea(null)}>
+            <BaseButton type="button" variant="ghost" onClick={() => setCropArea(null)}>
               Reset crop
-            </button>
+            </BaseButton>
           ) : null}
-          <button className="primary-btn" onClick={runAnalysis} disabled={disabled}>
+          <BaseButton variant="primary" onClick={runAnalysis} disabled={disabled}>
             {loading ? "Queue another photo" : "Analyze selection"}
-          </button>
+          </BaseButton>
         </div>
         </section>
 

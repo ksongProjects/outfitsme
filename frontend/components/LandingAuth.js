@@ -1,4 +1,7 @@
 import { useAuthContext } from "../context/DashboardContext";
+import { Tabs } from "@base-ui/react/tabs";
+import BaseButton from "./ui/BaseButton";
+import BaseInput from "./ui/BaseInput";
 
 export default function LandingAuth() {
   const {
@@ -25,47 +28,35 @@ export default function LandingAuth() {
             Upload outfit images, identify clothing items with AI, and build your wardrobe with shoppable alternatives.
           </p>
           <div className="hero-actions">
-            <button className="primary-btn" onClick={() => setAuthTab("signup")}>Create your account</button>
+            <BaseButton variant="primary" onClick={() => setAuthTab("signup")}>Create your account</BaseButton>
           </div>
         </div>
 
         <form className="auth-panel card" onSubmit={submitAuth}>
-          <div className="tab-row">
-            <button
-              type="button"
-              className={`tab-btn ${authTab === "signin" ? "active" : ""}`}
-              onClick={() => setAuthTab("signin")}
-            >
-              Sign in
-            </button>
-            <button
-              type="button"
-              className={`tab-btn ${authTab === "signup" ? "active" : ""}`}
-              onClick={() => setAuthTab("signup")}
-            >
-              Sign up
-            </button>
-          </div>
+          <Tabs.Root value={authTab} onValueChange={(nextValue) => setAuthTab(nextValue)}>
+            <Tabs.List className="tab-row">
+              <Tabs.Tab className="tab-btn" value="signin">Sign in</Tabs.Tab>
+              <Tabs.Tab className="tab-btn" value="signup">Sign up</Tabs.Tab>
+            </Tabs.List>
+          </Tabs.Root>
 
-          <input
+          <BaseInput
             type="email"
             placeholder="Email"
             value={email}
             onChange={(event) => setEmail(event.target.value)}
-            className="text-input"
           />
-          <input
+          <BaseInput
             type="password"
             placeholder="Password"
             value={password}
             onChange={(event) => setPassword(event.target.value)}
-            className="text-input"
           />
 
           {authTab === "signin" ? (
-            <button type="submit" className="primary-btn">Continue to dashboard</button>
+            <BaseButton type="submit" variant="primary">Continue to dashboard</BaseButton>
           ) : (
-            <button type="submit" className="primary-btn">Create account</button>
+            <BaseButton type="submit" variant="primary">Create account</BaseButton>
           )}
 
         </form>

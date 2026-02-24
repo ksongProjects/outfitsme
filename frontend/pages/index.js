@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { Tabs } from "@base-ui/react/tabs";
 
 import LandingAuth from "../components/LandingAuth";
 import DashboardTab from "../components/tabs/DashboardTab";
@@ -6,6 +7,7 @@ import AnalyzeTab from "../components/tabs/AnalyzeTab";
 import OutfitsTab from "../components/tabs/OutfitsTab";
 import ItemsTab from "../components/tabs/ItemsTab";
 import SettingsTab from "../components/tabs/SettingsTab";
+import BaseButton from "../components/ui/BaseButton";
 import { DashboardProviders } from "../context/DashboardContext";
 import { useAuthState } from "../hooks/useAuthState";
 import { useStatsState } from "../hooks/useStatsState";
@@ -234,54 +236,39 @@ export default function HomePage() {
                   : `Signed in as ${userLabel}`}
               </p>
             </div>
-            <button className="ghost-btn" onClick={handleSignOut}>Sign out</button>
+            <BaseButton variant="ghost" onClick={handleSignOut}>Sign out</BaseButton>
           </header>
 
           <section className="card">
-            <div className="tab-row">
-              <button
-                className={`tab-btn ${dashboardTab === "dashboard" ? "active" : ""}`}
-                onClick={() => setDashboardTab("dashboard")}
-              >
-                Home
-              </button>
-              <button
-                className={`tab-btn ${dashboardTab === "analyze" ? "active" : ""}`}
-                onClick={() => setDashboardTab("analyze")}
-              >
-                Photo analysis
-              </button>
-              <button
-                className={`tab-btn ${dashboardTab === "wardrobe" ? "active" : ""}`}
-                onClick={() => setDashboardTab("wardrobe")}
-              >
-                My Outfits
-              </button>
-              <button
-                className={`tab-btn ${dashboardTab === "items" ? "active" : ""}`}
-                onClick={() => setDashboardTab("items")}
-              >
-                Item catalog
-              </button>
-              <button
-                className={`tab-btn ${dashboardTab === "settings" ? "active" : ""}`}
-                onClick={() => setDashboardTab("settings")}
-              >
-                Settings
-              </button>
-            </div>
+            <Tabs.Root value={dashboardTab} onValueChange={(nextValue) => setDashboardTab(nextValue)}>
+              <Tabs.List className="tab-row">
+                <Tabs.Tab className="tab-btn" value="dashboard">Home</Tabs.Tab>
+                <Tabs.Tab className="tab-btn" value="analyze">Photo analysis</Tabs.Tab>
+                <Tabs.Tab className="tab-btn" value="wardrobe">My Outfits</Tabs.Tab>
+                <Tabs.Tab className="tab-btn" value="items">Item catalog</Tabs.Tab>
+                <Tabs.Tab className="tab-btn" value="settings">Settings</Tabs.Tab>
+              </Tabs.List>
 
-            {dashboardTab === "dashboard" ? (
-              <DashboardTab
-                stats={statsState.stats}
-                refreshStats={() => statsState.loadStats()}
-                loading={statsState.statsLoading}
-              />
-            ) : null}
-            {dashboardTab === "analyze" ? <AnalyzeTab /> : null}
-            {dashboardTab === "wardrobe" ? <OutfitsTab /> : null}
-            {dashboardTab === "items" ? <ItemsTab /> : null}
-            {dashboardTab === "settings" ? <SettingsTab /> : null}
+              <Tabs.Panel value="dashboard">
+                <DashboardTab
+                  stats={statsState.stats}
+                  refreshStats={() => statsState.loadStats()}
+                  loading={statsState.statsLoading}
+                />
+              </Tabs.Panel>
+              <Tabs.Panel value="analyze">
+                <AnalyzeTab />
+              </Tabs.Panel>
+              <Tabs.Panel value="wardrobe">
+                <OutfitsTab />
+              </Tabs.Panel>
+              <Tabs.Panel value="items">
+                <ItemsTab />
+              </Tabs.Panel>
+              <Tabs.Panel value="settings">
+                <SettingsTab />
+              </Tabs.Panel>
+            </Tabs.Root>
           </section>
         </main>
       )}

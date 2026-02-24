@@ -1,3 +1,5 @@
+import BaseButton from "../ui/BaseButton";
+
 export default function DashboardTab({ stats, refreshStats, loading }) {
   const highlights = stats?.highlights || {};
   const clothingItemTypes = stats?.clothing_item_types || [];
@@ -15,9 +17,9 @@ export default function DashboardTab({ stats, refreshStats, loading }) {
           <h2>Home</h2>
           <p className="tab-header-subtext">Track your outfit insights and wardrobe trends.</p>
         </div>
-        <button className="ghost-btn" onClick={refreshStats} disabled={loading}>
+        <BaseButton variant="ghost" onClick={refreshStats} disabled={loading}>
           {loading ? "Refreshing..." : "Refresh"}
-        </button>
+        </BaseButton>
       </div>
 
       <div className="stats-grid">

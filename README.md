@@ -52,7 +52,6 @@ FLASK_ENV=development
 DEBUG=true
 PORT=5000
 CORS_ALLOWED_ORIGINS=http://localhost:3000
-DIAGNOSTICS_ENABLED=true
 RATE_LIMIT_STORAGE_URI=memory://
 MONTHLY_ANALYSIS_LIMIT=100
 ENABLE_BEDROCK_ANALYSIS=false
@@ -68,7 +67,6 @@ DEFAULT_ANALYSIS_MODEL=gemini-2.5-flash
 ```
 
 Production defaults/safety:
-- `FLASK_ENV=production` disables diagnostics unless explicitly enabled.
 - Set `CORS_ALLOWED_ORIGINS` to your exact frontend domain(s), comma-separated.
 - For multi-instance deployments, use Redis for shared rate-limit state (for example, `RATE_LIMIT_STORAGE_URI=redis://...`).
 - `MONTHLY_ANALYSIS_LIMIT` enforces per-user monthly analyze quota (`0` disables the cap).
@@ -138,7 +136,6 @@ docker compose -f docker-compose.prod.yml up --build
 ## API Endpoints
 
 - `GET /health`
-- `GET /api/diagnostics` (dev config checks for Supabase + Gemini)
 - `POST /api/analyze` (requires Bearer token + multipart `image`; enqueues async analyze job and returns `job_id`)
 - `GET /api/analyze/jobs/:job_id?wait_seconds=<0-20>` (requires Bearer token; long-poll job status/result)
 - `POST /api/similar` (requires Bearer token + JSON `items`)

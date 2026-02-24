@@ -3,6 +3,8 @@ import { Trash2 } from "lucide-react";
 
 import { formatItemLabel, getItemIcon } from "../../utils/formatters";
 import { useWardrobeContext } from "../../context/DashboardContext";
+import BaseButton from "../ui/BaseButton";
+import BaseDialog from "../ui/BaseDialog";
 
 export default function OutfitsTab() {
   const {
@@ -44,9 +46,9 @@ export default function OutfitsTab() {
           <h2>My Outfits</h2>
           <p className="tab-header-subtext">Browse saved looks and open outfit details.</p>
         </div>
-        <button className="ghost-btn" onClick={loadWardrobe} disabled={wardrobeLoading}>
+        <BaseButton variant="ghost" onClick={loadWardrobe} disabled={wardrobeLoading}>
           {wardrobeLoading ? "Loading..." : "Refresh"}
-        </button>
+        </BaseButton>
       </div>
 
       {wardrobeMessage ? <p className="subtext">{wardrobeMessage}</p> : null}
@@ -65,13 +67,13 @@ export default function OutfitsTab() {
           {wardrobe.map((entry) => (
             <tr key={entry.row_id || `${entry.photo_id}:${entry.outfit_index || 0}`}>
               <td>
-                <button
+                <BaseButton
                   type="button"
-                  className="link-btn"
+                  variant="link"
                   onClick={() => openOutfitDetails(entry.photo_id, entry.outfit_index)}
                 >
                   {getOutfitDisplayName(entry)}
-                </button>
+                </BaseButton>
               </td>
               <td>
                 {entry.style_label || "Unlabeled"}
@@ -79,102 +81,105 @@ export default function OutfitsTab() {
               <td>{entry.outfit_items_count ?? "-"}</td>
               <td>{new Date(entry.created_at).toLocaleString()}</td>
               <td>
-                <button
+                <BaseButton
                   type="button"
-                  className="icon-btn danger-icon-btn"
+                  variant="icon"
+                  className="danger-icon-btn"
                   onClick={() => setPendingDelete(entry)}
                   disabled={deletingOutfitId === entry.outfit_id}
                   aria-label="Delete outfit"
                   title="Delete outfit"
                 >
                   {deletingOutfitId === entry.outfit_id ? "..." : <Trash2 size={16} />}
-                </button>
+                </BaseButton>
               </td>
             </tr>
           ))}
         </tbody>
       </table>
 
-      {outfitDetails || outfitDetailsLoading ? (
-        <div className="modal-backdrop" onClick={closeOutfitDetails}>
-          <div className="modal-panel" onClick={(event) => event.stopPropagation()}>
-            <div className="modal-header">
-              <h3>Outfit details</h3>
-              <button type="button" className="ghost-btn" onClick={closeOutfitDetails}>Close</button>
-            </div>
-            {outfitDetailsLoading ? (
-              <p className="subtext">Loading outfit details...</p>
+      <BaseDialog
+        open={Boolean(outfitDetails || outfitDetailsLoading)}
+        onOpenChange={(open) => {
+          if (!open) {
+            closeOutfitDetails();
+          }
+        }}
+        title="Outfit details"
+      >
+        {outfitDetailsLoading ? (
+          <p className="subtext">Loading outfit details...</p>
+        ) : (
+          <div className="outfit-details-layout">
+            {outfitDetails?.image_url ? (
+              <img src={outfitDetails.image_url} alt="Original outfit" className="modal-image" />
             ) : (
-              <div className="outfit-details-layout">
-                {outfitDetails?.image_url ? (
-                  <img src={outfitDetails.image_url} alt="Original outfit" className="modal-image" />
-                ) : (
-                  <p className="subtext">Original image is unavailable for this outfit.</p>
-                )}
-                <div>
-                  <h4>
-                    Outfit {(outfitDetails?.selected_outfit?.outfit_index ?? 0) + 1}
-                  </h4>
-                  {outfitDetails?.selected_outfit ? (
-                    <div className="outfit-group">
-                      <p>
-                        <strong>Style:</strong> {outfitDetails.selected_outfit.style || "Unlabeled"}
-                      </p>
-                      {(outfitDetails.selected_outfit.items || []).length ? (
-                        <ul className="analysis-items">
-                          {outfitDetails.selected_outfit.items.map((item, index) => (
-                            <li key={`detail-item-${outfitDetails.selected_outfit.outfit_index}-${index}`} className="analysis-item">
-                              <span className="item-icon" aria-hidden="true">{getItemIcon(item)}</span>
-                              <span>{formatItemLabel(item)}</span>
-                            </li>
-                          ))}
-                        </ul>
-                      ) : (
-                        <p className="subtext">No items were stored for this outfit.</p>
-                      )}
-                    </div>
+              <p className="subtext">Original image is unavailable for this outfit.</p>
+            )}
+            <div>
+              <h4>
+                Outfit {(outfitDetails?.selected_outfit?.outfit_index ?? 0) + 1}
+              </h4>
+              {outfitDetails?.selected_outfit ? (
+                <div className="outfit-group">
+                  <p>
+                    <strong>Style:</strong> {outfitDetails.selected_outfit.style || "Unlabeled"}
+                  </p>
+                  {(outfitDetails.selected_outfit.items || []).length ? (
+                    <ul className="analysis-items">
+                      {outfitDetails.selected_outfit.items.map((item, index) => (
+                        <li key={`detail-item-${outfitDetails.selected_outfit.outfit_index}-${index}`} className="analysis-item">
+                          <span className="item-icon" aria-hidden="true">{getItemIcon(item)}</span>
+                          <span>{formatItemLabel(item)}</span>
+                        </li>
+                      ))}
+                    </ul>
                   ) : (
-                    <p className="subtext">The selected outfit could not be loaded for this photo.</p>
+                    <p className="subtext">No items were stored for this outfit.</p>
                   )}
                 </div>
-              </div>
-            )}
+              ) : (
+                <p className="subtext">The selected outfit could not be loaded for this photo.</p>
+              )}
+            </div>
           </div>
-        </div>
-      ) : null}
+        )}
+      </BaseDialog>
 
-      {pendingDelete ? (
-        <div className="modal-backdrop" onClick={() => setPendingDelete(null)}>
-          <div className="modal-panel modal-panel-sm" onClick={(event) => event.stopPropagation()}>
-            <div className="modal-header">
-              <h3>Delete outfit</h3>
-              <button type="button" className="ghost-btn" onClick={() => setPendingDelete(null)}>Close</button>
-            </div>
-            <p>Remove this outfit from your wardrobe?</p>
-            <p className="subtext">
-              Style: <strong>{pendingDelete.style_label || "Unlabeled"}</strong>
-            </p>
-            <div className="button-row">
-                <button
-                  type="button"
-                  className="ghost-btn"
-                  onClick={() => setPendingDelete(null)}
-                  disabled={deletingOutfitId === pendingDelete.outfit_id}
-                >
-                  Cancel
-                </button>
-              <button
-                type="button"
-                className="ghost-btn danger-btn"
-                onClick={handleDelete}
-                disabled={deletingOutfitId === pendingDelete.outfit_id}
-              >
-                {deletingOutfitId === pendingDelete.outfit_id ? "Deleting..." : "Delete"}
-              </button>
-            </div>
-          </div>
+      <BaseDialog
+        open={Boolean(pendingDelete)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingDelete(null);
+          }
+        }}
+        title="Delete outfit"
+        size="sm"
+      >
+        <p>Remove this outfit from your wardrobe?</p>
+        <p className="subtext">
+          Style: <strong>{pendingDelete?.style_label || "Unlabeled"}</strong>
+        </p>
+        <div className="button-row">
+          <BaseButton
+            type="button"
+            variant="ghost"
+            onClick={() => setPendingDelete(null)}
+            disabled={deletingOutfitId === pendingDelete?.outfit_id}
+          >
+            Cancel
+          </BaseButton>
+          <BaseButton
+            type="button"
+            variant="ghost"
+            className="danger-btn"
+            onClick={handleDelete}
+            disabled={deletingOutfitId === pendingDelete?.outfit_id}
+          >
+            {deletingOutfitId === pendingDelete?.outfit_id ? "Deleting..." : "Delete"}
+          </BaseButton>
         </div>
-      ) : null}
+      </BaseDialog>
     </section>
   );
 }
