@@ -800,6 +800,27 @@ def get_user_monthly_composed_outfit_count(user_id: str, month_start_iso: str) -
     return len(response.data or [])
 
 
+def get_user_monthly_generated_image_count(user_id: str, month_start_iso: str, kind: str) -> int:
+    client = get_supabase_client()
+    safe_kind = str(kind or "").strip().lower()
+    if safe_kind not in {"items", "outfits"}:
+        return 0
+    prefix = f"{user_id}/generated/{safe_kind}/%"
+    try:
+        response = (
+            client.table("storage.objects")
+            .select("id")
+            .eq("bucket_id", settings.SUPABASE_BUCKET)
+            .like("name", prefix)
+            .gte("created_at", month_start_iso)
+            .execute()
+        )
+        return len(response.data or [])
+    except Exception:  # noqa: BLE001
+        # Keep costs endpoint resilient even if storage.objects query fails.
+        return 0
+
+
 def create_analysis_job(
     user_id: str,
     *,
@@ -1580,14 +1601,18 @@ def save_user_profile_photo(user_id: str, file_storage) -> dict:
 def get_user_cost_summary(user_id: str, month_start_iso: str) -> dict:
     analysis_count = get_user_monthly_analysis_count(user_id, month_start_iso)
     composed_outfit_count = get_user_monthly_composed_outfit_count(user_id, month_start_iso)
+    generated_item_image_count = get_user_monthly_generated_image_count(user_id, month_start_iso, "items")
+    generated_outfit_image_count = get_user_monthly_generated_image_count(user_id, month_start_iso, "outfits")
     analysis_cost = round(analysis_count * settings.ANALYSIS_COST_USD, 4)
-    outfit_image_cost = round(composed_outfit_count * settings.OUTFIT_IMAGE_COST_USD, 4)
-    item_image_cost = round(composed_outfit_count * settings.ITEM_IMAGE_MAX * settings.ITEM_IMAGE_COST_USD, 4)
+    outfit_image_cost = round(generated_outfit_image_count * settings.OUTFIT_IMAGE_COST_USD, 4)
+    item_image_cost = round(generated_item_image_count * settings.ITEM_IMAGE_COST_USD, 4)
     total_cost = round(analysis_cost + outfit_image_cost + item_image_cost, 4)
     return {
         "month_start_utc": month_start_iso,
         "analysis_runs": analysis_count,
         "custom_outfit_generations": composed_outfit_count,
+        "generated_item_images": generated_item_image_count,
+        "generated_outfit_images": generated_outfit_image_count,
         "unit_costs_usd": {
             "analysis": settings.ANALYSIS_COST_USD,
             "outfit_image_generation": settings.OUTFIT_IMAGE_COST_USD,

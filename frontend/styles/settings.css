@@ -95,6 +95,10 @@
   padding: 10px;
 }
 
+.settings-feature-row + .settings-feature-row {
+  margin-top: 10px;
+}
+
 .feature-disabled {
   opacity: 0.65;
 }

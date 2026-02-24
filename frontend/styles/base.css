@@ -236,6 +236,16 @@ select.text-input {
   cursor: pointer;
 }
 
+.base-select-value {
+  flex: 1;
+  min-width: 0;
+  color: var(--ink);
+}
+
+.base-select-value.is-placeholder {
+  color: var(--muted);
+}
+
 .base-select-icon {
   display: inline-flex;
   color: var(--muted);
