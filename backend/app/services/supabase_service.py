@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 import mimetypes
 import re
@@ -634,16 +636,95 @@ def list_user_items(user_id: str, limit: int = 200) -> list[dict]:
                 "raw_json": _coerce_dict(analysis.get("raw_json") if isinstance(analysis, dict) else {})
             }
 
-    return [
-        {
-            **item,
-            "category": _normalize_label(item.get("category"), "Item"),
-            "name": _normalize_label(item.get("name"), "Unknown Item"),
-            "color": _normalize_label(item.get("color"), "Unknown"),
-            "style_label": _resolve_item_style_label(item, analysis_by_id)
-        }
-        for item in items
-    ]
+    normalized_items = []
+    for item in items:
+        attributes = _coerce_dict(item.get("attributes_json") or {})
+        image_path = attributes.get("generated_item_image_path") or ""
+        normalized_items.append(
+            {
+                **item,
+                "category": _normalize_label(item.get("category"), "Item"),
+                "name": _normalize_label(item.get("name"), "Unknown Item"),
+                "color": _normalize_label(item.get("color"), "Unknown"),
+                "style_label": _resolve_item_style_label(item, analysis_by_id),
+                "image_url": (
+                    get_signed_image_url(image_path, expires_in_seconds=3600)
+                    if image_path
+                    else None
+                )
+            }
+        )
+    return normalized_items
+
+
+def list_items_for_analysis(user_id: str, analysis_id: str) -> list[dict]:
+    client = get_supabase_client()
+    response = (
+        client.table("items")
+        .select("id,category,name,color,attributes_json")
+        .eq("user_id", user_id)
+        .eq("analysis_id", analysis_id)
+        .order("created_at", desc=False)
+        .execute()
+    )
+    return response.data or []
+
+
+def _decode_image_data_uri(data_uri: str) -> tuple[bytes, str]:
+    if not isinstance(data_uri, str) or not data_uri.startswith("data:"):
+        raise ValueError("Generated item image is not a valid data URI.")
+    try:
+        header, encoded = data_uri.split(",", 1)
+    except ValueError as exc:
+        raise ValueError("Generated item image data URI is malformed.") from exc
+    mime_match = re.match(r"^data:(image/[-+.\w]+);base64$", header)
+    if not mime_match:
+        raise ValueError("Generated item image data URI header is invalid.")
+    mime_type = mime_match.group(1)
+    try:
+        image_bytes = base64.b64decode(encoded, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise ValueError("Generated item image payload is not valid base64.") from exc
+    return image_bytes, mime_type
+
+
+def save_generated_item_image(user_id: str, item_id: str, data_uri: str) -> dict:
+    client = get_supabase_client()
+    image_bytes, content_type = _decode_image_data_uri(data_uri)
+    extension = ".png" if content_type == "image/png" else ".jpg"
+    storage_path = f"{user_id}/generated/items/{item_id}-{uuid4().hex}{extension}"
+    client.storage.from_(settings.SUPABASE_BUCKET).upload(
+        path=storage_path,
+        file=image_bytes,
+        file_options={"content-type": content_type}
+    )
+
+    item_response = (
+        client.table("items")
+        .select("id,attributes_json")
+        .eq("id", item_id)
+        .eq("user_id", user_id)
+        .limit(1)
+        .execute()
+    )
+    item_row = (item_response.data or [None])[0]
+    if not item_row:
+        raise ValueError("Item not found while saving generated image.")
+
+    attributes = _coerce_dict(item_row.get("attributes_json") or {})
+    attributes["generated_item_image_path"] = storage_path
+    attributes["generated_item_image_size_limit"] = "1K square requested from generation API"
+    attributes["generated_item_image_created_at"] = datetime.now(timezone.utc).isoformat()
+    (
+        client.table("items")
+        .update({"attributes_json": attributes})
+        .eq("id", item_id)
+        .eq("user_id", user_id)
+        .execute()
+    )
+    return {
+        "storage_path": storage_path
+    }
 
 
 def get_user_monthly_analysis_count(user_id: str, month_start_iso: str) -> int:
@@ -653,6 +734,19 @@ def get_user_monthly_analysis_count(user_id: str, month_start_iso: str) -> int:
         .select("id")
         .eq("user_id", user_id)
         .gte("created_at", month_start_iso)
+        .execute()
+    )
+    return len(response.data or [])
+
+
+def get_user_monthly_composed_outfit_count(user_id: str, month_start_iso: str) -> int:
+    client = get_supabase_client()
+    response = (
+        client.table("photos")
+        .select("id")
+        .eq("user_id", user_id)
+        .gte("created_at", month_start_iso)
+        .like("storage_path", "virtual/composed/%")
         .execute()
     )
     return len(response.data or [])
@@ -1241,7 +1335,11 @@ def _empty_model_settings() -> dict:
         "gemini_api_key": "",
         "aws_region": "",
         "aws_bedrock_agent_id": "",
-        "aws_bedrock_agent_alias_id": ""
+        "aws_bedrock_agent_alias_id": "",
+        "profile_gender": "",
+        "profile_age": None,
+        "enable_outfit_image_generation": False,
+        "enable_online_store_search": False
     }
 
 
@@ -1250,7 +1348,8 @@ def get_user_model_settings(user_id: str) -> dict:
     response = (
         client.table("user_settings")
         .select(
-            "preferred_model,gemini_api_key_enc,aws_region,aws_bedrock_agent_id,aws_bedrock_agent_alias_id"
+            "preferred_model,gemini_api_key_enc,aws_region,aws_bedrock_agent_id,aws_bedrock_agent_alias_id,"
+            "profile_gender,profile_age,enable_outfit_image_generation,enable_online_store_search"
         )
         .eq("user_id", user_id)
         .limit(1)
@@ -1265,7 +1364,11 @@ def get_user_model_settings(user_id: str) -> dict:
         "gemini_api_key": decrypt_secret(row.get("gemini_api_key_enc") or ""),
         "aws_region": row.get("aws_region") or "",
         "aws_bedrock_agent_id": row.get("aws_bedrock_agent_id") or "",
-        "aws_bedrock_agent_alias_id": row.get("aws_bedrock_agent_alias_id") or ""
+        "aws_bedrock_agent_alias_id": row.get("aws_bedrock_agent_alias_id") or "",
+        "profile_gender": row.get("profile_gender") or "",
+        "profile_age": row.get("profile_age"),
+        "enable_outfit_image_generation": bool(row.get("enable_outfit_image_generation")),
+        "enable_online_store_search": bool(row.get("enable_online_store_search"))
     }
 
 
@@ -1276,7 +1379,11 @@ def get_user_model_settings_masked(user_id: str) -> dict:
         "gemini_api_key_masked": mask_secret(settings_row.get("gemini_api_key", "")),
         "aws_region": settings_row.get("aws_region", ""),
         "aws_bedrock_agent_id": settings_row.get("aws_bedrock_agent_id", ""),
-        "aws_bedrock_agent_alias_id": settings_row.get("aws_bedrock_agent_alias_id", "")
+        "aws_bedrock_agent_alias_id": settings_row.get("aws_bedrock_agent_alias_id", ""),
+        "profile_gender": settings_row.get("profile_gender", ""),
+        "profile_age": settings_row.get("profile_age"),
+        "enable_outfit_image_generation": bool(settings_row.get("enable_outfit_image_generation")),
+        "enable_online_store_search": bool(settings_row.get("enable_online_store_search"))
     }
 
 
@@ -1290,11 +1397,22 @@ def upsert_user_model_settings(user_id: str, payload: dict) -> dict:
     aws_region = payload.get("aws_region")
     aws_bedrock_agent_id = payload.get("aws_bedrock_agent_id")
     aws_bedrock_agent_alias_id = payload.get("aws_bedrock_agent_alias_id")
+    profile_gender = payload.get("profile_gender")
+    profile_age = payload.get("profile_age")
+    enable_outfit_image_generation = payload.get("enable_outfit_image_generation")
+    enable_online_store_search = payload.get("enable_online_store_search")
 
     def _next_secret(incoming, existing):
         if incoming is None:
             return existing
         return str(incoming).strip()
+
+    def _to_bool(value, fallback):
+        if value is None:
+            return fallback
+        if isinstance(value, bool):
+            return value
+        return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
     row = {
         "user_id": user_id,
@@ -1307,6 +1425,18 @@ def upsert_user_model_settings(user_id: str, payload: dict) -> dict:
         "aws_bedrock_agent_alias_id": (
             str(aws_bedrock_agent_alias_id).strip() if aws_bedrock_agent_alias_id is not None else current.get("aws_bedrock_agent_alias_id", "")
         ),
+        "profile_gender": str(profile_gender).strip() if profile_gender is not None else current.get("profile_gender", ""),
+        "profile_age": (
+            int(profile_age)
+            if str(profile_age).strip().isdigit() and 0 < int(profile_age) < 121
+            else current.get("profile_age")
+        ) if profile_age is not None else current.get("profile_age"),
+        "enable_outfit_image_generation": (
+            _to_bool(enable_outfit_image_generation, bool(current.get("enable_outfit_image_generation")))
+        ),
+        "enable_online_store_search": (
+            _to_bool(enable_online_store_search, bool(current.get("enable_online_store_search")))
+        ),
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
 
@@ -1316,3 +1446,31 @@ def upsert_user_model_settings(user_id: str, payload: dict) -> dict:
         .execute()
     )
     return get_user_model_settings_masked(user_id)
+
+
+def get_user_cost_summary(user_id: str, month_start_iso: str) -> dict:
+    analysis_count = get_user_monthly_analysis_count(user_id, month_start_iso)
+    composed_outfit_count = get_user_monthly_composed_outfit_count(user_id, month_start_iso)
+    analysis_cost = round(analysis_count * settings.ANALYSIS_COST_USD, 4)
+    outfit_image_cost = round(composed_outfit_count * settings.OUTFIT_IMAGE_COST_USD, 4)
+    item_image_cost = round(composed_outfit_count * settings.ITEM_IMAGE_MAX * settings.ITEM_IMAGE_COST_USD, 4)
+    total_cost = round(analysis_cost + outfit_image_cost + item_image_cost, 4)
+    return {
+        "month_start_utc": month_start_iso,
+        "analysis_runs": analysis_count,
+        "custom_outfit_generations": composed_outfit_count,
+        "unit_costs_usd": {
+            "analysis": settings.ANALYSIS_COST_USD,
+            "outfit_image_generation": settings.OUTFIT_IMAGE_COST_USD,
+            "item_image_generation": settings.ITEM_IMAGE_COST_USD
+        },
+        "estimated_costs_usd": {
+            "analysis": analysis_cost,
+            "outfit_image_generation": outfit_image_cost,
+            "item_image_generation": item_image_cost,
+            "total": total_cost
+        },
+        "limits": {
+            "monthly_custom_outfit_generation_limit": settings.MONTHLY_CUSTOM_OUTFIT_LIMIT
+        }
+    }

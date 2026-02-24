@@ -780,6 +780,12 @@ ul {
   min-width: 0;
 }
 
+.settings-scroll-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
 .settings-span {
   grid-column: 1 / -1;
 }
@@ -793,6 +799,8 @@ ul {
   flex-direction: column;
   gap: 6px;
   height: fit-content;
+  position: sticky;
+  top: 12px;
 }
 
 .settings-menu-btn {
@@ -834,6 +842,24 @@ ul {
 .settings-card h2 {
   margin-top: 0;
   margin-bottom: 8px;
+}
+
+.settings-section-card {
+  scroll-margin-top: 16px;
+}
+
+.settings-feature-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.feature-disabled {
+  opacity: 0.65;
 }
 
 .compact-list {

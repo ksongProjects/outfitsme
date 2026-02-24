@@ -15,7 +15,11 @@ export function useSettingsState({ session, accessToken, onModelSettingsUpdated 
     gemini_api_key: "",
     aws_region: "",
     aws_bedrock_agent_id: "",
-    aws_bedrock_agent_alias_id: ""
+    aws_bedrock_agent_alias_id: "",
+    profile_gender: "",
+    profile_age: "",
+    enable_outfit_image_generation: false,
+    enable_online_store_search: false
   });
 
   useEffect(() => {
@@ -43,6 +47,27 @@ export function useSettingsState({ session, accessToken, onModelSettingsUpdated 
     staleTime: 20_000
   });
 
+  const costsQuery = useQuery({
+    queryKey: ["settings-costs", accessToken],
+    queryFn: async () => {
+      if (!accessToken) {
+        return { costs: null };
+      }
+      const response = await fetch(`${API_BASE}/api/settings/costs`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        }
+      });
+      if (!response.ok) {
+        throw new Error("Unable to load cost summary.");
+      }
+      return await response.json();
+    },
+    enabled: false,
+    staleTime: 20_000
+  });
+
   const loadModelSettings = async () => {
     if (!accessToken) {
       return;
@@ -60,18 +85,40 @@ export function useSettingsState({ session, accessToken, onModelSettingsUpdated 
       preferred_model: current.preferred_model || prev.preferred_model,
       aws_region: current.aws_region || "",
       aws_bedrock_agent_id: current.aws_bedrock_agent_id || "",
-      aws_bedrock_agent_alias_id: current.aws_bedrock_agent_alias_id || ""
+      aws_bedrock_agent_alias_id: current.aws_bedrock_agent_alias_id || "",
+      profile_gender: current.profile_gender || "",
+      profile_age: current.profile_age ? String(current.profile_age) : "",
+      enable_outfit_image_generation: Boolean(current.enable_outfit_image_generation),
+      enable_online_store_search: Boolean(current.enable_online_store_search)
     }));
+  };
+
+  const loadCosts = async () => {
+    if (!accessToken) {
+      return;
+    }
+    await costsQuery.refetch();
   };
 
   const saveProfile = async () => {
     const name = profileName.trim();
-    const { error: authError } = await supabase.auth.updateUser({ data: { full_name: name } });
+    const { error: authError } = await supabase.auth.updateUser({
+      data: {
+        full_name: name,
+        gender: settingsForm.profile_gender || null,
+        age: settingsForm.profile_age ? Number(settingsForm.profile_age) : null
+      }
+    });
     if (authError) {
       toast.error(authError.message);
       return;
     }
-    toast.success("Name updated.");
+    try {
+      await saveModelSettingsMutation.mutateAsync(settingsForm);
+      toast.success("Profile updated.");
+    } catch (err) {
+      toast.error(err.message || "Profile updated, but feature profile settings failed to save.");
+    }
   };
 
   const saveEmail = async () => {
@@ -144,6 +191,7 @@ export function useSettingsState({ session, accessToken, onModelSettingsUpdated 
     },
     onSuccess: async () => {
       await queryClient.invalidateQueries({ queryKey: ["model-settings", accessToken] });
+      await queryClient.invalidateQueries({ queryKey: ["settings-costs", accessToken] });
       await queryClient.invalidateQueries({ queryKey: ["models", accessToken] });
       await queryClient.invalidateQueries({ queryKey: ["stats", accessToken] });
     }
@@ -158,7 +206,10 @@ export function useSettingsState({ session, accessToken, onModelSettingsUpdated 
     setNewPassword,
     settingsForm,
     setSettingsForm,
+    costSummary: costsQuery.data?.costs || null,
+    costSummaryLoading: costsQuery.isFetching,
     loadModelSettings,
+    loadCosts,
     saveProfile,
     saveEmail,
     savePassword,

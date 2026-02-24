@@ -6,16 +6,18 @@ import requests
 
 from app.config import settings
 from app.services.bedrock_service import analyze_outfit_with_bedrock_agent
-from app.services.gemini_service import analyze_outfit_with_gemini
+from app.services.gemini_service import analyze_outfit_with_gemini, generate_item_image_with_gemini
 from app.services.models_service import build_model_availability
 from app.services.supabase_service import (
     claim_analysis_job,
     download_photo_bytes,
     get_analysis_job_by_id,
+    list_items_for_analysis,
     get_user_model_settings,
     mark_analysis_job_completed,
     mark_analysis_job_failed,
     persist_analysis_for_photo,
+    save_generated_item_image,
 )
 
 _JOB_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="analysis-job")
@@ -62,6 +64,36 @@ def _build_persistence_payload(analysis: dict) -> dict:
             if isinstance(outfit, dict)
         ]
     }
+
+
+def _generate_item_images_for_analysis(user_id: str, analysis_id: str, user_settings: dict) -> None:
+    if not bool(user_settings.get("enable_outfit_image_generation")):
+        return
+
+    gemini_key = user_settings.get("gemini_api_key") or settings.GEMINI_API_KEY
+    if not gemini_key:
+        return
+
+    items = list_items_for_analysis(user_id, analysis_id)
+    for item in items:
+        attributes = item.get("attributes_json") or {}
+        if isinstance(attributes, dict) and attributes.get("generated_item_image_path"):
+            continue
+        try:
+            image_data_uri = generate_item_image_with_gemini(
+                {
+                    "category": item.get("category"),
+                    "name": item.get("name"),
+                    "color": item.get("color")
+                },
+                api_key=gemini_key
+            )
+            if not image_data_uri:
+                continue
+            save_generated_item_image(user_id, item["id"], image_data_uri)
+        except Exception:  # noqa: BLE001
+            # Item image generation is best-effort and should not fail analysis completion.
+            continue
 
 
 def process_analysis_job(job_id: str) -> None:
@@ -111,6 +143,8 @@ def process_analysis_job(job_id: str) -> None:
 
         analysis_for_persistence = _build_persistence_payload(analysis)
         persistence = persist_analysis_for_photo(user_id, claimed["photo_id"], analysis_for_persistence)
+        if persistence.get("analysis_id"):
+            _generate_item_images_for_analysis(user_id, persistence["analysis_id"], user_settings)
         response_payload = _build_response_payload(analysis, chosen_model_id, persistence)
         mark_analysis_job_completed(job_id, response_payload)
     except requests.HTTPError as exc:

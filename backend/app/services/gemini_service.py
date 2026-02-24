@@ -151,8 +151,9 @@ def analyze_outfit_with_gemini(image_bytes: bytes, mime_type: str, model: str | 
     return _parse_gemini_json(response_json)
 
 
-def generate_item_image_with_gemini(item: dict) -> str | None:
-    if not settings.GEMINI_API_KEY:
+def generate_item_image_with_gemini(item: dict, api_key: str | None = None, model: str | None = None) -> str | None:
+    effective_api_key = (api_key or settings.GEMINI_API_KEY or "").strip()
+    if not effective_api_key:
         raise GeminiNotConfiguredError("GEMINI_API_KEY is required.")
 
     category = str(item.get("category", "clothing item")).strip() or "clothing item"
@@ -173,14 +174,18 @@ def generate_item_image_with_gemini(item: dict) -> str | None:
             }
         ],
         "generationConfig": {
-            "responseModalities": ["TEXT", "IMAGE"]
+            "responseModalities": ["TEXT", "IMAGE"],
+            "imageConfig": {
+                "aspectRatio": "1:1",
+                "imageSize": "1K"
+            }
         }
     }
 
     response_json = _post_to_gemini(
         payload,
-        model=settings.GEMINI_IMAGE_MODEL,
-        api_key=settings.GEMINI_API_KEY,
+        model=(model or settings.GEMINI_IMAGE_MODEL).strip(),
+        api_key=effective_api_key,
         timeout_seconds=30
     )
 

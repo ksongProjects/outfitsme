@@ -48,6 +48,7 @@ export default function HomePage() {
     analysisState.loadModels();
     analysisState.loadAnalysisLimits();
     settingsState.loadModelSettings();
+    settingsState.loadCosts();
   }, [accessToken]);
 
   useEffect(() => {
@@ -200,12 +201,18 @@ export default function HomePage() {
     settingsForm: settingsState.settingsForm,
     setSettingsForm: settingsState.setSettingsForm,
     saveModelSettings: settingsState.saveModelSettings,
+    costSummary: settingsState.costSummary,
+    costSummaryLoading: settingsState.costSummaryLoading,
+    loadCosts: settingsState.loadCosts,
     modelOptions: analysisState.modelOptions
   }), [
     settingsState.profileName,
     settingsState.newEmail,
     settingsState.newPassword,
     settingsState.settingsForm,
+    settingsState.costSummary,
+    settingsState.costSummaryLoading,
+    settingsState.loadCosts,
     analysisState.modelOptions
   ]);
 

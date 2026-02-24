@@ -29,6 +29,8 @@ from app.services.supabase_service import (
     SupabaseNotConfiguredError,
     get_user_id_from_token,
     get_user_monthly_analysis_count,
+    get_user_monthly_composed_outfit_count,
+    get_user_cost_summary,
     list_wardrobe,
     upsert_user_model_settings,
     upload_photo_for_user,
@@ -290,6 +292,18 @@ def compose_outfit():
         user_id = get_user_id_from_token(access_token)
         if not user_id:
             return jsonify({"error": "Invalid or expired token."}), 401
+
+        month_start_iso, _ = _current_month_window_utc()
+        monthly_custom_outfit_count = get_user_monthly_composed_outfit_count(user_id, month_start_iso)
+        if monthly_custom_outfit_count >= settings.MONTHLY_CUSTOM_OUTFIT_LIMIT:
+            return jsonify(
+                {
+                    "error": "Monthly custom outfit generation limit reached.",
+                    "monthly_limit": settings.MONTHLY_CUSTOM_OUTFIT_LIMIT,
+                    "used_this_month": monthly_custom_outfit_count,
+                    "remaining_this_month": 0
+                }
+            ), 429
 
         result = compose_outfit_from_items(user_id, item_ids=item_ids, style_label=style_label)
         return jsonify({"user_id": user_id, **result}), 200
@@ -585,3 +599,26 @@ def update_model_keys():
         return jsonify({"error": "Invalid or expired token."}), 401
     except Exception as exc:  # noqa: BLE001
         return jsonify({"error": f"Settings update failed: {exc}"}), 500
+
+
+@api_bp.get("/settings/costs")
+def get_settings_costs():
+    access_token = _extract_access_token()
+    if not access_token:
+        return jsonify({"error": "Missing bearer token."}), 401
+
+    try:
+        user_id = get_user_id_from_token(access_token)
+        if not user_id:
+            return jsonify({"error": "Invalid or expired token."}), 401
+        month_start_iso, _ = _current_month_window_utc()
+        summary = get_user_cost_summary(user_id, month_start_iso)
+        return jsonify({"costs": summary}), 200
+    except SupabaseNotConfiguredError as exc:
+        return jsonify({"error": str(exc)}), 500
+    except SettingsEncryptionError as exc:
+        return jsonify({"error": str(exc)}), 500
+    except AuthApiError:
+        return jsonify({"error": "Invalid or expired token."}), 401
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"error": f"Costs lookup failed: {exc}"}), 500
