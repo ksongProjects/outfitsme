@@ -201,6 +201,18 @@ export default function SettingsTab() {
               onCheckedChange={(value) => setSettingsForm((prev) => ({ ...prev, enable_outfit_image_generation: Boolean(value) }))}
             />
           </div>
+          <div className="settings-feature-row">
+            <div>
+              <p><strong>Accessory analysis</strong></p>
+              <p className="subtext">
+                Include accessories like bags, rings, earrings, and jewelry during photo analysis.
+              </p>
+            </div>
+            <BaseCheckbox
+              checked={Boolean(settingsForm.enable_accessory_analysis)}
+              onCheckedChange={(value) => setSettingsForm((prev) => ({ ...prev, enable_accessory_analysis: Boolean(value) }))}
+            />
+          </div>
           <div className="settings-feature-row feature-disabled">
             <div>
               <p><strong>Online store search</strong></p>
@@ -320,3 +332,4 @@ export default function SettingsTab() {
     </section>
   );
 }
+

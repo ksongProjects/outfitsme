@@ -1404,7 +1404,8 @@ def _empty_model_settings() -> dict:
         "profile_age": None,
         "profile_photo_path": "",
         "enable_outfit_image_generation": False,
-        "enable_online_store_search": False
+        "enable_online_store_search": False,
+        "enable_accessory_analysis": False
     }
 
 
@@ -1414,7 +1415,7 @@ def get_user_model_settings(user_id: str) -> dict:
         client.table("user_settings")
         .select(
             "preferred_model,gemini_api_key_enc,aws_region,aws_bedrock_agent_id,aws_bedrock_agent_alias_id,"
-            "profile_gender,profile_age,profile_photo_path,enable_outfit_image_generation,enable_online_store_search"
+            "profile_gender,profile_age,profile_photo_path,enable_outfit_image_generation,enable_online_store_search,enable_accessory_analysis"
         )
         .eq("user_id", user_id)
         .limit(1)
@@ -1434,7 +1435,8 @@ def get_user_model_settings(user_id: str) -> dict:
         "profile_age": row.get("profile_age"),
         "profile_photo_path": row.get("profile_photo_path") or "",
         "enable_outfit_image_generation": bool(row.get("enable_outfit_image_generation")),
-        "enable_online_store_search": bool(row.get("enable_online_store_search"))
+        "enable_online_store_search": bool(row.get("enable_online_store_search")),
+        "enable_accessory_analysis": bool(row.get("enable_accessory_analysis"))
     }
 
 
@@ -1454,7 +1456,8 @@ def get_user_model_settings_masked(user_id: str) -> dict:
             else None
         ),
         "enable_outfit_image_generation": bool(settings_row.get("enable_outfit_image_generation")),
-        "enable_online_store_search": bool(settings_row.get("enable_online_store_search"))
+        "enable_online_store_search": bool(settings_row.get("enable_online_store_search")),
+        "enable_accessory_analysis": bool(settings_row.get("enable_accessory_analysis"))
     }
 
 
@@ -1473,6 +1476,7 @@ def upsert_user_model_settings(user_id: str, payload: dict) -> dict:
     profile_photo_path = payload.get("profile_photo_path")
     enable_outfit_image_generation = payload.get("enable_outfit_image_generation")
     enable_online_store_search = payload.get("enable_online_store_search")
+    enable_accessory_analysis = payload.get("enable_accessory_analysis")
 
     def _next_secret(incoming, existing):
         if incoming is None:
@@ -1513,6 +1517,9 @@ def upsert_user_model_settings(user_id: str, payload: dict) -> dict:
         ),
         "enable_online_store_search": (
             _to_bool(enable_online_store_search, bool(current.get("enable_online_store_search")))
+        ),
+        "enable_accessory_analysis": (
+            _to_bool(enable_accessory_analysis, bool(current.get("enable_accessory_analysis")))
         ),
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
@@ -1596,3 +1603,4 @@ def get_user_cost_summary(user_id: str, month_start_iso: str) -> dict:
             "monthly_custom_outfit_generation_limit": settings.MONTHLY_CUSTOM_OUTFIT_LIMIT
         }
     }
+

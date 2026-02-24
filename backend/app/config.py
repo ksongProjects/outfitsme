@@ -46,6 +46,15 @@ class Settings:
         os.getenv("GEMINI_IMAGE_MODEL", "gemini-2.5-flash-image"),
         "gemini-2.5-flash-image"
     )
+    GEMINI_ANALYSIS_IMAGE_MAX_SIDE = int(
+        _clean_env(os.getenv("GEMINI_ANALYSIS_IMAGE_MAX_SIDE", "768"), "768") or "768"
+    )
+    GEMINI_REFERENCE_IMAGE_MAX_SIDE = int(
+        _clean_env(os.getenv("GEMINI_REFERENCE_IMAGE_MAX_SIDE", "768"), "768") or "768"
+    )
+    GEMINI_SOURCE_IMAGE_MAX_SIDE = int(
+        _clean_env(os.getenv("GEMINI_SOURCE_IMAGE_MAX_SIDE", "384"), "384") or "384"
+    )
     ITEM_IMAGE_MAX = int(_clean_env(os.getenv("ITEM_IMAGE_MAX", "3"), "3") or "3")
     MONTHLY_CUSTOM_OUTFIT_LIMIT = int(_clean_env(os.getenv("MONTHLY_CUSTOM_OUTFIT_LIMIT", "5"), "5") or "5")
     ANALYSIS_COST_USD = float(_clean_env(os.getenv("ANALYSIS_COST_USD", "0.02"), "0.02") or "0.02")

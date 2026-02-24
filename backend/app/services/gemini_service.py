@@ -2,8 +2,10 @@ from __future__ import annotations
 
 import json
 import base64
+from io import BytesIO
 
 import requests
+from PIL import Image, ImageOps
 
 from app.config import settings
 
@@ -21,6 +23,63 @@ def _normalize_label(value: str, fallback: str) -> str:
 
 def _gemini_endpoint(model: str) -> str:
     return f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
+
+
+def _normalize_image_mime_type(mime_type: str | None) -> str:
+    normalized = str(mime_type or "").strip().lower()
+    if normalized in {"image/jpeg", "image/jpg"}:
+        return "image/jpeg"
+    if normalized == "image/png":
+        return "image/png"
+    if normalized == "image/webp":
+        return "image/webp"
+    return "image/jpeg"
+
+
+def _resize_image_for_model(
+    image_bytes: bytes,
+    mime_type: str,
+    *,
+    max_side: int
+) -> tuple[bytes, str]:
+    if not image_bytes:
+        return image_bytes, _normalize_image_mime_type(mime_type)
+    if max_side <= 0:
+        return image_bytes, _normalize_image_mime_type(mime_type)
+
+    normalized_mime = _normalize_image_mime_type(mime_type)
+
+    try:
+        with Image.open(BytesIO(image_bytes)) as img:
+            source = ImageOps.exif_transpose(img)
+            width, height = source.size
+            longest = max(width, height)
+            if longest <= max_side:
+                return image_bytes, normalized_mime
+
+            scale = max_side / float(longest)
+            next_size = (
+                max(1, int(round(width * scale))),
+                max(1, int(round(height * scale)))
+            )
+            resample = getattr(Image, "Resampling", Image).LANCZOS
+            resized = source.resize(next_size, resample=resample)
+
+            output = BytesIO()
+            if normalized_mime == "image/png":
+                resized.save(output, format="PNG", optimize=True)
+            elif normalized_mime == "image/webp":
+                resized.save(output, format="WEBP", quality=88, method=6)
+            else:
+                if resized.mode not in {"RGB", "L"}:
+                    resized = resized.convert("RGB")
+                resized.save(output, format="JPEG", quality=88, optimize=True)
+                normalized_mime = "image/jpeg"
+
+            return output.getvalue(), normalized_mime
+    except Exception:  # noqa: BLE001
+        # If resizing fails, continue with original bytes to avoid request failure.
+        return image_bytes, normalized_mime
 
 
 def _post_to_gemini(payload: dict, model: str, api_key: str, timeout_seconds: int = 30) -> dict:
@@ -128,7 +187,12 @@ def analyze_outfit_with_gemini(image_bytes: bytes, mime_type: str, model: str | 
         raise GeminiNotConfiguredError("GEMINI_API_KEY is required.")
     effective_model = (model or settings.GEMINI_MODEL).strip()
 
-    encoded_image = base64.b64encode(image_bytes).decode("utf-8")
+    resized_image_bytes, resized_mime_type = _resize_image_for_model(
+        image_bytes,
+        mime_type,
+        max_side=settings.GEMINI_ANALYSIS_IMAGE_MAX_SIDE
+    )
+    encoded_image = base64.b64encode(resized_image_bytes).decode("utf-8")
 
     payload = {
         "contents": [
@@ -137,7 +201,7 @@ def analyze_outfit_with_gemini(image_bytes: bytes, mime_type: str, model: str | 
                     {"text": _build_prompt()},
                     {
                         "inline_data": {
-                            "mime_type": mime_type,
+                            "mime_type": resized_mime_type,
                             "data": encoded_image
                         }
                     }
@@ -225,6 +289,18 @@ def generate_outfitme_image_with_gemini(
     effective_api_key = (api_key or settings.GEMINI_API_KEY or "").strip()
     if not effective_api_key:
         raise GeminiNotConfiguredError("GEMINI_API_KEY is required.")
+
+    reference_image_bytes, reference_mime_type = _resize_image_for_model(
+        reference_image_bytes,
+        reference_mime_type,
+        max_side=settings.GEMINI_REFERENCE_IMAGE_MAX_SIDE
+    )
+    if source_outfit_image_bytes:
+        source_outfit_image_bytes, source_outfit_mime_type = _resize_image_for_model(
+            source_outfit_image_bytes,
+            source_outfit_mime_type or "image/jpeg",
+            max_side=settings.GEMINI_SOURCE_IMAGE_MAX_SIDE
+        )
 
     cleaned_items = []
     for item in (outfit_items or []):

@@ -6,6 +6,7 @@ import { API_BASE } from "../lib/apiBase";
 
 export function useAnalysisState({ accessToken, onAnalysisSaved }) {
   const MAX_CONCURRENT_ANALYSIS_JOBS = 5;
+  const MAX_ANALYZE_IMAGE_SIDE = 768;
   const [file, setFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState("");
   const [cropArea, setCropArea] = useState(null);
@@ -237,10 +238,6 @@ export function useAnalysisState({ accessToken, onAnalysisSaved }) {
   });
 
   const buildCroppedFile = async (candidate, crop) => {
-    if (!crop || crop.width <= 0 || crop.height <= 0) {
-      return candidate;
-    }
-
     let objectUrl = "";
     try {
       objectUrl = URL.createObjectURL(candidate);
@@ -252,27 +249,44 @@ export function useAnalysisState({ accessToken, onAnalysisSaved }) {
         throw new Error("Unable to read image dimensions.");
       }
 
-      const cropX = Math.max(0, Math.min(1, Number(crop.x) || 0));
-      const cropY = Math.max(0, Math.min(1, Number(crop.y) || 0));
-      const cropWidth = Math.max(0, Math.min(1 - cropX, Number(crop.width) || 0));
-      const cropHeight = Math.max(0, Math.min(1 - cropY, Number(crop.height) || 0));
-      if (cropWidth <= 0 || cropHeight <= 0) {
-        return candidate;
+      let srcX = 0;
+      let srcY = 0;
+      let srcWidth = originalWidth;
+      let srcHeight = originalHeight;
+      const hasCrop = Boolean(crop && crop.width > 0 && crop.height > 0);
+
+      if (hasCrop) {
+        const cropX = Math.max(0, Math.min(1, Number(crop.x) || 0));
+        const cropY = Math.max(0, Math.min(1, Number(crop.y) || 0));
+        const cropWidth = Math.max(0, Math.min(1 - cropX, Number(crop.width) || 0));
+        const cropHeight = Math.max(0, Math.min(1 - cropY, Number(crop.height) || 0));
+        if (cropWidth <= 0 || cropHeight <= 0) {
+          return candidate;
+        }
+        srcX = Math.max(0, Math.round(cropX * originalWidth));
+        srcY = Math.max(0, Math.round(cropY * originalHeight));
+        srcWidth = Math.max(1, Math.round(cropWidth * originalWidth));
+        srcHeight = Math.max(1, Math.round(cropHeight * originalHeight));
+      } else {
+        const longestOriginalSide = Math.max(originalWidth, originalHeight);
+        if (longestOriginalSide <= MAX_ANALYZE_IMAGE_SIDE) {
+          return candidate;
+        }
       }
 
-      const srcX = Math.max(0, Math.round(cropX * originalWidth));
-      const srcY = Math.max(0, Math.round(cropY * originalHeight));
-      const srcWidth = Math.max(1, Math.round(cropWidth * originalWidth));
-      const srcHeight = Math.max(1, Math.round(cropHeight * originalHeight));
+      const longestSide = Math.max(srcWidth, srcHeight);
+      const scale = longestSide > MAX_ANALYZE_IMAGE_SIDE ? (MAX_ANALYZE_IMAGE_SIDE / longestSide) : 1;
+      const outputWidth = Math.max(1, Math.round(srcWidth * scale));
+      const outputHeight = Math.max(1, Math.round(srcHeight * scale));
 
       const canvas = document.createElement("canvas");
-      canvas.width = srcWidth;
-      canvas.height = srcHeight;
+      canvas.width = outputWidth;
+      canvas.height = outputHeight;
       const context = canvas.getContext("2d");
       if (!context) {
         throw new Error("Unable to initialize image crop context.");
       }
-      context.drawImage(image, srcX, srcY, srcWidth, srcHeight, 0, 0, srcWidth, srcHeight);
+      context.drawImage(image, srcX, srcY, srcWidth, srcHeight, 0, 0, outputWidth, outputHeight);
       const outputType = candidate.type && candidate.type.startsWith("image/") ? candidate.type : "image/jpeg";
       const blob = await new Promise((resolve) => {
         canvas.toBlob((value) => resolve(value), outputType, 0.9);
@@ -286,7 +300,7 @@ export function useAnalysisState({ accessToken, onAnalysisSaved }) {
       const dotIndex = fileName.lastIndexOf(".");
       const baseName = dotIndex > 0 ? fileName.slice(0, dotIndex) : fileName;
       const extension = outputType === "image/png" ? "png" : outputType === "image/webp" ? "webp" : "jpg";
-      return new File([blob], `${baseName}-crop.${extension}`, { type: outputType });
+      return new File([blob], `${baseName}-prepared.${extension}`, { type: outputType });
     } finally {
       if (objectUrl) {
         URL.revokeObjectURL(objectUrl);

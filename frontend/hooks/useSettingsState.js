@@ -21,7 +21,8 @@ export function useSettingsState({ session, accessToken, onModelSettingsUpdated 
     profile_gender: "",
     profile_age: "",
     enable_outfit_image_generation: false,
-    enable_online_store_search: false
+    enable_online_store_search: false,
+    enable_accessory_analysis: false
   });
 
   useEffect(() => {
@@ -91,7 +92,8 @@ export function useSettingsState({ session, accessToken, onModelSettingsUpdated 
       profile_gender: current.profile_gender || "",
       profile_age: current.profile_age ? String(current.profile_age) : "",
       enable_outfit_image_generation: Boolean(current.enable_outfit_image_generation),
-      enable_online_store_search: Boolean(current.enable_online_store_search)
+      enable_online_store_search: Boolean(current.enable_online_store_search),
+      enable_accessory_analysis: Boolean(current.enable_accessory_analysis)
     }));
     setProfilePhotoUrl(current.profile_photo_url || "");
   };
@@ -121,7 +123,8 @@ export function useSettingsState({ session, accessToken, onModelSettingsUpdated 
         profile_gender: settingsForm.profile_gender,
         profile_age: settingsForm.profile_age,
         enable_outfit_image_generation: settingsForm.enable_outfit_image_generation,
-        enable_online_store_search: settingsForm.enable_online_store_search
+        enable_online_store_search: settingsForm.enable_online_store_search,
+        enable_accessory_analysis: settingsForm.enable_accessory_analysis
       });
       toast.success("Profile updated.");
     } catch (err) {
@@ -172,7 +175,8 @@ export function useSettingsState({ session, accessToken, onModelSettingsUpdated 
         profile_gender: settingsForm.profile_gender,
         profile_age: settingsForm.profile_age,
         enable_outfit_image_generation: settingsForm.enable_outfit_image_generation,
-        enable_online_store_search: settingsForm.enable_online_store_search
+        enable_online_store_search: settingsForm.enable_online_store_search,
+        enable_accessory_analysis: settingsForm.enable_accessory_analysis
       };
       const nextGeminiKey = String(settingsForm.gemini_api_key || "").trim();
       if (nextGeminiKey) {
@@ -271,3 +275,4 @@ export function useSettingsState({ session, accessToken, onModelSettingsUpdated 
     saveModelSettings
   };
 }
+
