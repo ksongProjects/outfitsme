@@ -1,4 +1,5 @@
 import requests
+import mimetypes
 from datetime import datetime, timezone
 from time import monotonic, sleep
 from flask import Blueprint, jsonify, request
@@ -10,6 +11,7 @@ from app.extensions import limiter
 from app.services.bedrock_service import BedrockNotConfiguredError
 from app.services.gemini_service import (
     GeminiNotConfiguredError,
+    generate_outfitme_image_with_gemini,
 )
 from app.services.models_service import build_model_availability, get_preferred_model
 from app.services.secrets_service import SettingsEncryptionError
@@ -18,9 +20,11 @@ from app.services.supabase_service import (
     create_analysis_job,
     create_photo_record,
     delete_wardrobe_outfit,
+    download_photo_bytes,
     update_wardrobe_outfit_style_label,
     get_dashboard_stats,
     get_analysis_job_for_user,
+    get_photo_storage_path_for_user,
     list_analysis_history,
     get_wardrobe_photo_details,
     get_user_model_settings,
@@ -32,6 +36,7 @@ from app.services.supabase_service import (
     get_user_monthly_composed_outfit_count,
     get_user_cost_summary,
     save_user_profile_photo,
+    save_generated_outfit_image,
     list_wardrobe,
     upsert_user_model_settings,
     upload_photo_for_user,
@@ -447,6 +452,87 @@ def get_wardrobe_details(photo_id: str):
         return jsonify({"error": "Invalid or expired token."}), 401
     except Exception as exc:  # noqa: BLE001
         return jsonify({"error": f"Wardrobe details lookup failed: {exc}"}), 500
+
+
+@api_bp.post("/wardrobe/<photo_id>/outfitme")
+def generate_outfitme_preview(photo_id: str):
+    access_token = _extract_access_token()
+    if not access_token:
+        return jsonify({"error": "Missing bearer token."}), 401
+
+    payload = request.get_json(silent=True) or {}
+    outfit_index_raw = payload.get("outfit_index")
+
+    try:
+        user_id = get_user_id_from_token(access_token)
+        if not user_id:
+            return jsonify({"error": "Invalid or expired token."}), 401
+
+        outfit_index = None
+        if outfit_index_raw is not None and str(outfit_index_raw).strip() != "":
+            outfit_index = int(outfit_index_raw)
+            if outfit_index < 0:
+                return jsonify({"error": "outfit_index must be >= 0"}), 400
+
+        details = get_wardrobe_photo_details(user_id, photo_id, outfit_index=outfit_index)
+        selected_outfit = details.get("selected_outfit") if isinstance(details, dict) else None
+        if not details or not selected_outfit:
+            return jsonify({"error": "Outfit details not found."}), 404
+
+        user_settings = get_user_model_settings(user_id)
+        profile_photo_path = str(user_settings.get("profile_photo_path") or "").strip()
+        if not profile_photo_path:
+            return jsonify({"error": "Reference photo is required. Upload one in Settings > Profile to use OutfitMe."}), 400
+
+        reference_photo_bytes = download_photo_bytes(profile_photo_path)
+        if not reference_photo_bytes:
+            return jsonify({"error": "Reference photo could not be loaded. Please upload it again."}), 400
+        reference_mime_type = mimetypes.guess_type(profile_photo_path)[0] or "image/jpeg"
+
+        source_outfit_image_bytes = None
+        source_outfit_mime_type = "image/jpeg"
+        storage_path = get_photo_storage_path_for_user(user_id, photo_id)
+        if storage_path and not str(storage_path).startswith("virtual/"):
+            source_outfit_image_bytes = download_photo_bytes(storage_path)
+            source_outfit_mime_type = mimetypes.guess_type(storage_path)[0] or "image/jpeg"
+
+        gemini_key = user_settings.get("gemini_api_key") or settings.GEMINI_API_KEY
+        generated_data_uri = generate_outfitme_image_with_gemini(
+            reference_image_bytes=reference_photo_bytes,
+            reference_mime_type=reference_mime_type,
+            outfit_style=selected_outfit.get("style") or "Outfit",
+            outfit_items=selected_outfit.get("items") or [],
+            source_outfit_image_bytes=source_outfit_image_bytes,
+            source_outfit_mime_type=source_outfit_mime_type,
+            profile_gender=user_settings.get("profile_gender"),
+            profile_age=user_settings.get("profile_age"),
+            api_key=gemini_key
+        )
+        if not generated_data_uri:
+            return jsonify({"error": "OutfitMe generation returned no image."}), 502
+
+        outfit_row_id = selected_outfit.get("outfit_id") or f"{photo_id}-{selected_outfit.get('outfit_index', 0)}"
+        stored = save_generated_outfit_image(user_id, str(outfit_row_id), generated_data_uri)
+        return jsonify(
+            {
+                "photo_id": photo_id,
+                "outfit_index": selected_outfit.get("outfit_index"),
+                "outfitme_image_url": stored.get("image_url"),
+                "outfitme_storage_path": stored.get("storage_path")
+            }
+        ), 200
+    except ValueError:
+        return jsonify({"error": "outfit_index must be an integer."}), 400
+    except SupabaseNotConfiguredError as exc:
+        return jsonify({"error": str(exc)}), 500
+    except GeminiNotConfiguredError as exc:
+        return jsonify({"error": str(exc)}), 500
+    except AuthApiError:
+        return jsonify({"error": "Invalid or expired token."}), 401
+    except requests.HTTPError as exc:
+        return jsonify({"error": f"OutfitMe model request failed: {exc}"}), 502
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"error": f"OutfitMe generation failed: {exc}"}), 500
 
 
 @api_bp.get("/items")

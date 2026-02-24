@@ -1,0 +1,115 @@
+.settings-grid {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.settings-layout {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: 220px minmax(0, 1fr);
+  gap: 12px;
+  align-items: start;
+}
+
+.settings-layout > * {
+  min-width: 0;
+}
+
+.settings-scroll-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.settings-span {
+  grid-column: 1 / -1;
+}
+
+.settings-menu {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  height: fit-content;
+  position: sticky;
+  top: 12px;
+}
+
+.settings-menu-btn {
+  text-align: left;
+  border: 1px solid var(--line);
+  background: #fff;
+  color: var(--ink);
+  border-radius: 10px;
+  padding: 10px 12px;
+  cursor: pointer;
+}
+
+.settings-menu-btn.active {
+  border-color: var(--ink);
+  background: var(--ink);
+  color: #fff;
+}
+
+.dashboard-layout {
+  margin-top: 12px;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.settings-card {
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.quota-scroll-card {
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.settings-card h2 {
+  margin-top: 0;
+  margin-bottom: 8px;
+}
+
+.settings-section-card {
+  scroll-margin-top: 16px;
+}
+
+.settings-feature-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 10px;
+}
+
+.feature-disabled {
+  opacity: 0.65;
+}
+
+.profile-photo-preview {
+  width: 180px;
+  height: 180px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  object-fit: cover;
+  background: #fff;
+}
+
+.compact-list {
+  margin: 8px 0 0;
+  padding-left: 18px;
+}
+

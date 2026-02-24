@@ -1,13 +1,15 @@
 import { useEffect, useState } from "react";
 import { Trash2 } from "lucide-react";
+import { toast } from "sonner";
 
 import { formatItemLabel, getItemIcon } from "../../utils/formatters";
-import { useWardrobeContext } from "../../context/DashboardContext";
+import { useSettingsContext, useWardrobeContext } from "../../context/DashboardContext";
 import BaseButton from "../ui/BaseButton";
 import BaseDialog from "../ui/BaseDialog";
 import BaseInput from "../ui/BaseInput";
 
 export default function OutfitsTab() {
+  const { profilePhotoUrl } = useSettingsContext();
   const {
     wardrobe,
     wardrobeLoading,
@@ -17,6 +19,8 @@ export default function OutfitsTab() {
     deletingOutfitId,
     renameOutfit,
     updatingOutfitId,
+    generateOutfitMe,
+    outfitMeLoading,
     openOutfitDetails,
     closeOutfitDetails,
     outfitDetails,
@@ -60,6 +64,19 @@ export default function OutfitsTab() {
     if (saved) {
       setIsEditingName(false);
     }
+  };
+
+  const handleGenerateOutfitMe = async () => {
+    const details = outfitDetails || {};
+    const selected = details.selected_outfit || null;
+    if (!details.photo_id || !selected) {
+      return;
+    }
+    if (!profilePhotoUrl) {
+      toast.error("Profile photo is required for OutfitMe. Upload one in Settings > Profile.");
+      return;
+    }
+    await generateOutfitMe(details.photo_id, selected.outfit_index);
   };
 
   return (
@@ -131,14 +148,27 @@ export default function OutfitsTab() {
         }}
         title="Outfit details"
         headerActions={
-          !outfitDetailsLoading && outfitDetails?.selected_outfit && !isEditingName ? (
-            <BaseButton
-              type="button"
-              variant="ghost"
-              onClick={() => setIsEditingName(true)}
-            >
-              Edit
-            </BaseButton>
+          !outfitDetailsLoading && outfitDetails?.selected_outfit ? (
+            <>
+              <BaseButton
+                type="button"
+                variant="ghost"
+                onClick={handleGenerateOutfitMe}
+                disabled={outfitMeLoading || !profilePhotoUrl}
+                title={profilePhotoUrl ? "Generate OutfitMe preview" : "Profile photo required for OutfitMe"}
+              >
+                {outfitMeLoading ? "OutfitMe..." : "OutfitMe"}
+              </BaseButton>
+              {!isEditingName ? (
+                <BaseButton
+                  type="button"
+                  variant="ghost"
+                  onClick={() => setIsEditingName(true)}
+                >
+                  Edit
+                </BaseButton>
+              ) : null}
+            </>
           ) : null
         }
       >
@@ -151,6 +181,9 @@ export default function OutfitsTab() {
             ) : (
               <p className="subtext">Original image is unavailable for this outfit.</p>
             )}
+            {outfitDetails?.outfitme_image_url ? (
+              <img src={outfitDetails.outfitme_image_url} alt="OutfitMe preview" className="modal-image" />
+            ) : null}
             <div>
               <h4>
                 Outfit {(outfitDetails?.selected_outfit?.outfit_index ?? 0) + 1}

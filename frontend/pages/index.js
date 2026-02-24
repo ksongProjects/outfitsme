@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Tabs } from "@base-ui/react/tabs";
+import { User } from "lucide-react";
 
 import LandingAuth from "../components/LandingAuth";
 import DashboardTab from "../components/tabs/DashboardTab";
@@ -260,7 +261,18 @@ export default function HomePage() {
                   : `Signed in as ${userLabel}`}
               </p>
             </div>
-            <BaseButton variant="ghost" onClick={handleSignOut}>Sign out</BaseButton>
+            <div className="dashboard-user-actions">
+              <div className="hero-badge" aria-label={settingsState.profilePhotoUrl ? "Profile photo uploaded" : "Default profile badge"}>
+                {settingsState.profilePhotoUrl ? (
+                  <img src={settingsState.profilePhotoUrl} alt="Profile badge" className="hero-badge-image" />
+                ) : (
+                  <span className="hero-badge-fallback" aria-hidden="true">
+                    <User size={22} />
+                  </span>
+                )}
+              </div>
+              <BaseButton variant="ghost" onClick={handleSignOut}>Sign out</BaseButton>
+            </div>
           </header>
 
           <section className="card">

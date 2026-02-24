@@ -207,3 +207,106 @@ def generate_item_image_with_gemini(item: dict, api_key: str | None = None, mode
         return f"data:{mime};base64,{data}"
 
     return None
+
+
+def generate_outfitme_image_with_gemini(
+    *,
+    reference_image_bytes: bytes,
+    reference_mime_type: str,
+    outfit_style: str,
+    outfit_items: list[dict],
+    source_outfit_image_bytes: bytes | None = None,
+    source_outfit_mime_type: str | None = None,
+    profile_gender: str | None = None,
+    profile_age: int | None = None,
+    api_key: str | None = None,
+    model: str | None = None
+) -> str | None:
+    effective_api_key = (api_key or settings.GEMINI_API_KEY or "").strip()
+    if not effective_api_key:
+        raise GeminiNotConfiguredError("GEMINI_API_KEY is required.")
+
+    cleaned_items = []
+    for item in (outfit_items or []):
+        if not isinstance(item, dict):
+            continue
+        label = ", ".join(
+            [
+                str(item.get("category", "")).strip(),
+                str(item.get("name", "")).strip(),
+                str(item.get("color", "")).strip()
+            ]
+        ).strip(", ").strip()
+        if label:
+            cleaned_items.append(label)
+
+    profile_parts = []
+    if str(profile_gender or "").strip():
+        profile_parts.append(f"gender: {str(profile_gender).strip()}")
+    if isinstance(profile_age, int) and profile_age > 0:
+        profile_parts.append(f"age: {profile_age}")
+
+    prompt = (
+        "Create a photorealistic outfit try-on image. "
+        "Use the first input image as the person's identity reference and preserve facial identity and body proportions. "
+        "Dress the person in the requested outfit items. "
+        f"Outfit style: {str(outfit_style or 'Outfit').strip()}. "
+        f"Items: {'; '.join(cleaned_items) if cleaned_items else 'best effort from available data'}. "
+        f"Profile hints: {'; '.join(profile_parts) if profile_parts else 'none'}. "
+        "If a second image is provided, use it only as clothing/style reference. "
+        "Return a single generated image, no text, no watermark."
+    )
+
+    parts = [
+        {"text": prompt},
+        {
+            "inline_data": {
+                "mime_type": reference_mime_type or "image/jpeg",
+                "data": base64.b64encode(reference_image_bytes).decode("utf-8")
+            }
+        }
+    ]
+    if source_outfit_image_bytes:
+        parts.append(
+            {
+                "inline_data": {
+                    "mime_type": source_outfit_mime_type or "image/jpeg",
+                    "data": base64.b64encode(source_outfit_image_bytes).decode("utf-8")
+                }
+            }
+        )
+
+    payload = {
+        "contents": [{"parts": parts}],
+        "generationConfig": {
+            "responseModalities": ["TEXT", "IMAGE"],
+            "imageConfig": {
+                "aspectRatio": "1:1",
+                "imageSize": "1K"
+            }
+        }
+    }
+
+    response_json = _post_to_gemini(
+        payload,
+        model=(model or settings.GEMINI_IMAGE_MODEL).strip(),
+        api_key=effective_api_key,
+        timeout_seconds=60
+    )
+
+    candidates = response_json.get("candidates", [])
+    if not candidates:
+        return None
+
+    parts = candidates[0].get("content", {}).get("parts", [])
+    for part in parts:
+        inline = part.get("inline_data") or part.get("inlineData")
+        if not isinstance(inline, dict):
+            continue
+        data = inline.get("data")
+        if not data:
+            continue
+        mime = inline.get("mime_type") or inline.get("mimeType") or "image/png"
+        return f"data:{mime};base64,{data}"
+
+    return None

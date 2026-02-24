@@ -742,6 +742,38 @@ def save_generated_item_image(user_id: str, item_id: str, data_uri: str) -> dict
     }
 
 
+def get_photo_storage_path_for_user(user_id: str, photo_id: str) -> str | None:
+    client = get_supabase_client()
+    response = (
+        client.table("photos")
+        .select("storage_path")
+        .eq("id", photo_id)
+        .eq("user_id", user_id)
+        .limit(1)
+        .execute()
+    )
+    row = (response.data or [None])[0]
+    if not row:
+        return None
+    return row.get("storage_path")
+
+
+def save_generated_outfit_image(user_id: str, outfit_id: str, data_uri: str) -> dict:
+    client = get_supabase_client()
+    image_bytes, content_type = _decode_image_data_uri(data_uri)
+    extension = ".png" if content_type == "image/png" else ".jpg"
+    storage_path = f"{user_id}/generated/outfits/{outfit_id}-{uuid4().hex}{extension}"
+    client.storage.from_(settings.SUPABASE_BUCKET).upload(
+        path=storage_path,
+        file=image_bytes,
+        file_options={"content-type": content_type}
+    )
+    return {
+        "storage_path": storage_path,
+        "image_url": get_signed_image_url(storage_path, expires_in_seconds=3600)
+    }
+
+
 def get_user_monthly_analysis_count(user_id: str, month_start_iso: str) -> int:
     client = get_supabase_client()
     response = (

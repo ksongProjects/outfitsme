@@ -8,6 +8,7 @@ export function useWardrobeState({ accessToken, onWardrobeChanged }) {
   const [wardrobeMessage, setWardrobeMessage] = useState("");
   const [deletingOutfitId, setDeletingOutfitId] = useState("");
   const [updatingOutfitId, setUpdatingOutfitId] = useState("");
+  const [outfitMeLoading, setOutfitMeLoading] = useState(false);
   const [outfitDetails, setOutfitDetails] = useState(null);
   const [outfitDetailsLoading, setOutfitDetailsLoading] = useState(false);
   const queryClient = useQueryClient();
@@ -226,10 +227,55 @@ export function useWardrobeState({ accessToken, onWardrobeChanged }) {
 
   const closeOutfitDetails = () => setOutfitDetails(null);
 
+  const generateOutfitMe = async (photoId, outfitIndex = null) => {
+    if (!accessToken || !photoId) {
+      return false;
+    }
+
+    setOutfitMeLoading(true);
+    try {
+      const response = await fetch(`${API_BASE}/api/wardrobe/${photoId}/outfitme`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`
+        },
+        body: JSON.stringify({
+          outfit_index: outfitIndex
+        })
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}));
+        throw new Error(errorBody.error || "Failed to generate OutfitMe preview.");
+      }
+
+      const payload = await response.json();
+      const nextImageUrl = payload.outfitme_image_url || "";
+      setOutfitDetails((current) => {
+        if (!current) {
+          return current;
+        }
+        return {
+          ...current,
+          outfitme_image_url: nextImageUrl
+        };
+      });
+      toast.success("OutfitMe preview generated.");
+      return true;
+    } catch (err) {
+      toast.error(err.message || "Failed to generate OutfitMe preview.");
+      return false;
+    } finally {
+      setOutfitMeLoading(false);
+    }
+  };
+
   const resetWardrobeState = () => {
     setWardrobeMessage("");
     setDeletingOutfitId("");
     setUpdatingOutfitId("");
+    setOutfitMeLoading(false);
     setOutfitDetails(null);
     setOutfitDetailsLoading(false);
     queryClient.removeQueries({ queryKey: ["wardrobe", accessToken] });
@@ -244,6 +290,8 @@ export function useWardrobeState({ accessToken, onWardrobeChanged }) {
     deletingOutfitId,
     renameOutfit,
     updatingOutfitId,
+    generateOutfitMe,
+    outfitMeLoading,
     openOutfitDetails,
     closeOutfitDetails,
     outfitDetails,
