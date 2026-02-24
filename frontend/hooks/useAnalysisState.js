@@ -5,6 +5,7 @@ import { toast } from "sonner";
 import { API_BASE } from "../lib/apiBase";
 
 export function useAnalysisState({ accessToken, onAnalysisSaved }) {
+  const MAX_CONCURRENT_ANALYSIS_JOBS = 5;
   const [file, setFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState("");
   const [cropArea, setCropArea] = useState(null);
@@ -16,7 +17,29 @@ export function useAnalysisState({ accessToken, onAnalysisSaved }) {
   const [selectedModel, setSelectedModel] = useState("gemini-2.5-flash");
   const [analysisLimits, setAnalysisLimits] = useState(null);
   const [jobStatus, setJobStatus] = useState(null);
+  const [activeAnalysisCount, setActiveAnalysisCount] = useState(0);
   const queryClient = useQueryClient();
+
+  const refreshHistoryCache = async () => {
+    if (!accessToken) {
+      return;
+    }
+    try {
+      const response = await fetch(`${API_BASE}/api/history`, {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${accessToken}`
+        }
+      });
+      if (!response.ok) {
+        return;
+      }
+      const payload = await response.json();
+      queryClient.setQueryData(["history", accessToken], payload.history || []);
+    } catch (_err) {
+      // Best effort only: history refresh should never block analyze flow.
+    }
+  };
 
   const analyzeMutation = useMutation({
     mutationFn: async ({ fileToAnalyze, modelId }) => {
@@ -80,6 +103,7 @@ export function useAnalysisState({ accessToken, onAnalysisSaved }) {
       }
 
       const analyzePayload = await analyzeRes.json();
+      await refreshHistoryCache();
       let analyzeJson = analyzePayload;
       if (!Array.isArray(analyzePayload?.items) && analyzePayload?.job_id) {
         setJobStatus({
@@ -118,6 +142,7 @@ export function useAnalysisState({ accessToken, onAnalysisSaved }) {
       await queryClient.invalidateQueries({ queryKey: ["stats", accessToken] });
       await queryClient.invalidateQueries({ queryKey: ["wardrobe", accessToken] });
       await queryClient.invalidateQueries({ queryKey: ["items", accessToken] });
+      await refreshHistoryCache();
       if (onAnalysisSaved) {
         onAnalysisSaved();
       }
@@ -125,8 +150,11 @@ export function useAnalysisState({ accessToken, onAnalysisSaved }) {
     }
   });
 
-  const loading = analyzeMutation.isPending;
-  const disabled = useMemo(() => !file || loading || !accessToken, [file, loading, accessToken]);
+  const loading = activeAnalysisCount > 0;
+  const disabled = useMemo(
+    () => !file || !accessToken || activeAnalysisCount >= MAX_CONCURRENT_ANALYSIS_JOBS,
+    [file, accessToken, activeAnalysisCount]
+  );
 
   useEffect(() => {
     return () => {
@@ -333,10 +361,17 @@ export function useAnalysisState({ accessToken, onAnalysisSaved }) {
       toast.error("Selected model is unavailable for image analysis. Update model keys in Settings.");
       return;
     }
+    if (activeAnalysisCount >= MAX_CONCURRENT_ANALYSIS_JOBS) {
+      const message = `You can queue up to ${MAX_CONCURRENT_ANALYSIS_JOBS} analysis jobs at a time.`;
+      setError(message);
+      toast.error(message);
+      return;
+    }
 
     setError("");
     setInfo("Analysis request submitted. Waiting for queue processing...");
     setJobStatus({ jobId: null, status: "submitting", updatedAt: null });
+    setActiveAnalysisCount((current) => current + 1);
 
     try {
       const fileToAnalyze = await buildCroppedFile(file, cropArea);
@@ -349,6 +384,8 @@ export function useAnalysisState({ accessToken, onAnalysisSaved }) {
       const friendly = toUserFriendlyAnalyzeError(err.message);
       setError(friendly);
       toast.error(friendly);
+    } finally {
+      setActiveAnalysisCount((current) => Math.max(0, current - 1));
     }
   };
 
@@ -442,6 +479,7 @@ export function useAnalysisState({ accessToken, onAnalysisSaved }) {
     setSelectedModel("gemini-2.5-flash");
     setAnalysisLimits(null);
     setJobStatus(null);
+    setActiveAnalysisCount(0);
     setCropArea(null);
     setError("");
     setInfo("");
@@ -465,6 +503,8 @@ export function useAnalysisState({ accessToken, onAnalysisSaved }) {
     modelOptions,
     loadModels,
     jobStatus,
+    activeAnalysisCount,
+    maxConcurrentAnalysisJobs: MAX_CONCURRENT_ANALYSIS_JOBS,
     analysisLimits,
     limitsLoading: limitsQuery.isFetching,
     loadAnalysisLimits,

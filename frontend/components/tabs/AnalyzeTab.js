@@ -23,6 +23,8 @@ export default function AnalyzeTab() {
     setSelectedModel,
     modelOptions,
     jobStatus,
+    activeAnalysisCount,
+    maxConcurrentAnalysisJobs,
     analysisLimits,
     limitsLoading
   } = useAnalysisContext();
@@ -261,6 +263,11 @@ export default function AnalyzeTab() {
             Queue status: <strong>{jobStatus.status}</strong>{jobStatus.jobId ? ` (job ${jobStatus.jobId.slice(0, 8)})` : ""}
           </p>
         ) : null}
+        {activeAnalysisCount > 0 ? (
+          <p className="subtext">
+            Active analysis jobs: <strong>{activeAnalysisCount}</strong> / {maxConcurrentAnalysisJobs}
+          </p>
+        ) : null}
         <label
           htmlFor="image-upload"
           className={`dropzone ${isDragOver ? "is-dragover" : ""}`}
@@ -319,7 +326,7 @@ export default function AnalyzeTab() {
             </button>
           ) : null}
           <button className="primary-btn" onClick={runAnalysis} disabled={disabled}>
-            {loading ? "Analyzing..." : "Analyze photo"}
+            {loading ? "Queue another photo" : "Analyze selection"}
           </button>
         </div>
         </section>

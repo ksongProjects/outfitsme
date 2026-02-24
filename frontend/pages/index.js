@@ -110,6 +110,8 @@ export default function HomePage() {
     setSelectedModel: analysisState.setSelectedModel,
     modelOptions: analysisState.modelOptions,
     jobStatus: analysisState.jobStatus,
+    activeAnalysisCount: analysisState.activeAnalysisCount,
+    maxConcurrentAnalysisJobs: analysisState.maxConcurrentAnalysisJobs,
     analysisLimits: analysisState.analysisLimits,
     limitsLoading: analysisState.limitsLoading,
     error: analysisState.error,
@@ -125,6 +127,8 @@ export default function HomePage() {
     analysisState.selectedModel,
     analysisState.modelOptions,
     analysisState.jobStatus,
+    analysisState.activeAnalysisCount,
+    analysisState.maxConcurrentAnalysisJobs,
     analysisState.analysisLimits,
     analysisState.limitsLoading,
     analysisState.error,
@@ -196,14 +200,11 @@ export default function HomePage() {
     history: historyState.history,
     historyLoading: historyState.historyLoading,
     historyMessage: historyState.historyMessage,
-    loadHistory: historyState.loadHistory,
-    deleteHistoryPhoto: historyState.deleteHistoryPhoto,
-    deletingPhotoId: historyState.deletingPhotoId
+    loadHistory: historyState.loadHistory
   }), [
     historyState.history,
     historyState.historyLoading,
-    historyState.historyMessage,
-    historyState.deletingPhotoId
+    historyState.historyMessage
   ]);
 
   const userFullName = (auth.session?.user?.user_metadata?.full_name || "").trim();

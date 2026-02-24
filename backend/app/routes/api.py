@@ -18,7 +18,6 @@ from app.services.supabase_service import (
     compose_outfit_from_items,
     create_analysis_job,
     create_photo_record,
-    delete_wardrobe_photo,
     delete_wardrobe_outfit,
     get_dashboard_stats,
     get_analysis_job_for_user,
@@ -345,30 +344,6 @@ def get_history():
         return jsonify({"error": "Invalid or expired token."}), 401
     except Exception as exc:  # noqa: BLE001
         return jsonify({"error": f"History lookup failed: {exc}"}), 500
-
-
-@api_bp.delete("/history/photos/<photo_id>")
-def delete_history_photo(photo_id: str):
-    access_token = _extract_access_token()
-    if not access_token:
-        return jsonify({"error": "Missing bearer token."}), 401
-
-    try:
-        user_id = get_user_id_from_token(access_token)
-        if not user_id:
-            return jsonify({"error": "Invalid or expired token."}), 401
-
-        deleted = delete_wardrobe_photo(user_id, photo_id)
-        if not deleted:
-            return jsonify({"error": "Photo not found."}), 404
-
-        return jsonify({"deleted": True, "photo_id": photo_id}), 200
-    except SupabaseNotConfiguredError as exc:
-        return jsonify({"error": str(exc)}), 500
-    except AuthApiError:
-        return jsonify({"error": "Invalid or expired token."}), 401
-    except Exception as exc:  # noqa: BLE001
-        return jsonify({"error": f"Photo delete failed: {exc}"}), 500
 
 
 @api_bp.delete("/wardrobe/<outfit_id>")

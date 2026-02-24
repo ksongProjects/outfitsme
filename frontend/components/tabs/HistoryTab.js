@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { Trash2 } from "lucide-react";
 
 import { useHistoryContext } from "../../context/DashboardContext";
 
@@ -8,21 +7,9 @@ export default function HistoryTab() {
     history,
     historyLoading,
     historyMessage,
-    loadHistory,
-    deleteHistoryPhoto,
-    deletingPhotoId
+    loadHistory
   } = useHistoryContext();
-  const [pendingDelete, setPendingDelete] = useState(null);
-
-  const handleDelete = async () => {
-    if (!pendingDelete?.photo_id) {
-      return;
-    }
-    const deleted = await deleteHistoryPhoto(pendingDelete.photo_id);
-    if (deleted) {
-      setPendingDelete(null);
-    }
-  };
+  const [previewEntry, setPreviewEntry] = useState(null);
 
   return (
     <section>
@@ -47,7 +34,6 @@ export default function HistoryTab() {
             <th>Outfits</th>
             <th>Created</th>
             <th>Completed</th>
-            <th>Action</th>
           </tr>
         </thead>
         <tbody>
@@ -56,7 +42,15 @@ export default function HistoryTab() {
               <td>
                 <div className="history-photo-cell">
                   {entry.image_url ? (
-                    <img className="history-thumb" src={entry.image_url} alt="Analyzed outfit" />
+                    <button
+                      type="button"
+                      className="history-thumb-btn"
+                      onClick={() => setPreviewEntry(entry)}
+                      aria-label="Open photo preview"
+                      title="Open photo preview"
+                    >
+                      <img className="history-thumb" src={entry.image_url} alt="Analyzed outfit" />
+                    </button>
                   ) : (
                     <span className="subtext">No preview</span>
                   )}
@@ -67,54 +61,29 @@ export default function HistoryTab() {
               <td>{entry.outfit_count ?? 0}</td>
               <td>{entry.created_at ? new Date(entry.created_at).toLocaleString() : "-"}</td>
               <td>{entry.completed_at ? new Date(entry.completed_at).toLocaleString() : "-"}</td>
-              <td>
-                <button
-                  type="button"
-                  className="icon-btn danger-icon-btn"
-                  onClick={() => setPendingDelete(entry)}
-                  disabled={deletingPhotoId === entry.photo_id}
-                  aria-label="Delete photo"
-                  title="Delete photo and related outfits"
-                >
-                  {deletingPhotoId === entry.photo_id ? "..." : <Trash2 size={16} />}
-                </button>
-              </td>
             </tr>
           ))}
         </tbody>
       </table>
 
-      {pendingDelete ? (
-        <div className="modal-backdrop" onClick={() => setPendingDelete(null)}>
-          <div className="modal-panel modal-panel-sm" onClick={(event) => event.stopPropagation()}>
+      {previewEntry ? (
+        <div className="modal-backdrop" onClick={() => setPreviewEntry(null)}>
+          <div className="modal-panel" onClick={(event) => event.stopPropagation()}>
             <div className="modal-header">
-              <h3>Delete photo history</h3>
-              <button type="button" className="ghost-btn" onClick={() => setPendingDelete(null)}>Close</button>
+              <h3>Analysis photo preview</h3>
+              <button type="button" className="ghost-btn" onClick={() => setPreviewEntry(null)}>Close</button>
             </div>
-            <p>Remove this photo from history?</p>
-            <p className="danger-note" role="alert">
-              Warning: this will also delete {pendingDelete.outfit_count ?? 0} outfit
-              {(pendingDelete.outfit_count ?? 0) === 1 ? "" : "s"} and related items generated from this photo.
-              This action cannot be undone.
+            {previewEntry.image_url ? (
+              <img src={previewEntry.image_url} alt="Analyzed outfit preview" className="modal-image" />
+            ) : (
+              <p className="subtext">Preview unavailable for this photo.</p>
+            )}
+            <p className="subtext">
+              Model: {previewEntry.analysis_model || "Unknown"} | Status: {previewEntry.status || "Unknown"}
             </p>
-            <div className="button-row">
-              <button
-                type="button"
-                className="ghost-btn"
-                onClick={() => setPendingDelete(null)}
-                disabled={deletingPhotoId === pendingDelete.photo_id}
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                className="ghost-btn danger-btn"
-                onClick={handleDelete}
-                disabled={deletingPhotoId === pendingDelete.photo_id}
-              >
-                {deletingPhotoId === pendingDelete.photo_id ? "Deleting..." : "Delete"}
-              </button>
-            </div>
+            <p className="subtext">
+              Created: {previewEntry.created_at ? new Date(previewEntry.created_at).toLocaleString() : "-"}
+            </p>
           </div>
         </div>
       ) : null}
