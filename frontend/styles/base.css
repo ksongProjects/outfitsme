@@ -188,6 +188,11 @@ select {
   cursor: pointer;
 }
 
+.dashboard-header .outfitme-home-btn {
+  display: inline-flex;
+  margin-bottom: 8px;
+}
+
 .outfitme-home-btn:focus-visible {
   outline: none;
   box-shadow: 0 0 0 3px var(--btn-focus-ring);
@@ -260,6 +265,21 @@ select {
 
 .auth-panel .primary-btn {
   margin-top: 4px;
+}
+
+.remember-me-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+  color: var(--muted);
+  font-size: 0.95rem;
+}
+
+.remember-me-row input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
 }
 
 .feature-grid {
@@ -469,7 +489,7 @@ select.text-input {
 }
 
 .dashboard-header h1 {
-  margin: 6px 0 4px;
+  margin: 0 0 4px;
   font-size: clamp(1.5rem, 2.4vw, 2rem);
   line-height: 1.15;
 }

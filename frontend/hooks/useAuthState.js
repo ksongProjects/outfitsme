@@ -3,11 +3,49 @@ import { toast } from "sonner";
 
 import { supabase } from "../lib/supabaseClient";
 
+const REMEMBER_EMAIL_KEY = "outfitme_remember_email";
+const REMEMBER_EMAIL_ENABLED_KEY = "outfitme_remember_email_enabled";
+
+const getRememberEmailEnabled = () => {
+  if (typeof window === "undefined") {
+    return false;
+  }
+  return window.localStorage.getItem(REMEMBER_EMAIL_ENABLED_KEY) === "1";
+};
+
+const getRememberedEmail = () => {
+  if (typeof window === "undefined") {
+    return "";
+  }
+  return window.localStorage.getItem(REMEMBER_EMAIL_KEY) || "";
+};
+
 export function useAuthState() {
   const [authTab, setAuthTab] = useState("signin");
-  const [email, setEmail] = useState("");
+  const [rememberMe, setRememberMe] = useState(() => getRememberEmailEnabled());
+  const [email, setEmail] = useState(() => (getRememberEmailEnabled() ? getRememberedEmail() : ""));
   const [password, setPassword] = useState("");
   const [session, setSession] = useState(null);
+
+  const persistRememberMeSettings = (nextEmail, enabled) => {
+    if (typeof window === "undefined") {
+      return;
+    }
+    if (enabled) {
+      window.localStorage.setItem(REMEMBER_EMAIL_ENABLED_KEY, "1");
+      window.localStorage.setItem(REMEMBER_EMAIL_KEY, (nextEmail || "").trim());
+      return;
+    }
+    window.localStorage.removeItem(REMEMBER_EMAIL_KEY);
+    window.localStorage.setItem(REMEMBER_EMAIL_ENABLED_KEY, "0");
+  };
+
+  const clearAuthInputs = (keepEmail = false) => {
+    setPassword("");
+    if (!keepEmail) {
+      setEmail("");
+    }
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -22,6 +60,9 @@ export function useAuthState() {
       data: { subscription }
     } = supabase.auth.onAuthStateChange((_event, nextSession) => {
       setSession(nextSession || null);
+      if (nextSession) {
+        clearAuthInputs(getRememberEmailEnabled());
+      }
     });
 
     return () => {
@@ -36,6 +77,8 @@ export function useAuthState() {
       toast.error(authError.message);
       return false;
     }
+    persistRememberMeSettings(email, rememberMe);
+    clearAuthInputs(rememberMe);
     toast.success("Signup successful. Check your email if confirmation is enabled.");
     return true;
   };
@@ -46,6 +89,8 @@ export function useAuthState() {
       toast.error(authError.message);
       return false;
     }
+    persistRememberMeSettings(email, rememberMe);
+    clearAuthInputs(rememberMe);
     toast.success("Signed in successfully.");
     return true;
   };
@@ -61,7 +106,8 @@ export function useAuthState() {
 
   const signOut = async () => {
     await supabase.auth.signOut();
-    toast.info("Signed out.");
+    clearAuthInputs(rememberMe);
+    persistRememberMeSettings(email, rememberMe);
   };
 
   return {
@@ -69,6 +115,8 @@ export function useAuthState() {
     setAuthTab,
     email,
     setEmail,
+    rememberMe,
+    setRememberMe,
     password,
     setPassword,
     session,

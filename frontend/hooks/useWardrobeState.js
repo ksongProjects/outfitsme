@@ -6,6 +6,7 @@ import { API_BASE } from "../lib/apiBase";
 
 export function useWardrobeState({ accessToken, onWardrobeChanged }) {
   const CACHE_STALE_MS = 5 * 60 * 1000;
+  const DETAILS_CACHE_STALE_MS = 5 * 60 * 1000;
   const [wardrobeMessage, setWardrobeMessage] = useState("");
   const [deletingOutfitId, setDeletingOutfitId] = useState("");
   const [updatingOutfitId, setUpdatingOutfitId] = useState("");
@@ -13,6 +14,42 @@ export function useWardrobeState({ accessToken, onWardrobeChanged }) {
   const [outfitDetails, setOutfitDetails] = useState(null);
   const [outfitDetailsLoading, setOutfitDetailsLoading] = useState(false);
   const queryClient = useQueryClient();
+
+  const buildDetailsQueryKey = (photoId) => ["wardrobeDetails", accessToken, photoId];
+
+  const selectOutfitFromDetails = (details, outfitIndex = null) => {
+    if (!details || outfitIndex === null || outfitIndex === undefined) {
+      return {
+        ...details,
+        selected_outfit_index: outfitIndex,
+        selected_outfit: null
+      };
+    }
+    const outfits = Array.isArray(details.outfits) ? details.outfits : [];
+    const selectedOutfit = outfits.find((outfit) => outfit?.outfit_index === outfitIndex) || null;
+    return {
+      ...details,
+      selected_outfit_index: outfitIndex,
+      selected_outfit: selectedOutfit
+    };
+  };
+
+  const fetchOutfitDetailsByPhoto = async (photoId) => {
+    const response = await fetch(`${API_BASE}/api/wardrobe/${photoId}/details`, {
+      method: "GET",
+      headers: {
+        Authorization: `Bearer ${accessToken}`
+      }
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.json().catch(() => ({}));
+      throw new Error(errorBody.error || "Failed to load outfit details.");
+    }
+
+    const payload = await response.json();
+    return payload.details || null;
+  };
 
   const wardrobeQuery = useQuery({
     queryKey: ["wardrobe", accessToken],
@@ -184,6 +221,27 @@ export function useWardrobeState({ accessToken, onWardrobeChanged }) {
         };
       });
 
+      if (updatedOutfit?.photo_id) {
+        queryClient.setQueryData(buildDetailsQueryKey(updatedOutfit.photo_id), (current) => {
+          if (!current) {
+            return current;
+          }
+          const nextOutfits = (current.outfits || []).map((outfit) => (
+            outfit.outfit_id === updatedOutfit.outfit_id
+              ? { ...outfit, style: updatedOutfit.style_label }
+              : outfit
+          ));
+          const nextSelected = current.selected_outfit?.outfit_id === updatedOutfit.outfit_id
+            ? { ...current.selected_outfit, style: updatedOutfit.style_label }
+            : current.selected_outfit;
+          return {
+            ...current,
+            outfits: nextOutfits,
+            selected_outfit: nextSelected
+          };
+        });
+      }
+
       toast.success("Outfit name updated.");
       if (onWardrobeChanged) {
         onWardrobeChanged();
@@ -217,21 +275,17 @@ export function useWardrobeState({ accessToken, onWardrobeChanged }) {
     setWardrobeMessage("");
 
     try {
-      const query = outfitIndex === null || outfitIndex === undefined ? "" : `?outfit_index=${outfitIndex}`;
-      const response = await fetch(`${API_BASE}/api/wardrobe/${photoId}/details${query}`, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${accessToken}`
-        }
+      const details = await queryClient.fetchQuery({
+        queryKey: buildDetailsQueryKey(photoId),
+        queryFn: () => fetchOutfitDetailsByPhoto(photoId),
+        staleTime: DETAILS_CACHE_STALE_MS
       });
 
-      if (!response.ok) {
-        const errorBody = await response.json().catch(() => ({}));
-        throw new Error(errorBody.error || "Failed to load outfit details.");
+      const selectedDetails = selectOutfitFromDetails(details, outfitIndex);
+      if (outfitIndex !== null && outfitIndex !== undefined && !selectedDetails.selected_outfit) {
+        throw new Error("Requested outfit index not found for this photo.");
       }
-
-      const payload = await response.json();
-      setOutfitDetails(payload.details || null);
+      setOutfitDetails(selectedDetails);
     } catch (_err) {
       setOutfitDetails(null);
       setWardrobeMessage("Could not load outfit details right now.");
@@ -272,13 +326,20 @@ export function useWardrobeState({ accessToken, onWardrobeChanged }) {
         if (!current) {
           return current;
         }
+        if (current.photo_id) {
+          queryClient.setQueryData(buildDetailsQueryKey(current.photo_id), (cached) => (
+            cached
+              ? { ...cached, outfitme_image_url: nextImageUrl }
+              : cached
+          ));
+        }
         return {
           ...current,
           outfitme_image_url: nextImageUrl
         };
       });
       toast.success("OutfitMe preview generated.");
-      return true;
+      return payload;
     } catch (err) {
       toast.error(err.message || "Failed to generate OutfitMe preview.");
       return false;
@@ -295,6 +356,7 @@ export function useWardrobeState({ accessToken, onWardrobeChanged }) {
     setOutfitDetails(null);
     setOutfitDetailsLoading(false);
     queryClient.removeQueries({ queryKey: ["wardrobe", accessToken] });
+    queryClient.removeQueries({ queryKey: ["wardrobeDetails", accessToken] });
   };
 
   return {

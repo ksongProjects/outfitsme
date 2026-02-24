@@ -125,13 +125,15 @@ export default function HomePage() {
     authTab: auth.authTab,
     setAuthTab: auth.setAuthTab,
     email: auth.email,
+    rememberMe: auth.rememberMe,
     password: auth.password,
     setEmail: auth.setEmail,
+    setRememberMe: auth.setRememberMe,
     setPassword: auth.setPassword,
     submitAuth: auth.submitAuth,
     session: auth.session,
     signOut: handleSignOut
-  }), [auth.authTab, auth.email, auth.password, auth.session, handleSignOut]);
+  }), [auth.authTab, auth.email, auth.rememberMe, auth.password, auth.session, handleSignOut]);
 
   const analysisValue = useMemo(() => ({
     previewUrl: analysisState.previewUrl,
@@ -184,6 +186,8 @@ export default function HomePage() {
     deletingOutfitId: wardrobeState.deletingOutfitId,
     renameOutfit: wardrobeState.renameOutfit,
     updatingOutfitId: wardrobeState.updatingOutfitId,
+    generateOutfitMe: wardrobeState.generateOutfitMe,
+    outfitMeLoading: wardrobeState.outfitMeLoading,
     openOutfitDetails: wardrobeState.openOutfitDetails,
     closeOutfitDetails: wardrobeState.closeOutfitDetails,
     outfitDetails: wardrobeState.outfitDetails,
@@ -194,6 +198,8 @@ export default function HomePage() {
     wardrobeState.wardrobeMessage,
     wardrobeState.deletingOutfitId,
     wardrobeState.updatingOutfitId,
+    wardrobeState.generateOutfitMe,
+    wardrobeState.outfitMeLoading,
     wardrobeState.outfitDetails,
     wardrobeState.outfitDetailsLoading
   ]);
@@ -285,7 +291,7 @@ export default function HomePage() {
             <div>
               <button
                 type="button"
-                className="eyebrow outfitme-home-btn"
+                className="brand outfitme-home-btn"
                 onClick={() => setDashboardTab("dashboard")}
               >
                 OutfitMe

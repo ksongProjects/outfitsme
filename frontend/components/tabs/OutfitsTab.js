@@ -1,4 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import {
+  flexRender,
+  getCoreRowModel,
+  getPaginationRowModel,
+  useReactTable
+} from "@tanstack/react-table";
 import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -54,6 +60,68 @@ export default function OutfitsTab() {
     return style;
   };
 
+  const columns = useMemo(() => [
+    {
+      accessorKey: "photo",
+      header: "Photo",
+      cell: ({ row }) => (
+        row.original.image_url ? (
+          <img src={row.original.image_url} alt={getOutfitDisplayName(row.original)} className="item-thumb" />
+        ) : (
+          <span className="subtext">-</span>
+        )
+      )
+    },
+    {
+      accessorKey: "name",
+      header: "Name",
+      cell: ({ row }) => getOutfitDisplayName(row.original)
+    },
+    {
+      accessorKey: "outfit_items_count",
+      header: "Items",
+      cell: ({ row }) => row.original.outfit_items_count ?? "-"
+    },
+    {
+      accessorKey: "created_at",
+      header: "Created",
+      cell: ({ row }) => row.original.created_at ? new Date(row.original.created_at).toLocaleString() : "-"
+    },
+    {
+      accessorKey: "action",
+      header: "Action",
+      cell: ({ row }) => (
+        <BaseButton
+          type="button"
+          variant="icon"
+          className="danger-icon-btn"
+          onClick={(event) => {
+            event.stopPropagation();
+            setPendingDelete(row.original);
+          }}
+          disabled={deletingOutfitId === row.original.outfit_id}
+          aria-label="Delete outfit"
+          title="Delete outfit"
+        >
+          {deletingOutfitId === row.original.outfit_id ? "..." : <Trash2 size={16} />}
+        </BaseButton>
+      )
+    }
+  ], [deletingOutfitId]);
+
+  const table = useReactTable({
+    data: wardrobe,
+    columns,
+    getCoreRowModel: getCoreRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    initialState: {
+      pagination: {
+        pageIndex: 0,
+        pageSize: 10
+      }
+    }
+  });
+
   const handleSaveOutfitName = async () => {
     const outfitId = outfitDetails?.selected_outfit?.outfit_id;
     const nextName = editedName.trim();
@@ -93,50 +161,47 @@ export default function OutfitsTab() {
 
       {wardrobeMessage ? <p className="subtext">{wardrobeMessage}</p> : null}
 
-      <table className="data-table">
-        <thead>
-          <tr>
-            <th>Name</th>
-            <th>Style</th>
-            <th>Items</th>
-            <th>Created</th>
-            <th>Action</th>
-          </tr>
-        </thead>
-        <tbody>
-          {wardrobe.map((entry) => (
-            <tr key={entry.row_id || `${entry.photo_id}:${entry.outfit_index || 0}`}>
-              <td>
-                <BaseButton
-                  type="button"
-                  variant="link"
-                  onClick={() => openOutfitDetails(entry.photo_id, entry.outfit_index)}
-                >
-                  {getOutfitDisplayName(entry)}
-                </BaseButton>
-              </td>
-              <td>
-                {entry.style_label || "Unlabeled"}
-              </td>
-              <td>{entry.outfit_items_count ?? "-"}</td>
-              <td>{new Date(entry.created_at).toLocaleString()}</td>
-              <td>
-                <BaseButton
-                  type="button"
-                  variant="icon"
-                  className="danger-icon-btn"
-                  onClick={() => setPendingDelete(entry)}
-                  disabled={deletingOutfitId === entry.outfit_id}
-                  aria-label="Delete outfit"
-                  title="Delete outfit"
-                >
-                  {deletingOutfitId === entry.outfit_id ? "..." : <Trash2 size={16} />}
-                </BaseButton>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <div className="table-scroll-wrap">
+        <table className="data-table">
+          <thead>
+            {table.getHeaderGroups().map((headerGroup) => (
+              <tr key={headerGroup.id}>
+                {headerGroup.headers.map((header) => (
+                  <th key={header.id}>
+                    {header.isPlaceholder ? null : flexRender(header.column.columnDef.header, header.getContext())}
+                  </th>
+                ))}
+              </tr>
+            ))}
+          </thead>
+          <tbody>
+            {table.getRowModel().rows.map((row) => (
+              <tr
+                key={row.id}
+                onClick={() => openOutfitDetails(row.original.photo_id, row.original.outfit_index)}
+              >
+                {row.getVisibleCells().map((cell) => (
+                  <td key={cell.id}>{flexRender(cell.column.columnDef.cell, cell.getContext())}</td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="pagination-row">
+        <p className="subtext">
+          Page {table.getState().pagination.pageIndex + 1} of {table.getPageCount() || 1}
+        </p>
+        <div className="button-row">
+          <BaseButton type="button" variant="ghost" onClick={() => table.previousPage()} disabled={!table.getCanPreviousPage()}>
+            Previous
+          </BaseButton>
+          <BaseButton type="button" variant="ghost" onClick={() => table.nextPage()} disabled={!table.getCanNextPage()}>
+            Next
+          </BaseButton>
+        </div>
+      </div>
 
       <BaseDialog
         open={Boolean(outfitDetails || outfitDetailsLoading)}
@@ -234,8 +299,13 @@ export default function OutfitsTab() {
                     <ul className="analysis-items">
                       {outfitDetails.selected_outfit.items.map((item, index) => (
                         <li key={`detail-item-${outfitDetails.selected_outfit.outfit_index}-${index}`} className="analysis-item">
-                          <span className="item-icon" aria-hidden="true">{getItemIcon(item)}</span>
-                          <span>{formatItemLabel(item)}</span>
+                          <span className="wardrobe-item-row">
+                            {item.image_url ? (
+                              <img src={item.image_url} alt={item.name || "Outfit item"} className="item-thumb" />
+                            ) : null}
+                            <span className="item-icon" aria-hidden="true">{getItemIcon(item)}</span>
+                            <span>{item.name || formatItemLabel(item)}</span>
+                          </span>
                         </li>
                       ))}
                     </ul>

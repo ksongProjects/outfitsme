@@ -445,7 +445,19 @@ def _normalize_signed_url(signed_data: dict) -> str | None:
 
 
 def get_signed_image_url(storage_path: str, expires_in_seconds: int = 3600) -> str | None:
-    client = get_supabase_client()
+    return _get_signed_image_url_with_client(
+        get_supabase_client(),
+        storage_path,
+        expires_in_seconds=expires_in_seconds
+    )
+
+
+def _get_signed_image_url_with_client(
+    client: Client,
+    storage_path: str,
+    *,
+    expires_in_seconds: int = 3600
+) -> str | None:
     try:
         response = client.storage.from_(settings.SUPABASE_BUCKET).create_signed_url(
             storage_path,
@@ -459,8 +471,121 @@ def get_signed_image_url(storage_path: str, expires_in_seconds: int = 3600) -> s
     return None
 
 
+def _build_signed_url_resolver(
+    client: Client,
+    *,
+    expires_in_seconds: int = 3600
+):
+    cache: dict[str, str | None] = {}
+
+    def _resolve(storage_path: str | None) -> str | None:
+        path = str(storage_path or "").strip()
+        if not path or path.startswith("virtual/"):
+            return None
+        if path in cache:
+            return cache[path]
+        signed = _get_signed_image_url_with_client(
+            client,
+            path,
+            expires_in_seconds=expires_in_seconds
+        )
+        cache[path] = signed
+        return signed
+
+    return _resolve
+
+
+def _build_generated_item_image_lookup(
+    client: Client,
+    *,
+    user_id: str,
+    analysis_id: str,
+    resolve_signed_url
+) -> dict[tuple[str, str, str], list[str]]:
+    images_by_signature: dict[tuple[str, str, str], list[str]] = {}
+    analysis_items_response = (
+        client.table("items")
+        .select("category,name,color,attributes_json")
+        .eq("user_id", user_id)
+        .eq("analysis_id", analysis_id)
+        .execute()
+    )
+    for analysis_item in (analysis_items_response.data or []):
+        if not isinstance(analysis_item, dict):
+            continue
+        attributes = _coerce_dict(analysis_item.get("attributes_json") or {})
+        image_path = attributes.get("generated_item_image_path") or ""
+        image_url = resolve_signed_url(image_path)
+        if not image_url:
+            continue
+        signature = (
+            str(analysis_item.get("category", "")).strip().lower(),
+            str(analysis_item.get("name", "")).strip().lower(),
+            str(analysis_item.get("color", "")).strip().lower()
+        )
+        images_by_signature.setdefault(signature, []).append(image_url)
+    return images_by_signature
+
+
+def _normalize_items_with_images(
+    raw_items: list[dict],
+    images_by_signature: dict[tuple[str, str, str], list[str]]
+) -> list[dict]:
+    remaining_by_signature = {
+        signature: list(candidates)
+        for signature, candidates in images_by_signature.items()
+    }
+    normalized_items = []
+    for item in raw_items:
+        if not isinstance(item, dict):
+            continue
+        normalized = _normalize_item_fields(item)
+        signature = (
+            normalized["category"].lower(),
+            normalized["name"].lower(),
+            normalized["color"].lower()
+        )
+        candidates = remaining_by_signature.get(signature) or []
+        image_url = candidates.pop(0) if candidates else None
+        normalized_items.append({**normalized, "image_url": image_url})
+    return normalized_items
+
+
 def list_wardrobe(user_id: str, limit: int = 20) -> list[dict]:
     client = get_supabase_client()
+    resolve_signed_url = _build_signed_url_resolver(client, expires_in_seconds=3600)
+    wardrobe = []
+    try:
+        rpc_response = client.rpc(
+            "get_wardrobe_rows",
+            {"p_user_id": user_id, "p_limit": max(1, int(limit))}
+        ).execute()
+        rpc_rows = rpc_response.data or []
+        for row in rpc_rows:
+            storage_path = str(row.get("storage_path") or "")
+            outfit_id = row.get("outfit_id")
+            outfit_index = _safe_outfit_index(row.get("outfit_index"))
+            wardrobe.append(
+                {
+                    "row_id": row.get("row_id") or outfit_id or f"{row.get('photo_id')}:{outfit_index}",
+                    "outfit_id": outfit_id,
+                    "photo_id": row.get("photo_id"),
+                    "storage_path": storage_path,
+                    "image_url": resolve_signed_url(storage_path),
+                    "created_at": row.get("created_at") or row.get("photo_created_at"),
+                    "analysis_id": row.get("analysis_id"),
+                    "analysis_created_at": None,
+                    "style_label": _normalize_label(row.get("style_label"), "Unlabeled"),
+                    "outfit_index": outfit_index,
+                    "outfit_count": int(row.get("outfit_count") or 1),
+                    "outfit_items_count": int(row.get("outfit_items_count") or 0)
+                }
+            )
+        return wardrobe
+    except Exception:  # noqa: BLE001
+        # Fallback for environments where RPC migrations have not been applied yet.
+        pass
+
     outfits_response = (
         client.table("outfits")
         .select("id,photo_id,analysis_id,outfit_index,style_label,created_at")
@@ -517,16 +642,17 @@ def list_wardrobe(user_id: str, limit: int = 20) -> list[dict]:
                 continue
             item_counts_by_outfit[outfit_id] = item_counts_by_outfit.get(outfit_id, 0) + 1
 
-    wardrobe = []
     for outfit in outfits:
         photo = photos_by_id.get(outfit.get("photo_id")) or {}
         outfit_id = outfit.get("id")
+        storage_path = photo.get("storage_path") or ""
         wardrobe.append(
             {
                 "row_id": outfit_id or f"{outfit.get('photo_id')}:{outfit.get('outfit_index', 0)}",
                 "outfit_id": outfit_id,
                 "photo_id": outfit.get("photo_id"),
-                "storage_path": photo.get("storage_path"),
+                "storage_path": storage_path,
+                "image_url": resolve_signed_url(storage_path),
                 "created_at": outfit.get("created_at") or photo.get("created_at"),
                 "analysis_id": outfit.get("analysis_id"),
                 "analysis_created_at": None,
@@ -536,14 +662,47 @@ def list_wardrobe(user_id: str, limit: int = 20) -> list[dict]:
                 "outfit_items_count": item_counts_by_outfit.get(outfit_id, 0)
             }
         )
+
     return wardrobe
 
 
 def list_analysis_history(user_id: str, limit: int = 50) -> list[dict]:
     client = get_supabase_client()
+    resolve_signed_url = _build_signed_url_resolver(client, expires_in_seconds=3600)
+    try:
+        rpc_response = client.rpc(
+            "get_analysis_history_rows",
+            {"p_user_id": user_id, "p_limit": max(1, int(limit))}
+        ).execute()
+        rpc_rows = rpc_response.data or []
+        history = []
+        for row in rpc_rows:
+            storage_path = str(row.get("storage_path") or "")
+            history.append(
+                {
+                    "job_id": row.get("job_id"),
+                    "photo_id": row.get("photo_id"),
+                    "analysis_model": row.get("analysis_model"),
+                    "status": row.get("status"),
+                    "error_message": row.get("error_message"),
+                    "created_at": row.get("created_at"),
+                    "started_at": row.get("started_at"),
+                    "completed_at": row.get("completed_at"),
+                    "updated_at": row.get("updated_at"),
+                    "photo_created_at": row.get("photo_created_at"),
+                    "storage_path": storage_path,
+                    "image_url": resolve_signed_url(storage_path),
+                    "outfit_count": int(row.get("outfit_count") or 0)
+                }
+            )
+        return history
+    except Exception:  # noqa: BLE001
+        # Fallback for environments where RPC migrations have not been applied yet.
+        pass
+
     jobs_response = (
         client.table("analysis_jobs")
-        .select("id,photo_id,analysis_model,status,error_message,created_at,completed_at,updated_at")
+        .select("id,photo_id,analysis_model,status,error_message,created_at,started_at,completed_at,updated_at")
         .eq("user_id", user_id)
         .order("created_at", desc=True)
         .limit(limit)
@@ -585,11 +744,7 @@ def list_analysis_history(user_id: str, limit: int = 50) -> list[dict]:
         photo_id = job.get("photo_id")
         photo = photos_by_id.get(photo_id) or {}
         storage_path = photo.get("storage_path") or ""
-        image_url = (
-            get_signed_image_url(storage_path, expires_in_seconds=3600)
-            if storage_path and not str(storage_path).startswith("virtual/")
-            else None
-        )
+        image_url = resolve_signed_url(storage_path)
         history.append(
             {
                 "job_id": job.get("id"),
@@ -598,6 +753,7 @@ def list_analysis_history(user_id: str, limit: int = 50) -> list[dict]:
                 "status": job.get("status"),
                 "error_message": job.get("error_message"),
                 "created_at": job.get("created_at"),
+                "started_at": job.get("started_at"),
                 "completed_at": job.get("completed_at"),
                 "updated_at": job.get("updated_at"),
                 "photo_created_at": photo.get("created_at"),
@@ -611,6 +767,32 @@ def list_analysis_history(user_id: str, limit: int = 50) -> list[dict]:
 
 def list_user_items(user_id: str, limit: int = 200) -> list[dict]:
     client = get_supabase_client()
+    resolve_signed_url = _build_signed_url_resolver(client, expires_in_seconds=3600)
+    try:
+        rpc_response = client.rpc(
+            "get_item_catalog_rows",
+            {"p_user_id": user_id, "p_limit": max(1, int(limit))}
+        ).execute()
+        rpc_rows = rpc_response.data or []
+        normalized_items = []
+        for row in rpc_rows:
+            attributes = _coerce_dict(row.get("attributes_json") or {})
+            image_path = attributes.get("generated_item_image_path") or ""
+            normalized_items.append(
+                {
+                    **row,
+                    "category": _normalize_label(row.get("category"), "Item"),
+                    "name": _normalize_label(row.get("name"), "Unknown Item"),
+                    "color": _normalize_label(row.get("color"), "Unknown"),
+                    "style_label": _normalize_label(row.get("style_label"), "Unknown"),
+                    "image_url": resolve_signed_url(image_path)
+                }
+            )
+        return normalized_items
+    except Exception:  # noqa: BLE001
+        # Fallback for environments where RPC migrations have not been applied yet.
+        pass
+
     items_response = (
         client.table("items")
         .select("id,analysis_id,category,name,color,attributes_json,created_at")
@@ -647,11 +829,7 @@ def list_user_items(user_id: str, limit: int = 200) -> list[dict]:
                 "name": _normalize_label(item.get("name"), "Unknown Item"),
                 "color": _normalize_label(item.get("color"), "Unknown"),
                 "style_label": _resolve_item_style_label(item, analysis_by_id),
-                "image_url": (
-                    get_signed_image_url(image_path, expires_in_seconds=3600)
-                    if image_path
-                    else None
-                )
+                "image_url": resolve_signed_url(image_path)
             }
         )
     return normalized_items
@@ -659,6 +837,7 @@ def list_user_items(user_id: str, limit: int = 200) -> list[dict]:
 
 def list_items_for_analysis(user_id: str, analysis_id: str) -> list[dict]:
     client = get_supabase_client()
+    resolve_signed_url = _build_signed_url_resolver(client, expires_in_seconds=3600)
     response = (
         client.table("items")
         .select("id,category,name,color,attributes_json")
@@ -675,11 +854,7 @@ def list_items_for_analysis(user_id: str, analysis_id: str) -> list[dict]:
         enriched.append(
             {
                 **row,
-                "image_url": (
-                    get_signed_image_url(image_path, expires_in_seconds=3600)
-                    if image_path
-                    else None
-                )
+                "image_url": resolve_signed_url(image_path)
             }
         )
     return enriched
@@ -770,7 +945,7 @@ def save_generated_outfit_image(user_id: str, outfit_id: str, data_uri: str) -> 
     )
     return {
         "storage_path": storage_path,
-        "image_url": get_signed_image_url(storage_path, expires_in_seconds=3600)
+        "image_url": _get_signed_image_url_with_client(client, storage_path, expires_in_seconds=3600)
     }
 
 
@@ -1055,6 +1230,7 @@ def update_wardrobe_outfit_style_label(user_id: str, outfit_id: str, style_label
 
 def get_wardrobe_photo_details(user_id: str, photo_id: str, outfit_index: int | None = None) -> dict | None:
     client = get_supabase_client()
+    resolve_signed_url = _build_signed_url_resolver(client, expires_in_seconds=3600)
 
     photo_response = (
         client.table("photos")
@@ -1078,6 +1254,17 @@ def get_wardrobe_photo_details(user_id: str, photo_id: str, outfit_index: int | 
         .execute()
     )
     analysis_row = (analysis_response.data or [None])[0]
+
+    images_by_signature = (
+        _build_generated_item_image_lookup(
+            client,
+            user_id=user_id,
+            analysis_id=analysis_row.get("id"),
+            resolve_signed_url=resolve_signed_url
+        )
+        if analysis_row and analysis_row.get("id")
+        else {}
+    )
 
     outfit_rows_response = (
         client.table("outfits")
@@ -1111,7 +1298,7 @@ def get_wardrobe_photo_details(user_id: str, photo_id: str, outfit_index: int | 
                             outfit_row.get("style_label") or outfit.get("style"),
                             "Unlabeled"
                         ),
-                        "items": [_normalize_item_fields(item) for item in outfit_items]
+                        "items": _normalize_items_with_images(outfit_items, images_by_signature)
                     }
                 )
 
@@ -1126,16 +1313,15 @@ def get_wardrobe_photo_details(user_id: str, photo_id: str, outfit_index: int | 
                         fallback_row.get("style_label") or analysis_row.get("style_label"),
                         "Unlabeled"
                     ),
-                    "items": [_normalize_item_fields(item) for item in (fallback_items or []) if isinstance(item, dict)]
+                    "items": _normalize_items_with_images(
+                        [item for item in (fallback_items or []) if isinstance(item, dict)],
+                        images_by_signature
+                    )
                 }
             ]
 
     storage_path = photo_row.get("storage_path") or ""
-    image_url = (
-        get_signed_image_url(storage_path, expires_in_seconds=3600)
-        if storage_path and not str(storage_path).startswith("virtual/")
-        else None
-    )
+    image_url = resolve_signed_url(storage_path)
 
     selected_outfit = None
     if outfit_index is not None:

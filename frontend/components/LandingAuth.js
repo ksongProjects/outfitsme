@@ -8,8 +8,10 @@ export default function LandingAuth() {
     authTab,
     setAuthTab,
     email,
+    rememberMe,
     password,
     setEmail,
+    setRememberMe,
     setPassword,
     submitAuth
   } = useAuthContext();
@@ -22,10 +24,9 @@ export default function LandingAuth() {
 
       <section className="hero">
         <div>
-          <p className="eyebrow">OutfitMe v1</p>
           <h1>Find your style from one photo.</h1>
           <p className="hero-copy">
-            Upload outfit images, identify clothing items with AI, and build your wardrobe with shoppable alternatives.
+            Upload outfit images, identify clothing items with AI, and use OutfitMe to preview looks on your own profile photo.
           </p>
           <div className="hero-actions">
             <BaseButton variant="primary" onClick={() => setAuthTab("signup")}>Create your account</BaseButton>
@@ -54,6 +55,17 @@ export default function LandingAuth() {
           />
 
           {authTab === "signin" ? (
+            <label className="remember-me-row">
+              <input
+                type="checkbox"
+                checked={rememberMe}
+                onChange={(event) => setRememberMe(event.target.checked)}
+              />
+              <span>Remember me</span>
+            </label>
+          ) : null}
+
+          {authTab === "signin" ? (
             <BaseButton type="submit" variant="primary">Continue to dashboard</BaseButton>
           ) : (
             <BaseButton type="submit" variant="primary">Create account</BaseButton>
@@ -65,15 +77,15 @@ export default function LandingAuth() {
       <section className="feature-grid">
         <article className="feature-card">
           <h3>Analyze Outfit</h3>
-          <p>Use Gemini to detect style and clothing items from photos.</p>
+          <p>Upload one photo to instantly identify style and clothing pieces.</p>
+        </article>
+        <article className="feature-card">
+          <h3>OutfitMe Preview</h3>
+          <p>See personalized try-on previews from your analyzed and custom outfits.</p>
         </article>
         <article className="feature-card">
           <h3>Build Wardrobe</h3>
-          <p>Save analyzed looks and browse them with signed private image access.</p>
-        </article>
-        <article className="feature-card">
-          <h3>Find Similar</h3>
-          <p>Get similar item suggestions and price availability for each detected item.</p>
+          <p>Save, organize, and reuse looks in your digital wardrobe.</p>
         </article>
       </section>
     </main>

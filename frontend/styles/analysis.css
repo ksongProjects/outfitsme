@@ -418,6 +418,16 @@ ul {
   flex-shrink: 0;
 }
 
+.analysis-outfitme-preview {
+  display: block;
+  width: min(280px, 100%);
+  height: auto;
+  margin-top: 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #fff;
+}
+
 .outfit-group + .outfit-group {
   margin-top: 14px;
   padding-top: 10px;

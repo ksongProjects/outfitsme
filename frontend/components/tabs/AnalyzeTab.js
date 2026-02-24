@@ -1,6 +1,7 @@
 import { formatItemLabel, getItemIcon } from "../../utils/formatters";
-import { useState } from "react";
-import { useAnalysisContext } from "../../context/DashboardContext";
+import { useEffect, useState } from "react";
+import { toast } from "sonner";
+import { useAnalysisContext, useSettingsContext, useWardrobeContext } from "../../context/DashboardContext";
 import HistoryTab from "./HistoryTab";
 import BaseButton from "../ui/BaseButton";
 import BaseSelect from "../ui/BaseSelect";
@@ -8,6 +9,7 @@ import ImageUploadField from "../ui/ImageUploadField";
 
 export default function AnalyzeTab() {
   const [interaction, setInteraction] = useState(null);
+  const [outfitMePreviewByIndex, setOutfitMePreviewByIndex] = useState({});
   const {
     previewUrl,
     onFileDrop,
@@ -28,6 +30,8 @@ export default function AnalyzeTab() {
     analysisLimits,
     limitsLoading
   } = useAnalysisContext();
+  const { profilePhotoUrl } = useSettingsContext();
+  const { generateOutfitMe, outfitMeLoading } = useWardrobeContext();
   const detectedOutfits = analysis?.outfits || [];
   const monthlyLimit = analysisLimits?.monthly_limit ?? 0;
   const usedThisMonth = analysisLimits?.used_this_month ?? 0;
@@ -198,6 +202,28 @@ export default function AnalyzeTab() {
     }
   };
 
+  useEffect(() => {
+    setOutfitMePreviewByIndex({});
+  }, [analysis?.photo_id]);
+
+  const handleGenerateOutfitMe = async (outfitIndex) => {
+    if (!analysis?.photo_id) {
+      toast.error("Analyze a photo first before using OutfitMe.");
+      return;
+    }
+    if (!profilePhotoUrl) {
+      toast.error("Profile photo is required for OutfitMe. Upload one in Settings > Profile.");
+      return;
+    }
+    const result = await generateOutfitMe(analysis.photo_id, outfitIndex);
+    if (result?.outfitme_image_url) {
+      setOutfitMePreviewByIndex((current) => ({
+        ...current,
+        [outfitIndex]: result.outfitme_image_url
+      }));
+    }
+  };
+
   return (
     <section>
       <div className="tab-header">
@@ -344,6 +370,17 @@ export default function AnalyzeTab() {
                     <p>
                       <strong>Outfit {index + 1}:</strong> {outfit.style}
                     </p>
+                    <div className="button-row">
+                      <BaseButton
+                        type="button"
+                        variant="ghost"
+                        onClick={() => handleGenerateOutfitMe(index)}
+                        disabled={outfitMeLoading}
+                        title={profilePhotoUrl ? "Generate OutfitMe preview" : "Profile photo required for OutfitMe"}
+                      >
+                        {outfitMeLoading ? "OutfitMe..." : "OutfitMe"}
+                      </BaseButton>
+                    </div>
                     <ul className="analysis-items">
                       {(outfit.items || []).map((item, itemIndex) => (
                         <li key={`${index}-${item.name}-${itemIndex}`} className="analysis-item">
@@ -355,6 +392,13 @@ export default function AnalyzeTab() {
                         </li>
                       ))}
                     </ul>
+                    {outfitMePreviewByIndex[index] ? (
+                      <img
+                        src={outfitMePreviewByIndex[index]}
+                        alt={`OutfitMe preview for outfit ${index + 1}`}
+                        className="analysis-outfitme-preview"
+                      />
+                    ) : null}
                   </div>
                 ))}
               </>
@@ -363,6 +407,17 @@ export default function AnalyzeTab() {
                 <p>
                   <strong>Style:</strong> {analysis.style}
                 </p>
+                <div className="button-row">
+                  <BaseButton
+                    type="button"
+                    variant="ghost"
+                    onClick={() => handleGenerateOutfitMe(0)}
+                    disabled={outfitMeLoading}
+                    title={profilePhotoUrl ? "Generate OutfitMe preview" : "Profile photo required for OutfitMe"}
+                  >
+                    {outfitMeLoading ? "OutfitMe..." : "OutfitMe"}
+                  </BaseButton>
+                </div>
                 <ul className="analysis-items">
                   {analysis.items.map((item, itemIndex) => (
                     <li key={`${item.name}-${itemIndex}`} className="analysis-item">
@@ -374,6 +429,13 @@ export default function AnalyzeTab() {
                     </li>
                   ))}
                 </ul>
+                {outfitMePreviewByIndex[0] ? (
+                  <img
+                    src={outfitMePreviewByIndex[0]}
+                    alt="OutfitMe preview"
+                    className="analysis-outfitme-preview"
+                  />
+                ) : null}
               </>
             )}
           </>
