@@ -6,6 +6,7 @@ import { API_BASE } from "../lib/apiBase";
 
 export function useItemsState({ accessToken }) {
   const CACHE_STALE_MS = 5 * 60 * 1000;
+  const MAX_ITEM_IMAGE_SIDE = 250;
   const queryClient = useQueryClient();
   const [selectedItemIds, setSelectedItemIds] = useState([]);
 

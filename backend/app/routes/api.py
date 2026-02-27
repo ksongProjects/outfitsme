@@ -74,7 +74,13 @@ def _current_month_window_utc() -> tuple[str, str]:
 
 
 def _build_analysis_usage(user_id: str) -> dict:
-    monthly_limit = settings.MONTHLY_ANALYSIS_LIMIT
+    user_settings = get_user_model_settings(user_id)
+    is_premium = bool(user_settings.get("is_premium"))
+    monthly_limit = (
+        settings.MONTHLY_ANALYSIS_LIMIT_PREMIUM
+        if is_premium
+        else settings.MONTHLY_ANALYSIS_LIMIT_FREE
+    )
     month_start_iso, next_month_start_iso = _current_month_window_utc()
     monthly_count = get_user_monthly_analysis_count(user_id, month_start_iso)
     remaining = None if monthly_limit <= 0 else max(monthly_limit - monthly_count, 0)

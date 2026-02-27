@@ -101,7 +101,7 @@ export default function SettingsTab() {
       <div className="settings-scroll-sections">
         <article id="settings-profile" className="settings-card settings-section-card">
           <h2>Profile</h2>
-          <label>Reference photo</label>
+          {!profilePhotoUrl && <label>Reference photo</label>}
           {profilePhotoUrl ? (
             <img src={profilePhotoUrl} alt="Profile reference" className="profile-photo-preview" />
           ) : (

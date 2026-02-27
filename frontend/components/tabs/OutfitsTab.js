@@ -368,7 +368,7 @@ export default function OutfitsTab() {
         open={Boolean(itemPreview)}
         onOpenChange={(open) => setItemPreview(open ? itemPreview : null)}
         title={itemPreview?.name || "Item preview"}
-        size="sm"
+        size="fit"
       >
         {itemPreview?.image_url ? (
           <img src={itemPreview.image_url} alt={itemPreview.name || "Item preview"} className="modal-image" />

@@ -35,7 +35,23 @@ class Settings:
     DEBUG = _to_bool(os.getenv("DEBUG", ""), default=(FLASK_ENV != "production"))
     CORS_ALLOWED_ORIGINS = _split_csv(_clean_env(os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:3000")))
     RATE_LIMIT_STORAGE_URI = _clean_env(os.getenv("RATE_LIMIT_STORAGE_URI", "memory://"), "memory://")
+    # Legacy single-tier limit; kept for backwards compatibility.
     MONTHLY_ANALYSIS_LIMIT = int(_clean_env(os.getenv("MONTHLY_ANALYSIS_LIMIT", "100"), "100") or "100")
+    # Per-tier limits. Free users default to 5 analyses/month; premium users
+    # default to the legacy MONTHLY_ANALYSIS_LIMIT value (100 unless overridden).
+    MONTHLY_ANALYSIS_LIMIT_FREE = int(
+        _clean_env(os.getenv("MONTHLY_ANALYSIS_LIMIT_FREE", "5"), "5") or "5"
+    )
+    MONTHLY_ANALYSIS_LIMIT_PREMIUM = int(
+        _clean_env(
+            os.getenv(
+                "MONTHLY_ANALYSIS_LIMIT_PREMIUM",
+                os.getenv("MONTHLY_ANALYSIS_LIMIT", "100")
+            ),
+            "100"
+        )
+        or "100"
+    )
     ENABLE_BEDROCK_ANALYSIS = _to_bool(os.getenv("ENABLE_BEDROCK_ANALYSIS", "false"), default=False)
     SUPABASE_URL = _clean_env(os.getenv("SUPABASE_URL", ""))
     SUPABASE_SECRET_KEY = _clean_env(os.getenv("SUPABASE_SECRET_KEY", ""))
@@ -56,6 +72,7 @@ class Settings:
         _clean_env(os.getenv("GEMINI_SOURCE_IMAGE_MAX_SIDE", "384"), "384") or "384"
     )
     ITEM_IMAGE_MAX = int(_clean_env(os.getenv("ITEM_IMAGE_MAX", "3"), "3") or "3")
+    ITEM_IMAGE_MAX_SIDE = int(_clean_env(os.getenv("ITEM_IMAGE_MAX_SIDE", "250"), "250") or "250")
     MONTHLY_CUSTOM_OUTFIT_LIMIT = int(_clean_env(os.getenv("MONTHLY_CUSTOM_OUTFIT_LIMIT", "5"), "5") or "5")
     ANALYSIS_COST_USD = float(_clean_env(os.getenv("ANALYSIS_COST_USD", "0.02"), "0.02") or "0.02")
     OUTFIT_IMAGE_COST_USD = float(_clean_env(os.getenv("OUTFIT_IMAGE_COST_USD", "0.05"), "0.05") or "0.05")

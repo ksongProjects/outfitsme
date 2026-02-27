@@ -325,7 +325,7 @@ export default function ItemsTab() {
           }
         }}
         title="Item details"
-        size="sm"
+        size="fit"
       >
         {activeItem ? (
           <>

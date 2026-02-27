@@ -1644,6 +1644,7 @@ def compose_outfit_from_items(
 
 def _empty_model_settings() -> dict:
     return {
+        "is_premium": False,
         "preferred_model": settings.DEFAULT_ANALYSIS_MODEL,
         "gemini_api_key": "",
         "aws_region": "",
@@ -1660,21 +1661,36 @@ def _empty_model_settings() -> dict:
 
 def get_user_model_settings(user_id: str) -> dict:
     client = get_supabase_client()
-    response = (
-        client.table("user_settings")
-        .select(
-            "preferred_model,gemini_api_key_enc,aws_region,aws_bedrock_agent_id,aws_bedrock_agent_alias_id,"
-            "profile_gender,profile_age,profile_photo_path,enable_outfit_image_generation,enable_online_store_search,enable_accessory_analysis"
+    try:
+        response = (
+            client.table("user_settings")
+            .select(
+                "is_premium,preferred_model,gemini_api_key_enc,aws_region,aws_bedrock_agent_id,aws_bedrock_agent_alias_id,"
+                "profile_gender,profile_age,profile_photo_path,enable_outfit_image_generation,enable_online_store_search,enable_accessory_analysis"
+            )
+            .eq("user_id", user_id)
+            .limit(1)
+            .execute()
         )
-        .eq("user_id", user_id)
-        .limit(1)
-        .execute()
-    )
+    except Exception:  # noqa: BLE001
+        # Backwards-compatible fallback for environments where the is_premium column
+        # hasn't been migrated yet.
+        response = (
+            client.table("user_settings")
+            .select(
+                "preferred_model,gemini_api_key_enc,aws_region,aws_bedrock_agent_id,aws_bedrock_agent_alias_id,"
+                "profile_gender,profile_age,profile_photo_path,enable_outfit_image_generation,enable_online_store_search,enable_accessory_analysis"
+            )
+            .eq("user_id", user_id)
+            .limit(1)
+            .execute()
+        )
     row = (response.data or [None])[0]
     if not row:
         return _empty_model_settings()
 
     return {
+        "is_premium": bool(row.get("is_premium")),
         "preferred_model": row.get("preferred_model") or settings.DEFAULT_ANALYSIS_MODEL,
         "gemini_api_key": decrypt_secret(row.get("gemini_api_key_enc") or ""),
         "aws_region": row.get("aws_region") or "",
@@ -1692,6 +1708,7 @@ def get_user_model_settings(user_id: str) -> dict:
 def get_user_model_settings_masked(user_id: str) -> dict:
     settings_row = get_user_model_settings(user_id)
     return {
+        "is_premium": bool(settings_row.get("is_premium")),
         "preferred_model": settings_row.get("preferred_model") or settings.DEFAULT_ANALYSIS_MODEL,
         "gemini_api_key_masked": mask_secret(settings_row.get("gemini_api_key", "")),
         "aws_region": settings_row.get("aws_region", ""),
@@ -1716,6 +1733,7 @@ def upsert_user_model_settings(user_id: str, payload: dict) -> dict:
 
     preferred_model = str(payload.get("preferred_model", current.get("preferred_model", ""))).strip()
 
+    is_premium = payload.get("is_premium")
     gemini_api_key = payload.get("gemini_api_key")
     aws_region = payload.get("aws_region")
     aws_bedrock_agent_id = payload.get("aws_bedrock_agent_id")
@@ -1741,6 +1759,7 @@ def upsert_user_model_settings(user_id: str, payload: dict) -> dict:
 
     row = {
         "user_id": user_id,
+        "is_premium": _to_bool(is_premium, bool(current.get("is_premium"))),
         "preferred_model": preferred_model or settings.DEFAULT_ANALYSIS_MODEL,
         "gemini_api_key_enc": encrypt_secret(_next_secret(gemini_api_key, current.get("gemini_api_key", ""))),
         "aws_region": str(aws_region).strip() if aws_region is not None else current.get("aws_region", ""),
@@ -1773,11 +1792,22 @@ def upsert_user_model_settings(user_id: str, payload: dict) -> dict:
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
 
-    (
-        client.table("user_settings")
-        .upsert(row, on_conflict="user_id")
-        .execute()
-    )
+    try:
+        (
+            client.table("user_settings")
+            .upsert(row, on_conflict="user_id")
+            .execute()
+        )
+    except Exception:  # noqa: BLE001
+        # Backwards-compatible fallback for environments where the is_premium column
+        # hasn't been migrated yet.
+        fallback_row = dict(row)
+        fallback_row.pop("is_premium", None)
+        (
+            client.table("user_settings")
+            .upsert(fallback_row, on_conflict="user_id")
+            .execute()
+        )
     return get_user_model_settings_masked(user_id)
 
 
