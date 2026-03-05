@@ -5,19 +5,29 @@ import { supabase } from "../lib/supabaseClient";
 
 const REMEMBER_EMAIL_KEY = "outfitsme_remember_email";
 const REMEMBER_EMAIL_ENABLED_KEY = "outfitsme_remember_email_enabled";
+const LEGACY_REMEMBER_EMAIL_KEY = "outfitme_remember_email";
+const LEGACY_REMEMBER_EMAIL_ENABLED_KEY = "outfitme_remember_email_enabled";
 
 const getRememberEmailEnabled = () => {
   if (typeof window === "undefined") {
     return false;
   }
-  return window.localStorage.getItem(REMEMBER_EMAIL_ENABLED_KEY) === "1";
+  const current = window.localStorage.getItem(REMEMBER_EMAIL_ENABLED_KEY);
+  if (current !== null) {
+    return current === "1";
+  }
+  return window.localStorage.getItem(LEGACY_REMEMBER_EMAIL_ENABLED_KEY) === "1";
 };
 
 const getRememberedEmail = () => {
   if (typeof window === "undefined") {
     return "";
   }
-  return window.localStorage.getItem(REMEMBER_EMAIL_KEY) || "";
+  return (
+    window.localStorage.getItem(REMEMBER_EMAIL_KEY)
+    || window.localStorage.getItem(LEGACY_REMEMBER_EMAIL_KEY)
+    || ""
+  );
 };
 
 export function useAuthState() {
@@ -40,6 +50,11 @@ export function useAuthState() {
     window.localStorage.setItem(REMEMBER_EMAIL_ENABLED_KEY, "0");
   };
 
+  useEffect(() => {
+    // Keep preferences synced even before submit.
+    persistRememberMeSettings(email, rememberMe);
+  }, [email, rememberMe]);
+
   const clearAuthInputs = (keepEmail = false) => {
     setPassword("");
     if (!keepEmail) {
@@ -49,6 +64,18 @@ export function useAuthState() {
 
   useEffect(() => {
     let mounted = true;
+
+    // One-time migration for prior branding key names.
+    if (typeof window !== "undefined") {
+      const legacyEnabled = window.localStorage.getItem(LEGACY_REMEMBER_EMAIL_ENABLED_KEY);
+      const legacyEmail = window.localStorage.getItem(LEGACY_REMEMBER_EMAIL_KEY);
+      if (legacyEnabled !== null && window.localStorage.getItem(REMEMBER_EMAIL_ENABLED_KEY) === null) {
+        window.localStorage.setItem(REMEMBER_EMAIL_ENABLED_KEY, legacyEnabled);
+      }
+      if (legacyEmail !== null && window.localStorage.getItem(REMEMBER_EMAIL_KEY) === null) {
+        window.localStorage.setItem(REMEMBER_EMAIL_KEY, legacyEmail);
+      }
+    }
 
     supabase.auth.getSession().then(({ data }) => {
       if (mounted) {
