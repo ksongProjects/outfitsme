@@ -1,0 +1,45 @@
+services:
+  proxy:
+    image: nginx:1.28-alpine
+    ports:
+      - "80:80"
+    volumes:
+      - ./proxy/nginx.conf:/etc/nginx/nginx.conf:ro
+    read_only: true
+    tmpfs:
+      - /var/cache/nginx
+      - /var/run
+    security_opt:
+      - no-new-privileges:true
+    depends_on:
+      frontend:
+        condition: service_started
+      backend:
+        condition: service_started
+    restart: unless-stopped
+    networks:
+      - app
+
+  frontend:
+    image: ${DOCKERHUB_USERNAME:?DOCKERHUB_USERNAME not set}/react-frontend:${IMAGE_TAG:?IMAGE_TAG not set}
+    expose:
+      - "3000"
+    pull_policy: always
+    restart: unless-stopped
+    networks:
+      - app
+
+  backend:
+    image: ${DOCKERHUB_USERNAME:?DOCKERHUB_USERNAME not set}/flask-backend:${IMAGE_TAG:?IMAGE_TAG not set}
+    expose:
+      - "5000"
+    env_file:
+      - .env
+    pull_policy: always
+    restart: unless-stopped
+    networks:
+      - app
+
+networks:
+  app:
+    driver: bridge

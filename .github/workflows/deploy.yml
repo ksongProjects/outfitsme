@@ -1,15 +1,31 @@
-name: CI/CD Production
+name: Production Deployment (SSM)
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: us-west-2
+  APP_DIR: /home/ubuntu/app
 
 jobs:
   build-and-push:
     runs-on: ubuntu-latest
+    outputs:
+      image_tag: ${{ steps.meta.outputs.image_tag }}
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+
+      - name: Set immutable image tag
+        id: meta
+        run: echo "image_tag=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Login to Docker Hub
         uses: docker/login-action@v3
@@ -17,21 +33,19 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # Build Backend (Runtime envs, no build-args needed)
       - name: Build and Push Backend
         uses: docker/build-push-action@v5
         with:
           context: ./backend
           push: true
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/flask-backend:latest
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/flask-backend:${{ steps.meta.outputs.image_tag }}
 
-      # Build Frontend (Baking NEXT_PUBLIC keys into the image)
       - name: Build and Push Frontend
         uses: docker/build-push-action@v5
         with:
           context: ./frontend
           push: true
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/react-frontend:latest
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/react-frontend:${{ steps.meta.outputs.image_tag }}
           build-args: |
             NEXT_PUBLIC_API_BASE_URL=${{ secrets.NEXT_PUBLIC_API_BASE_URL }}
             NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
@@ -41,42 +55,195 @@ jobs:
     needs: build-and-push
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
-      - name: Copy configurations to EC2
-        uses: appleboy/scp-action@v0.1.7
+      - name: Configure AWS credentials (OIDC)
+        if: ${{ secrets.AWS_ROLE_TO_ASSUME != '' }}
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ubuntu
-          key: ${{ secrets.EC2_SSH_KEY }}
-          source: "compose.yaml,proxy/nginx.conf"
-          target: "/home/ubuntu/app"
+          role-to-assume: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
 
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1.0.3
+      - name: Configure AWS credentials (access keys fallback)
+        if: ${{ secrets.AWS_ROLE_TO_ASSUME == '' }}
+        uses: aws-actions/configure-aws-credentials@v4
         with:
-          host: ${{ secrets.EC2_HOST }}
-          username: ubuntu
-          key: ${{ secrets.EC2_SSH_KEY }}
-          script: |
-            cd /home/ubuntu/app
-            
-            # Create the .env file for the Backend
-            cat <<EOF > .env
-            FLASK_ENV=production
-            DEBUG=false
-            PORT=5000
-            CORS_ALLOWED_ORIGINS=${{ secrets.CORS_ALLOWED_ORIGINS }}
-            SUPABASE_URL=${{ secrets.SUPABASE_URL }}
-            SUPABASE_SECRET_KEY=${{ secrets.SUPABASE_SECRET_KEY }}
-            SUPABASE_BUCKET=${{ secrets.SUPABASE_BUCKET }}
-            GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
-            GEMINI_MODEL=${{ secrets.GEMINI_MODEL }}
-            GEMINI_IMAGE_MODEL=${{ secrets.GEMINI_IMAGE_MODEL }}
-            SETTINGS_ENCRYPTION_KEY=${{ secrets.SETTINGS_ENCRYPTION_KEY }}
-            DEFAULT_ANALYSIS_MODEL=${{ secrets.DEFAULT_ANALYSIS_MODEL }}
-            EOF
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
 
-            docker compose pull
-            docker compose up -d --remove-orphans
+      - name: Deploy via SSM and verify command status
+        env:
+          EC2_INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
+          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
+          IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
+          CORS_ALLOWED_ORIGINS: ${{ secrets.CORS_ALLOWED_ORIGINS }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          SUPABASE_BUCKET: ${{ secrets.SUPABASE_BUCKET }}
+          GEMINI_MODEL: ${{ secrets.GEMINI_MODEL }}
+          GEMINI_IMAGE_MODEL: ${{ secrets.GEMINI_IMAGE_MODEL }}
+          SETTINGS_ENCRYPTION_KEY: ${{ secrets.SETTINGS_ENCRYPTION_KEY }}
+          DEFAULT_ANALYSIS_MODEL: ${{ secrets.DEFAULT_ANALYSIS_MODEL }}
+        run: |
+          set -euo pipefail
+
+          cat > "$RUNNER_TEMP/remote-deploy.sh" <<EOF
+          #!/usr/bin/env bash
+          set -euo pipefail
+
+          mkdir -p "${APP_DIR}/proxy"
+          cd "${APP_DIR}"
+
+          cat > .env <<'ENVFILE'
+          FLASK_ENV=production
+          DEBUG=false
+          PORT=5000
+          CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS}
+          DIAGNOSTICS_ENABLED=false
+          RATE_LIMIT_STORAGE_URI=memory://
+          MONTHLY_ANALYSIS_LIMIT=5
+          ENABLE_BEDROCK_ANALYSIS=false
+          SUPABASE_URL=${SUPABASE_URL}
+          SUPABASE_SECRET_KEY=${SUPABASE_SECRET_KEY}
+          SUPABASE_BUCKET=${SUPABASE_BUCKET}
+          GEMINI_MODEL=${GEMINI_MODEL}
+          GEMINI_IMAGE_MODEL=${GEMINI_IMAGE_MODEL}
+          ITEM_IMAGE_MAX=3
+          SETTINGS_ENCRYPTION_KEY=${SETTINGS_ENCRYPTION_KEY}
+          DEFAULT_ANALYSIS_MODEL=${DEFAULT_ANALYSIS_MODEL}
+          DOCKERHUB_USERNAME=${DOCKERHUB_USERNAME}
+          IMAGE_TAG=${IMAGE_TAG}
+          ENVFILE
+
+          cat > compose.yaml <<'COMPOSE'
+          services:
+            proxy:
+              image: nginx:1.28-alpine
+              ports:
+                - "80:80"
+              volumes:
+                - ./proxy/nginx.conf:/etc/nginx/nginx.conf:ro
+              read_only: true
+              tmpfs:
+                - /var/cache/nginx
+                - /var/run
+              security_opt:
+                - no-new-privileges:true
+              depends_on:
+                frontend:
+                  condition: service_started
+                backend:
+                  condition: service_started
+              restart: unless-stopped
+              networks:
+                - app
+
+            frontend:
+              image: ${DOCKERHUB_USERNAME}/react-frontend:${IMAGE_TAG}
+              expose:
+                - "3000"
+              pull_policy: always
+              restart: unless-stopped
+              networks:
+                - app
+
+            backend:
+              image: ${DOCKERHUB_USERNAME}/flask-backend:${IMAGE_TAG}
+              expose:
+                - "5000"
+              env_file:
+                - .env
+              pull_policy: always
+              restart: unless-stopped
+              networks:
+                - app
+
+          networks:
+            app:
+              driver: bridge
+          COMPOSE
+
+          cat > proxy/nginx.conf <<'NGINX'
+          worker_processes auto;
+
+          events {
+              worker_connections 1024;
+          }
+
+          http {
+              include /etc/nginx/mime.types;
+              default_type application/octet-stream;
+
+              sendfile on;
+              keepalive_timeout 65;
+              server_tokens off;
+              client_max_body_size 10m;
+
+              upstream frontend_upstream {
+                  server frontend:3000;
+              }
+
+              upstream backend_upstream {
+                  server backend:5000;
+              }
+
+              server {
+                  listen 80 default_server;
+                  listen [::]:80 default_server;
+
+                  add_header X-Content-Type-Options "nosniff" always;
+                  add_header X-Frame-Options "SAMEORIGIN" always;
+                  add_header Referrer-Policy "strict-origin-when-cross-origin" always;
+
+                  proxy_http_version 1.1;
+                  proxy_connect_timeout 5s;
+                  proxy_send_timeout 60s;
+                  proxy_read_timeout 60s;
+
+                  location /api {
+                      proxy_pass http://backend_upstream;
+                      proxy_set_header Host \$host;
+                      proxy_set_header X-Real-IP \$remote_addr;
+                      proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+                      proxy_set_header X-Forwarded-Proto \$scheme;
+                  }
+
+                  location / {
+                      proxy_pass http://frontend_upstream;
+                      proxy_set_header Host \$host;
+                      proxy_set_header X-Real-IP \$remote_addr;
+                      proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+                      proxy_set_header X-Forwarded-Proto \$scheme;
+                  }
+              }
+          }
+          NGINX
+
+          docker compose pull
+          docker compose up -d --remove-orphans
+          EOF
+
+          REMOTE_B64="$(base64 -w0 "$RUNNER_TEMP/remote-deploy.sh")"
+          COMMAND_ID="$(aws ssm send-command \
+            --instance-ids "$EC2_INSTANCE_ID" \
+            --document-name "AWS-RunShellScript" \
+            --comment "Deploy ${GITHUB_SHA}" \
+            --parameters commands="echo '$REMOTE_B64' | base64 -d > /tmp/remote-deploy.sh","chmod +x /tmp/remote-deploy.sh","sudo /tmp/remote-deploy.sh" \
+            --query "Command.CommandId" \
+            --output text)"
+
+          aws ssm wait command-executed --command-id "$COMMAND_ID" --instance-id "$EC2_INSTANCE_ID"
+          STATUS="$(aws ssm list-command-invocations \
+            --command-id "$COMMAND_ID" \
+            --details \
+            --query "CommandInvocations[0].Status" \
+            --output text)"
+
+          echo "SSM command status: $STATUS"
+          if [ "$STATUS" != "Success" ]; then
+            aws ssm list-command-invocations \
+              --command-id "$COMMAND_ID" \
+              --details \
+              --query "CommandInvocations[0].CommandPlugins[0].Output" \
+              --output text || true
+            exit 1
+          fi
