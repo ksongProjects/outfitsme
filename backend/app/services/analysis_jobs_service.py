@@ -313,7 +313,7 @@ def _generate_item_images_for_analysis(
             "disabled": True
         }
 
-    gemini_key = user_settings.get("gemini_api_key") or settings.GEMINI_API_KEY
+    gemini_key = user_settings.get("gemini_api_key")
     if not gemini_key:
         _mark_job_progress(
             job_id,
@@ -440,7 +440,7 @@ def process_analysis_job(job_id: str) -> None:
             message=f"Analyzing photo with {model_entry['label']}."
         )
         if model_entry["provider"] == "gemini":
-            gemini_key = user_settings.get("gemini_api_key") or settings.GEMINI_API_KEY
+            gemini_key = user_settings.get("gemini_api_key")
             analysis = analyze_outfit_with_gemini(
                 image_bytes,
                 mime_type,

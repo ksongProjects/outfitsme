@@ -1,4 +1,4 @@
--- OutfitMe initial schema and security policies
+-- OutfitsMe initial schema and security policies
 
 create extension if not exists pgcrypto;
 
@@ -104,3 +104,4 @@ for update using (bucket_id = 'outfit-images' and auth.uid()::text = (storage.fo
 drop policy if exists outfit_images_owner_delete on storage.objects;
 create policy "outfit_images_owner_delete" on storage.objects
 for delete using (bucket_id = 'outfit-images' and auth.uid()::text = (storage.foldername(name))[1]);
+

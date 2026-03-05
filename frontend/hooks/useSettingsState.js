@@ -12,6 +12,7 @@ export function useSettingsState({ session, accessToken, onModelSettingsUpdated 
   const [newPassword, setNewPassword] = useState("");
   const [profilePhotoUrl, setProfilePhotoUrl] = useState("");
   const [profilePhotoUploading, setProfilePhotoUploading] = useState(false);
+  const [geminiApiKeyConfigured, setGeminiApiKeyConfigured] = useState(false);
   const [settingsForm, setSettingsForm] = useState({
     preferred_model: "gemini-2.5-flash",
     gemini_api_key: "",
@@ -95,6 +96,7 @@ export function useSettingsState({ session, accessToken, onModelSettingsUpdated 
       enable_online_store_search: Boolean(current.enable_online_store_search),
       enable_accessory_analysis: Boolean(current.enable_accessory_analysis)
     }));
+    setGeminiApiKeyConfigured(Boolean(String(current.gemini_api_key_masked || "").trim()));
     setProfilePhotoUrl(current.profile_photo_url || "");
   };
 
@@ -183,6 +185,9 @@ export function useSettingsState({ session, accessToken, onModelSettingsUpdated 
         payload.gemini_api_key = nextGeminiKey;
       }
       await saveModelSettingsMutation.mutateAsync(payload);
+      if (nextGeminiKey) {
+        setGeminiApiKeyConfigured(true);
+      }
       setSettingsForm((prev) => ({
         ...prev,
         gemini_api_key: ""
@@ -307,6 +312,7 @@ export function useSettingsState({ session, accessToken, onModelSettingsUpdated 
     setNewPassword,
     settingsForm,
     setSettingsForm,
+    geminiApiKeyConfigured,
     profilePhotoUrl,
     profilePhotoUploading,
     costSummary: costsQuery.data?.costs || null,
@@ -320,4 +326,3 @@ export function useSettingsState({ session, accessToken, onModelSettingsUpdated 
     saveModelSettings
   };
 }
-

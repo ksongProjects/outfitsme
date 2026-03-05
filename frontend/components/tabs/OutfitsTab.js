@@ -15,7 +15,7 @@ import BaseDialog from "../ui/BaseDialog";
 import BaseInput from "../ui/BaseInput";
 
 export default function OutfitsTab() {
-  const { profilePhotoUrl } = useSettingsContext();
+  const { profilePhotoUrl, settingsForm, geminiApiKeyConfigured } = useSettingsContext();
   const {
     wardrobe,
     wardrobeLoading,
@@ -25,7 +25,7 @@ export default function OutfitsTab() {
     deletingOutfitId,
     renameOutfit,
     updatingOutfitId,
-    generateOutfitMe,
+    generateOutfitsMe,
     outfitMeLoading,
     openOutfitDetails,
     closeOutfitDetails,
@@ -36,6 +36,7 @@ export default function OutfitsTab() {
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState("");
   const [itemPreview, setItemPreview] = useState(null);
+  const imageGenerationEnabled = Boolean(settingsForm?.enable_outfit_image_generation);
 
   useEffect(() => {
     const selectedStyle = outfitDetails?.selected_outfit?.style || "";
@@ -130,17 +131,25 @@ export default function OutfitsTab() {
     }
   };
 
-  const handleGenerateOutfitMe = async () => {
+  const handleGenerateOutfitsMe = async () => {
     const details = outfitDetails || {};
     const selected = details.selected_outfit || null;
     if (!details.photo_id || !selected) {
       return;
     }
-    if (!profilePhotoUrl) {
-      toast.error("Profile photo is required for OutfitMe. Upload one in Settings > Profile.");
+    if (!geminiApiKeyConfigured) {
+      toast.error("Add a Gemini API key in Settings > Model keys before using OutfitsMe.");
       return;
     }
-    await generateOutfitMe(details.photo_id, selected.outfit_index);
+    if (!imageGenerationEnabled) {
+      toast.error("Outfit image generation is off. Enable it in Settings > Features.");
+      return;
+    }
+    if (!profilePhotoUrl) {
+      toast.error("Profile photo is required for OutfitsMe. Upload one in Settings > Profile.");
+      return;
+    }
+    await generateOutfitsMe(details.photo_id, selected.outfit_index);
   };
 
   return (
@@ -214,11 +223,19 @@ export default function OutfitsTab() {
               <BaseButton
                 type="button"
                 variant="ghost"
-                onClick={handleGenerateOutfitMe}
-                disabled={outfitMeLoading}
-                title={profilePhotoUrl ? "Generate OutfitMe preview" : "Profile photo required for OutfitMe"}
+                onClick={handleGenerateOutfitsMe}
+                disabled={outfitMeLoading || !imageGenerationEnabled || !geminiApiKeyConfigured}
+                title={
+                  !geminiApiKeyConfigured
+                    ? "Gemini API key required in Settings > Model keys"
+                    : !imageGenerationEnabled
+                      ? "Enable Outfit image generation in Settings > Features"
+                      : profilePhotoUrl
+                        ? "Generate OutfitsMe preview"
+                        : "Profile photo required for OutfitsMe"
+                }
               >
-                {outfitMeLoading ? "OutfitMe..." : "OutfitMe"}
+                {outfitMeLoading ? "OutfitsMe..." : "OutfitsMe"}
               </BaseButton>
               {!isEditingName ? (
                 <BaseButton
@@ -242,8 +259,8 @@ export default function OutfitsTab() {
             ) : (
               <p className="subtext">Original image is unavailable for this outfit.</p>
             )}
-            {outfitDetails?.outfitme_image_url ? (
-              <img src={outfitDetails.outfitme_image_url} alt="OutfitMe preview" className="modal-image" />
+            {outfitDetails?.outfitsme_image_url ? (
+              <img src={outfitDetails.outfitsme_image_url} alt="OutfitsMe preview" className="modal-image" />
             ) : null}
             <div>
               {outfitDetails?.selected_outfit ? (
@@ -379,3 +396,4 @@ export default function OutfitsTab() {
     </section>
   );
 }
+

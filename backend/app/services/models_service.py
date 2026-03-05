@@ -30,7 +30,7 @@ def get_model_catalog() -> list[dict]:
 
 
 def build_model_availability(model_settings: dict) -> list[dict]:
-    gemini_key = (model_settings.get("gemini_api_key") or settings.GEMINI_API_KEY or "").strip()
+    gemini_key = (model_settings.get("gemini_api_key") or "").strip()
     aws_region = (model_settings.get("aws_region") or "").strip()
     bedrock_agent_id = (model_settings.get("aws_bedrock_agent_id") or "").strip()
     bedrock_agent_alias_id = (model_settings.get("aws_bedrock_agent_alias_id") or "").strip()

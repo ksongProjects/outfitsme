@@ -1,4 +1,4 @@
-## OutfitMe v1
+## OutfitsMe v1
 
 ### One-liner
 
@@ -64,3 +64,4 @@ No easy way to identify the clothing items from photos, and find similar items t
 - Frontend: Next.js
 - Backend: Python Flask
 - Database + Auth + Storage: Supabase
+

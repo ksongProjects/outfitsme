@@ -181,19 +181,19 @@ select {
   font-size: 1.25rem;
 }
 
-.outfitme-home-btn {
+.outfitsme-home-btn {
   border: 0;
   background: transparent;
   padding: 0;
   cursor: pointer;
 }
 
-.dashboard-header .outfitme-home-btn {
+.dashboard-header .outfitsme-home-btn {
   display: inline-flex;
   margin-bottom: 16px;
 }
 
-.outfitme-home-btn:focus-visible {
+.outfitsme-home-btn:focus-visible {
   outline: none;
   box-shadow: 0 0 0 3px var(--btn-focus-ring);
   border-radius: 6px;
@@ -284,6 +284,52 @@ select {
   width: 16px;
   height: 16px;
   margin: 0;
+}
+
+.remember-me-row a {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.terms-card {
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+.terms-card h1 {
+  margin-top: 0;
+}
+
+.app-footer {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px 14px;
+}
+
+.app-footer-copy {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.app-footer-links {
+  display: inline-flex;
+  gap: 12px;
+}
+
+.app-footer-links a {
+  color: var(--ink);
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.app-footer-links a:hover {
+  text-decoration: underline;
 }
 
 .feature-grid {
@@ -497,4 +543,5 @@ select.text-input {
   font-size: clamp(1.5rem, 2.4vw, 2rem);
   line-height: 1.15;
 }
+
 

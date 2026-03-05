@@ -8,6 +8,7 @@ import AnalyzeTab from "../components/tabs/AnalyzeTab";
 import OutfitsTab from "../components/tabs/OutfitsTab";
 import ItemsTab from "../components/tabs/ItemsTab";
 import SettingsTab from "../components/tabs/SettingsTab";
+import AppFooter from "../components/AppFooter";
 import { DashboardProviders } from "../context/DashboardContext";
 import { useAuthState } from "../hooks/useAuthState";
 import { useStatsState } from "../hooks/useStatsState";
@@ -186,7 +187,7 @@ export default function HomePage() {
     deletingOutfitId: wardrobeState.deletingOutfitId,
     renameOutfit: wardrobeState.renameOutfit,
     updatingOutfitId: wardrobeState.updatingOutfitId,
-    generateOutfitMe: wardrobeState.generateOutfitMe,
+    generateOutfitsMe: wardrobeState.generateOutfitsMe,
     outfitMeLoading: wardrobeState.outfitMeLoading,
     openOutfitDetails: wardrobeState.openOutfitDetails,
     closeOutfitDetails: wardrobeState.closeOutfitDetails,
@@ -198,7 +199,7 @@ export default function HomePage() {
     wardrobeState.wardrobeMessage,
     wardrobeState.deletingOutfitId,
     wardrobeState.updatingOutfitId,
-    wardrobeState.generateOutfitMe,
+    wardrobeState.generateOutfitsMe,
     wardrobeState.outfitMeLoading,
     wardrobeState.outfitDetails,
     wardrobeState.outfitDetailsLoading
@@ -237,6 +238,7 @@ export default function HomePage() {
     savePassword: settingsState.savePassword,
     settingsForm: settingsState.settingsForm,
     setSettingsForm: settingsState.setSettingsForm,
+    geminiApiKeyConfigured: settingsState.geminiApiKeyConfigured,
     profilePhotoUrl: settingsState.profilePhotoUrl,
     profilePhotoUploading: settingsState.profilePhotoUploading,
     saveModelSettings: settingsState.saveModelSettings,
@@ -250,6 +252,7 @@ export default function HomePage() {
     settingsState.newEmail,
     settingsState.newPassword,
     settingsState.settingsForm,
+    settingsState.geminiApiKeyConfigured,
     settingsState.profilePhotoUrl,
     settingsState.profilePhotoUploading,
     settingsState.costSummary,
@@ -291,10 +294,10 @@ export default function HomePage() {
             <div>
               <button
                 type="button"
-                className="brand outfitme-home-btn"
+                className="brand outfitsme-home-btn"
                 onClick={() => setDashboardTab("dashboard")}
               >
-                OutfitMe
+                OutfitsMe
               </button>
               <h1>{userFullName ? `Welcome back, ${userFullName}` : "Welcome back"}</h1>
               <p className="subtext">
@@ -386,8 +389,10 @@ export default function HomePage() {
               </Tabs.Panel>
             </Tabs.Root>
           </section>
+          <AppFooter />
         </main>
       )}
     </DashboardProviders>
   );
 }
+

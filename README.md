@@ -1,6 +1,6 @@
-# OutfitMe v1
+# OutfitsMe v1
 
-OutfitMe is a web app where users upload outfit photos, identify clothing items, create personal styles, and find similar products on online stores.
+OutfitsMe is a web app where users upload outfit photos, identify clothing items, create personal styles, and find similar products on online stores.
 
 ## Current Local MVP
 
@@ -181,3 +181,4 @@ npm test
 2. Normalize and persist real similar-item search results.
 3. Add server-side pagination/filtering on wardrobe and items endpoints.
 4. Add richer wardrobe details and user actions (favorites, tags, notes).
+

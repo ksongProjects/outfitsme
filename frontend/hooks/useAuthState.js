@@ -3,8 +3,8 @@ import { toast } from "sonner";
 
 import { supabase } from "../lib/supabaseClient";
 
-const REMEMBER_EMAIL_KEY = "outfitme_remember_email";
-const REMEMBER_EMAIL_ENABLED_KEY = "outfitme_remember_email_enabled";
+const REMEMBER_EMAIL_KEY = "outfitsme_remember_email";
+const REMEMBER_EMAIL_ENABLED_KEY = "outfitsme_remember_email_enabled";
 
 const getRememberEmailEnabled = () => {
   if (typeof window === "undefined") {
@@ -124,3 +124,4 @@ export function useAuthState() {
     signOut
   };
 }
+

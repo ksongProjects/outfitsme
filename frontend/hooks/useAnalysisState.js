@@ -225,6 +225,9 @@ export function useAnalysisState({ accessToken, onAnalysisSaved }) {
     if (raw.includes("missing bearer token") || raw.includes("invalid or expired token")) {
       return "Your session expired. Please sign in again.";
     }
+    if (raw.includes("gemini api key is required") || raw.includes("add a gemini api key in settings")) {
+      return "Gemini API key is required. Add a gemini-2.5-flash key in Settings > Model keys.";
+    }
     if (raw.includes("monthly analysis limit reached")) {
       return message || "You've reached your monthly analysis limit.";
     }

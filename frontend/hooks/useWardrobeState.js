@@ -10,7 +10,7 @@ export function useWardrobeState({ accessToken, onWardrobeChanged }) {
   const [wardrobeMessage, setWardrobeMessage] = useState("");
   const [deletingOutfitId, setDeletingOutfitId] = useState("");
   const [updatingOutfitId, setUpdatingOutfitId] = useState("");
-  const [outfitMeLoading, setOutfitMeLoading] = useState(false);
+  const [outfitMeLoading, setOutfitsMeLoading] = useState(false);
   const [outfitDetails, setOutfitDetails] = useState(null);
   const [outfitDetailsLoading, setOutfitDetailsLoading] = useState(false);
   const queryClient = useQueryClient();
@@ -298,14 +298,14 @@ export function useWardrobeState({ accessToken, onWardrobeChanged }) {
 
   const closeOutfitDetails = () => setOutfitDetails(null);
 
-  const generateOutfitMe = async (photoId, outfitIndex = null) => {
+  const generateOutfitsMe = async (photoId, outfitIndex = null) => {
     if (!accessToken || !photoId) {
       return false;
     }
 
-    setOutfitMeLoading(true);
+    setOutfitsMeLoading(true);
     try {
-      const response = await fetch(`${API_BASE}/api/wardrobe/${photoId}/outfitme`, {
+      const response = await fetch(`${API_BASE}/api/wardrobe/${photoId}/outfitsme`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -318,11 +318,11 @@ export function useWardrobeState({ accessToken, onWardrobeChanged }) {
 
       if (!response.ok) {
         const errorBody = await response.json().catch(() => ({}));
-        throw new Error(errorBody.error || "Failed to generate OutfitMe preview.");
+        throw new Error(errorBody.error || "Failed to generate OutfitsMe preview.");
       }
 
       const payload = await response.json();
-      const nextImageUrl = payload.outfitme_image_url || "";
+      const nextImageUrl = payload.outfitsme_image_url || "";
       setOutfitDetails((current) => {
         if (!current) {
           return current;
@@ -330,22 +330,22 @@ export function useWardrobeState({ accessToken, onWardrobeChanged }) {
         if (current.photo_id) {
           queryClient.setQueryData(buildDetailsQueryKey(current.photo_id), (cached) => (
             cached
-              ? { ...cached, outfitme_image_url: nextImageUrl }
+              ? { ...cached, outfitsme_image_url: nextImageUrl }
               : cached
           ));
         }
         return {
           ...current,
-          outfitme_image_url: nextImageUrl
+          outfitsme_image_url: nextImageUrl
         };
       });
-      toast.success("OutfitMe preview generated.");
+      toast.success("OutfitsMe preview generated.");
       return payload;
     } catch (err) {
-      toast.error(err.message || "Failed to generate OutfitMe preview.");
+      toast.error(err.message || "Failed to generate OutfitsMe preview.");
       return false;
     } finally {
-      setOutfitMeLoading(false);
+      setOutfitsMeLoading(false);
     }
   };
 
@@ -353,7 +353,7 @@ export function useWardrobeState({ accessToken, onWardrobeChanged }) {
     setWardrobeMessage("");
     setDeletingOutfitId("");
     setUpdatingOutfitId("");
-    setOutfitMeLoading(false);
+    setOutfitsMeLoading(false);
     setOutfitDetails(null);
     setOutfitDetailsLoading(false);
     queryClient.removeQueries({ queryKey: ["wardrobe", accessToken] });
@@ -369,7 +369,7 @@ export function useWardrobeState({ accessToken, onWardrobeChanged }) {
     deletingOutfitId,
     renameOutfit,
     updatingOutfitId,
-    generateOutfitMe,
+    generateOutfitsMe,
     outfitMeLoading,
     openOutfitDetails,
     closeOutfitDetails,
@@ -378,3 +378,4 @@ export function useWardrobeState({ accessToken, onWardrobeChanged }) {
     resetWardrobeState
   };
 }
+

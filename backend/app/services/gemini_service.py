@@ -393,7 +393,7 @@ def generate_item_image_with_gemini(
     return None
 
 
-def generate_outfitme_image_with_gemini(
+def generate_outfitsme_image_with_gemini(
     *,
     reference_image_bytes: bytes,
     reference_mime_type: str,
@@ -506,3 +506,4 @@ def generate_outfitme_image_with_gemini(
         return f"data:{mime};base64,{data}"
 
     return None
+

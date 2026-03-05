@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 
 import { useSettingsContext } from "../../context/DashboardContext";
 import BaseButton from "../ui/BaseButton";
@@ -28,6 +29,7 @@ export default function SettingsTab() {
     savePassword,
     settingsForm,
     setSettingsForm,
+    geminiApiKeyConfigured,
     profilePhotoUrl,
     profilePhotoUploading,
     saveModelSettings,
@@ -81,6 +83,9 @@ export default function SettingsTab() {
           <div className="tab-header-title">
             <h2>Settings</h2>
             <p className="tab-header-subtext">Manage profile, security, features, costs, and model credentials.</p>
+            <p className="subtext">
+              Review our <Link href="/terms">Terms of Service</Link>.
+            </p>
           </div>
         </div>
       </div>
@@ -189,6 +194,10 @@ export default function SettingsTab() {
         <article id="settings-features" className="settings-card settings-section-card">
           <h2>Features</h2>
           <p className="subtext">Control optional generation and shopping features.</p>
+          <p className="subtext">
+            Image generation uses Google Gemini image endpoints. Billing must be enabled on your Google account.
+            Keep this toggle off until billing is active.
+          </p>
           <div className="settings-feature-row">
             <div>
               <p><strong>Outfit image generation</strong></p>
@@ -263,6 +272,28 @@ export default function SettingsTab() {
 
         <article id="settings-models" className="settings-card settings-section-card">
           <h2>Analysis model API keys</h2>
+          <div className="settings-notice">
+            <p>
+              <strong>Gemini API key is required:</strong> OutfitsMe features are unavailable until you add a
+              Gemini key for <code>gemini-2.5-flash</code>.
+            </p>
+            <p className="subtext">
+              Generate a key in Google AI Studio, then paste it below and save.
+            </p>
+            <div className="button-row">
+              <a
+                className="ghost-btn"
+                href="https://aistudio.google.com/app/apikey"
+                target="_blank"
+                rel="noreferrer"
+              >
+                Open Google AI Studio
+              </a>
+            </div>
+            <p className="subtext">
+              Current status: <strong>{geminiApiKeyConfigured ? "Configured" : "Not configured"}</strong>
+            </p>
+          </div>
           <label htmlFor="preferred-model">Preferred model</label>
           <BaseSelect
             id="preferred-model"
@@ -332,4 +363,3 @@ export default function SettingsTab() {
     </section>
   );
 }
-

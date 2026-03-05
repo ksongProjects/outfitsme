@@ -11,7 +11,7 @@ from app.extensions import limiter
 from app.services.bedrock_service import BedrockNotConfiguredError
 from app.services.gemini_service import (
     GeminiNotConfiguredError,
-    generate_outfitme_image_with_gemini,
+    generate_outfitsme_image_with_gemini,
 )
 from app.services.models_service import build_model_availability, get_preferred_model
 from app.services.secrets_service import SettingsEncryptionError
@@ -460,8 +460,8 @@ def get_wardrobe_details(photo_id: str):
         return jsonify({"error": f"Wardrobe details lookup failed: {exc}"}), 500
 
 
-@api_bp.post("/wardrobe/<photo_id>/outfitme")
-def generate_outfitme_preview(photo_id: str):
+@api_bp.post("/wardrobe/<photo_id>/outfitsme")
+def generate_outfitsme_preview(photo_id: str):
     access_token = _extract_access_token()
     if not access_token:
         return jsonify({"error": "Missing bearer token."}), 401
@@ -486,9 +486,18 @@ def generate_outfitme_preview(photo_id: str):
             return jsonify({"error": "Outfit details not found."}), 404
 
         user_settings = get_user_model_settings(user_id)
+        if not bool(user_settings.get("enable_outfit_image_generation")):
+            return jsonify(
+                {
+                    "error": (
+                        "OutfitsMe image generation is disabled. Enable it in "
+                        "Settings > Features after confirming Google billing is enabled."
+                    )
+                }
+            ), 400
         profile_photo_path = str(user_settings.get("profile_photo_path") or "").strip()
         if not profile_photo_path:
-            return jsonify({"error": "Reference photo is required. Upload one in Settings > Profile to use OutfitMe."}), 400
+            return jsonify({"error": "Reference photo is required. Upload one in Settings > Profile to use OutfitsMe."}), 400
 
         reference_photo_bytes = download_photo_bytes(profile_photo_path)
         if not reference_photo_bytes:
@@ -502,8 +511,17 @@ def generate_outfitme_preview(photo_id: str):
             source_outfit_image_bytes = download_photo_bytes(storage_path)
             source_outfit_mime_type = mimetypes.guess_type(storage_path)[0] or "image/jpeg"
 
-        gemini_key = user_settings.get("gemini_api_key") or settings.GEMINI_API_KEY
-        generated_data_uri = generate_outfitme_image_with_gemini(
+        gemini_key = user_settings.get("gemini_api_key")
+        if not str(gemini_key or "").strip():
+            return jsonify(
+                {
+                    "error": (
+                        "Gemini API key is required. Generate a gemini-2.5-flash key in Google AI Studio, "
+                        "then add it in Settings > Model keys."
+                    )
+                }
+            ), 400
+        generated_data_uri = generate_outfitsme_image_with_gemini(
             reference_image_bytes=reference_photo_bytes,
             reference_mime_type=reference_mime_type,
             outfit_style=selected_outfit.get("style") or "Outfit",
@@ -515,7 +533,7 @@ def generate_outfitme_preview(photo_id: str):
             api_key=gemini_key
         )
         if not generated_data_uri:
-            return jsonify({"error": "OutfitMe generation returned no image."}), 502
+            return jsonify({"error": "OutfitsMe generation returned no image."}), 502
 
         outfit_row_id = selected_outfit.get("outfit_id") or f"{photo_id}-{selected_outfit.get('outfit_index', 0)}"
         stored = save_generated_outfit_image(user_id, str(outfit_row_id), generated_data_uri)
@@ -523,8 +541,8 @@ def generate_outfitme_preview(photo_id: str):
             {
                 "photo_id": photo_id,
                 "outfit_index": selected_outfit.get("outfit_index"),
-                "outfitme_image_url": stored.get("image_url"),
-                "outfitme_storage_path": stored.get("storage_path")
+                "outfitsme_image_url": stored.get("image_url"),
+                "outfitsme_storage_path": stored.get("storage_path")
             }
         ), 200
     except ValueError:
@@ -536,9 +554,9 @@ def generate_outfitme_preview(photo_id: str):
     except AuthApiError:
         return jsonify({"error": "Invalid or expired token."}), 401
     except requests.HTTPError as exc:
-        return jsonify({"error": f"OutfitMe model request failed: {exc}"}), 502
+        return jsonify({"error": f"OutfitsMe model request failed: {exc}"}), 502
     except Exception as exc:  # noqa: BLE001
-        return jsonify({"error": f"OutfitMe generation failed: {exc}"}), 500
+        return jsonify({"error": f"OutfitsMe generation failed: {exc}"}), 500
 
 
 @api_bp.get("/items")
@@ -742,3 +760,4 @@ def upload_profile_photo():
         return jsonify({"error": "Invalid or expired token."}), 401
     except Exception as exc:  # noqa: BLE001
         return jsonify({"error": f"Profile photo upload failed: {exc}"}), 500
+

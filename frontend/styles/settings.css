@@ -122,3 +122,15 @@
   padding-left: 18px;
 }
 
+.settings-notice {
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #f8f6f0;
+  padding: 10px;
+  margin: 8px 0 12px;
+}
+
+.settings-notice p {
+  margin: 0 0 6px;
+}
+

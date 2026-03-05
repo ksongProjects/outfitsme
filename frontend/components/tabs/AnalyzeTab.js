@@ -9,7 +9,7 @@ import ImageUploadField from "../ui/ImageUploadField";
 
 export default function AnalyzeTab() {
   const [interaction, setInteraction] = useState(null);
-  const [outfitMePreviewByIndex, setOutfitMePreviewByIndex] = useState({});
+  const [outfitMePreviewByIndex, setOutfitsMePreviewByIndex] = useState({});
   const {
     previewUrl,
     onFileDrop,
@@ -30,8 +30,8 @@ export default function AnalyzeTab() {
     analysisLimits,
     limitsLoading
   } = useAnalysisContext();
-  const { profilePhotoUrl } = useSettingsContext();
-  const { generateOutfitMe, outfitMeLoading } = useWardrobeContext();
+  const { profilePhotoUrl, settingsForm, geminiApiKeyConfigured } = useSettingsContext();
+  const { generateOutfitsMe, outfitMeLoading } = useWardrobeContext();
   const detectedOutfits = analysis?.outfits || [];
   const monthlyLimit = analysisLimits?.monthly_limit ?? 0;
   const usedThisMonth = analysisLimits?.used_this_month ?? 0;
@@ -40,6 +40,9 @@ export default function AnalyzeTab() {
   const progress = jobStatus?.progress || null;
   const progressCounts = progress?.counts || null;
   const progressCurrentItem = progress?.current_item || null;
+  const availableImageModel = (modelOptions || []).find((model) => model.supports_image && model.available);
+  const firstUnavailableImageModel = (modelOptions || []).find((model) => model.supports_image && !model.available);
+  const imageGenerationEnabled = Boolean(settingsForm?.enable_outfit_image_generation);
 
   const clamp01 = (value) => Math.min(1, Math.max(0, value));
   const MIN_CROP_SIZE = 0.01;
@@ -203,23 +206,31 @@ export default function AnalyzeTab() {
   };
 
   useEffect(() => {
-    setOutfitMePreviewByIndex({});
+    setOutfitsMePreviewByIndex({});
   }, [analysis?.photo_id]);
 
-  const handleGenerateOutfitMe = async (outfitIndex) => {
+  const handleGenerateOutfitsMe = async (outfitIndex) => {
     if (!analysis?.photo_id) {
-      toast.error("Analyze a photo first before using OutfitMe.");
+      toast.error("Analyze a photo first before using OutfitsMe.");
+      return;
+    }
+    if (!geminiApiKeyConfigured) {
+      toast.error("Add a Gemini API key in Settings > Model keys before using OutfitsMe.");
+      return;
+    }
+    if (!imageGenerationEnabled) {
+      toast.error("OutfitsMe image generation is off. Enable it in Settings > Features.");
       return;
     }
     if (!profilePhotoUrl) {
-      toast.error("Profile photo is required for OutfitMe. Upload one in Settings > Profile.");
+      toast.error("Profile photo is required for OutfitsMe. Upload one in Settings > Profile.");
       return;
     }
-    const result = await generateOutfitMe(analysis.photo_id, outfitIndex);
-    if (result?.outfitme_image_url) {
-      setOutfitMePreviewByIndex((current) => ({
+    const result = await generateOutfitsMe(analysis.photo_id, outfitIndex);
+    if (result?.outfitsme_image_url) {
+      setOutfitsMePreviewByIndex((current) => ({
         ...current,
-        [outfitIndex]: result.outfitme_image_url
+        [outfitIndex]: result.outfitsme_image_url
       }));
     }
   };
@@ -249,6 +260,24 @@ export default function AnalyzeTab() {
             }))}
           placeholder="Select model"
         />
+        {modelOptions.length > 0 && !availableImageModel ? (
+          <div className="settings-notice">
+            <p>
+              <strong>Gemini key required:</strong> Add a Gemini API key to run analysis.
+            </p>
+            <p className="subtext">
+              {firstUnavailableImageModel?.unavailable_reason || "No image-capable model is currently available."}
+            </p>
+            <a
+              className="ghost-btn"
+              href="https://aistudio.google.com/app/apikey"
+              target="_blank"
+              rel="noreferrer"
+            >
+              Generate Gemini key
+            </a>
+          </div>
+        ) : null}
         {(modelOptions || []).some((model) => model.supports_image && !model.available) ? (
           <p className="subtext">
             Unavailable models: {(modelOptions || [])
@@ -374,11 +403,19 @@ export default function AnalyzeTab() {
                       <BaseButton
                         type="button"
                         variant="ghost"
-                        onClick={() => handleGenerateOutfitMe(index)}
-                        disabled={outfitMeLoading}
-                        title={profilePhotoUrl ? "Generate OutfitMe preview" : "Profile photo required for OutfitMe"}
+                        onClick={() => handleGenerateOutfitsMe(index)}
+                        disabled={outfitMeLoading || !imageGenerationEnabled || !geminiApiKeyConfigured}
+                        title={
+                          !geminiApiKeyConfigured
+                            ? "Gemini API key required in Settings > Model keys"
+                            : !imageGenerationEnabled
+                              ? "Enable Outfit image generation in Settings > Features"
+                              : profilePhotoUrl
+                                ? "Generate OutfitsMe preview"
+                                : "Profile photo required for OutfitsMe"
+                        }
                       >
-                        {outfitMeLoading ? "OutfitMe..." : "OutfitMe"}
+                        {outfitMeLoading ? "OutfitsMe..." : "OutfitsMe"}
                       </BaseButton>
                     </div>
                     <ul className="analysis-items">
@@ -395,8 +432,8 @@ export default function AnalyzeTab() {
                     {outfitMePreviewByIndex[index] ? (
                       <img
                         src={outfitMePreviewByIndex[index]}
-                        alt={`OutfitMe preview for outfit ${index + 1}`}
-                        className="analysis-outfitme-preview"
+                        alt={`OutfitsMe preview for outfit ${index + 1}`}
+                        className="analysis-outfitsme-preview"
                       />
                     ) : null}
                   </div>
@@ -411,11 +448,19 @@ export default function AnalyzeTab() {
                   <BaseButton
                     type="button"
                     variant="ghost"
-                    onClick={() => handleGenerateOutfitMe(0)}
-                    disabled={outfitMeLoading}
-                    title={profilePhotoUrl ? "Generate OutfitMe preview" : "Profile photo required for OutfitMe"}
+                    onClick={() => handleGenerateOutfitsMe(0)}
+                    disabled={outfitMeLoading || !imageGenerationEnabled || !geminiApiKeyConfigured}
+                    title={
+                      !geminiApiKeyConfigured
+                        ? "Gemini API key required in Settings > Model keys"
+                        : !imageGenerationEnabled
+                          ? "Enable Outfit image generation in Settings > Features"
+                          : profilePhotoUrl
+                            ? "Generate OutfitsMe preview"
+                            : "Profile photo required for OutfitsMe"
+                    }
                   >
-                    {outfitMeLoading ? "OutfitMe..." : "OutfitMe"}
+                    {outfitMeLoading ? "OutfitsMe..." : "OutfitsMe"}
                   </BaseButton>
                 </div>
                 <ul className="analysis-items">
@@ -432,8 +477,8 @@ export default function AnalyzeTab() {
                 {outfitMePreviewByIndex[0] ? (
                   <img
                     src={outfitMePreviewByIndex[0]}
-                    alt="OutfitMe preview"
-                    className="analysis-outfitme-preview"
+                    alt="OutfitsMe preview"
+                    className="analysis-outfitsme-preview"
                   />
                 ) : null}
               </>
@@ -448,3 +493,4 @@ export default function AnalyzeTab() {
     </section>
   );
 }
+
