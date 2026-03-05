@@ -336,7 +336,9 @@ jobs:
             --query "Command.CommandId" \
             --output text)"
 
-          aws ssm wait command-executed --command-id "$COMMAND_ID" --instance-id "$EC2_INSTANCE_ID"
+          if ! aws ssm wait command-executed --command-id "$COMMAND_ID" --instance-id "$EC2_INSTANCE_ID"; then
+            echo "SSM waiter reported a terminal failure state."
+          fi
           STATUS="$(aws ssm list-command-invocations \
             --command-id "$COMMAND_ID" \
             --details \
@@ -345,10 +347,16 @@ jobs:
 
           echo "SSM command status: $STATUS"
           if [ "$STATUS" != "Success" ]; then
+            echo "SSM plugin output:"
             aws ssm list-command-invocations \
               --command-id "$COMMAND_ID" \
               --details \
               --query "CommandInvocations[0].CommandPlugins[0].Output" \
               --output text || true
+            echo "SSM full invocation:"
+            aws ssm list-command-invocations \
+              --command-id "$COMMAND_ID" \
+              --details \
+              --output json || true
             exit 1
           fi
