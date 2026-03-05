@@ -309,7 +309,7 @@ jobs:
           docker compose up -d --remove-orphans
 
           if [ ! -f "/home/ubuntu/app/letsencrypt/live/outfitsme.com/fullchain.pem" ] || [ ! -f "/home/ubuntu/app/letsencrypt/live/outfitsme.com/privkey.pem" ]; then
-            docker compose run --rm --profile certbot certbot certonly \
+            docker compose --profile certbot run --rm certbot certonly \
               --webroot -w /var/www/certbot \
               --email "${CERTBOT_EMAIL}" \
               --agree-tos --no-eff-email \
@@ -318,7 +318,7 @@ jobs:
 
           cp proxy/nginx.ssl.conf proxy/nginx.conf
           docker compose exec -T proxy nginx -s reload
-          docker compose run --rm --profile certbot certbot renew --webroot -w /var/www/certbot --quiet || true
+          docker compose --profile certbot run --rm certbot renew --webroot -w /var/www/certbot --quiet || true
           EOF
 
           REMOTE_B64="$(base64 -w0 "$RUNNER_TEMP/remote-deploy.sh")"
