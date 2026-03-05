@@ -217,6 +217,7 @@ export default function OutfitsTab() {
           }
         }}
         title="Outfit details"
+        scrollable={false}
         headerActions={
           !outfitDetailsLoading && outfitDetails?.selected_outfit ? (
             <>
@@ -255,12 +256,12 @@ export default function OutfitsTab() {
         ) : (
           <div className="outfit-details-layout">
             {outfitDetails?.image_url ? (
-              <img src={outfitDetails.image_url} alt="Original outfit" className="modal-image" />
+              <img src={outfitDetails.image_url} alt="Original outfit" className="modal-image outfit-detail-image" />
             ) : (
               <p className="subtext">Original image is unavailable for this outfit.</p>
             )}
             {outfitDetails?.outfitsme_image_url ? (
-              <img src={outfitDetails.outfitsme_image_url} alt="OutfitsMe preview" className="modal-image" />
+              <img src={outfitDetails.outfitsme_image_url} alt="OutfitsMe preview" className="modal-image outfit-detail-image" />
             ) : null}
             <div>
               {outfitDetails?.selected_outfit ? (
@@ -385,10 +386,11 @@ export default function OutfitsTab() {
         open={Boolean(itemPreview)}
         onOpenChange={(open) => setItemPreview(open ? itemPreview : null)}
         title={itemPreview?.name || "Item preview"}
-        size="fit"
+        size="image"
+        scrollable={false}
       >
         {itemPreview?.image_url ? (
-          <img src={itemPreview.image_url} alt={itemPreview.name || "Item preview"} className="modal-image" />
+          <img src={itemPreview.image_url} alt={itemPreview.name || "Item preview"} className="modal-image item-preview-image" />
         ) : (
           <p className="subtext">Preview unavailable for this item.</p>
         )}

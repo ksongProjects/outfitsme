@@ -74,11 +74,11 @@ export default function HistoryTab() {
         onOpenChange={(open) => setPreviewEntry(open ? previewEntry : null)}
         title="Analysis photo preview"
         scrollable={false}
-        size="fit"
+        size="image"
       >
         <div className="history-preview-body">
           {previewEntry?.image_url ? (
-            <img src={previewEntry.image_url} alt="Analyzed outfit preview" className="modal-image" />
+            <img src={previewEntry.image_url} alt="Analyzed outfit preview" className="modal-image history-preview-image" />
           ) : (
             <p className="subtext">Preview unavailable for this photo.</p>
           )}

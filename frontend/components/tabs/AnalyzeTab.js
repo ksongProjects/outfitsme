@@ -43,6 +43,23 @@ export default function AnalyzeTab() {
   const availableImageModel = (modelOptions || []).find((model) => model.supports_image && model.available);
   const firstUnavailableImageModel = (modelOptions || []).find((model) => model.supports_image && !model.available);
   const imageGenerationEnabled = Boolean(settingsForm?.enable_outfit_image_generation);
+  const stageLabelByKey = {
+    submitting: "Submitting request",
+    queued: "Queued for processing",
+    processing_started: "Processing started",
+    loading_photo: "Loading photo",
+    photo_processed: "Photo loaded",
+    analyzing_photo: "Running model",
+    persisting_results: "Saving results",
+    generating_item_images: "Generating item images",
+    completed: "Completed",
+    failed: "Failed"
+  };
+  const queueSummaryText = activeAnalysisCount > 1
+    ? `You have ${activeAnalysisCount} analysis jobs in progress. Latest job status is shown below.`
+    : "";
+  const statusLabel = stageLabelByKey[jobStatus?.status || ""] || jobStatus?.status || "Pending";
+  const stageLabel = stageLabelByKey[progress?.stage || ""] || progress?.stage || "";
 
   const clamp01 = (value) => Math.min(1, Math.max(0, value));
   const MIN_CROP_SIZE = 0.01;
@@ -300,13 +317,19 @@ export default function AnalyzeTab() {
         {jobStatus ? (
           <>
             <p className="subtext">
-              Queue status: <strong>{jobStatus.status}</strong>{jobStatus.jobId ? ` (job ${jobStatus.jobId.slice(0, 8)})` : ""}
+              Job status: <strong>{statusLabel}</strong>{jobStatus.jobId ? ` (job ${jobStatus.jobId.slice(0, 8)})` : ""}
             </p>
+            {queueSummaryText ? (
+              <p className="subtext">{queueSummaryText}</p>
+            ) : null}
             {progress?.message ? (
               <p className="subtext">{progress.message}</p>
             ) : null}
-            {progress?.stage ? (
-              <p className="subtext">Current stage: {progress.stage}</p>
+            {stageLabel ? (
+              <p className="subtext">Current stage: {stageLabel}</p>
+            ) : null}
+            {jobStatus.status === "queued" ? (
+              <p className="subtext">This job is waiting in the queue. Results will update automatically when processing starts.</p>
             ) : null}
             {progressCounts && progressCounts.disabled ? (
               <p className="subtext">Item image generation is disabled.</p>
@@ -389,7 +412,15 @@ export default function AnalyzeTab() {
 
         <section>
         <h2>Results</h2>
-        {!analysis ? <p className="subtext">Analyze a photo to view detected style and items.</p> : null}
+        {activeAnalysisCount > 1 ? (
+          <p className="subtext">
+            Multiple jobs are in progress. This panel shows the most recently completed result while newer jobs are still processing.
+          </p>
+        ) : null}
+        {loading && !analysis ? (
+          <p className="subtext">Processing started. Results will appear here automatically when the job completes.</p>
+        ) : null}
+        {!analysis && !loading ? <p className="subtext">Analyze a photo to view detected style and items.</p> : null}
         {analysis ? (
           <>
             {detectedOutfits.length > 0 ? (

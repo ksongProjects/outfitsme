@@ -109,7 +109,8 @@
 
 .history-preview-body .modal-image {
   margin: 0;
-  max-height: calc(60vh - 96px);
+  max-width: min(20vw, 20vh);
+  max-height: min(20vw, 20vh);
 }
 
 @media (max-width: 900px) {

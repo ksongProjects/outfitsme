@@ -300,7 +300,7 @@ input[type="file"] {
   align-items: center;
   justify-content: center;
   padding: 16px;
-  overflow-y: auto;
+  overflow: hidden;
   pointer-events: none;
 }
 
@@ -309,8 +309,8 @@ input[type="file"] {
   border: 1px solid var(--line);
   border-radius: 14px;
   width: min(900px, 100%);
-  max-height: 60vh;
-  overflow: auto;
+  max-height: min(86vh, 760px);
+  overflow: hidden;
   padding: 16px;
   box-shadow: var(--shadow);
   pointer-events: auto;
@@ -320,16 +320,24 @@ input[type="file"] {
 }
 
 .modal-panel-no-scroll {
-  max-height: 60vh;
+  max-height: min(86vh, 760px);
   overflow: hidden;
 }
 
 .modal-panel-no-scroll .modal-image {
-  max-height: calc(60vh - 72px);
+  max-height: min(28vw, 28vh);
 }
 
 .modal-panel-sm {
   width: min(480px, 100%);
+}
+
+.modal-panel-fit {
+  width: min(680px, 100%);
+}
+
+.modal-panel-image {
+  width: min(460px, 100%);
 }
 
 .modal-header {
@@ -349,6 +357,7 @@ input[type="file"] {
   display: flex;
   flex-direction: column;
   gap: 10px;
+  overflow: hidden;
 }
 
 .modal-header h3 {
@@ -363,9 +372,10 @@ input[type="file"] {
 
 .modal-image {
   display: block;
-  width: 100%;
+  width: auto;
   height: auto;
-  max-height: 60vh;
+  max-width: min(20vw, 20vh);
+  max-height: min(20vw, 20vh);
   object-fit: contain;
   margin-top: 0;
   border: 1px solid var(--line);
@@ -373,11 +383,23 @@ input[type="file"] {
   background: #fff;
 }
 
+.outfit-detail-image {
+  max-width: min(28vw, 28vh);
+  max-height: min(28vw, 28vh);
+}
+
+.item-preview-image,
+.history-preview-image {
+  max-width: min(20vw, 20vh);
+  max-height: min(20vw, 20vh);
+}
+
 .outfit-details-layout {
   display: grid;
-  grid-template-columns: 1.1fr 0.9fr;
+  grid-template-columns: auto auto minmax(0, 1fr);
   gap: 12px;
   align-items: start;
+  overflow: hidden;
 }
 
 .info {

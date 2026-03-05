@@ -16,6 +16,7 @@ export default function BaseDialog({
     "modal-panel",
     size === "sm" ? "modal-panel-sm" : "",
     size === "fit" ? "modal-panel-fit" : "",
+    size === "image" ? "modal-panel-image" : "",
     scrollable ? "" : "modal-panel-no-scroll",
     panelClassName
   ].filter(Boolean).join(" ");
