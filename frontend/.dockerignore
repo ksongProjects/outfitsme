@@ -1,0 +1,13 @@
+# Ignore environment files
+.next/
+.env.local
+.env.local.example
+
+# Docker
+docker-compose.yml
+Dockerfile
+.docker
+.dockerignore
+
+# Ignore node_modules
+node_modules/
