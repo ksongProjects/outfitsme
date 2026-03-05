@@ -147,6 +147,23 @@ resource "aws_instance" "app_server" {
   }
 }
 
+resource "aws_eip" "app_server_eip" {
+  domain   = "vpc"
+  instance = aws_instance.app_server.id
+
+  tags = {
+    Name = "react-flask-production-eip"
+  }
+}
+
 output "ec2_instance_id" {
   value = aws_instance.app_server.id
+}
+
+output "ec2_elastic_ip" {
+  value = aws_eip.app_server_eip.public_ip
+}
+
+output "ec2_elastic_ip_allocation_id" {
+  value = aws_eip.app_server_eip.allocation_id
 }
