@@ -1,4 +1,4 @@
-name: CI/CD to EC2
+name: CI/CD Production
 
 on:
   push:
@@ -17,19 +17,42 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Build and Push
+      # Build Backend (Runtime envs, no build-args needed)
+      - name: Build and Push Backend
         uses: docker/build-push-action@v5
         with:
+          context: ./backend
           push: true
-          # Tagging with 'latest' AND the commit hash for easy rollbacks
-          tags: |
-            ${{ secrets.DOCKERHUB_USERNAME }}/my-app:latest
-            ${{ secrets.DOCKERHUB_USERNAME }}/my-app:${{ github.sha }}
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/flask-backend:latest
+
+      # Build Frontend (Baking NEXT_PUBLIC keys into the image)
+      - name: Build and Push Frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          push: true
+          tags: ${{ secrets.DOCKERHUB_USERNAME }}/react-frontend:latest
+          build-args: |
+            NEXT_PUBLIC_API_BASE_URL=${{ secrets.NEXT_PUBLIC_API_BASE_URL }}
+            NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+            NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
 
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
     steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Copy configurations to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ubuntu
+          key: ${{ secrets.EC2_SSH_KEY }}
+          source: "compose.yaml,proxy/nginx.conf"
+          target: "/home/ubuntu/app"
+
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -37,7 +60,23 @@ jobs:
           username: ubuntu
           key: ${{ secrets.EC2_SSH_KEY }}
           script: |
-            docker pull ${{ secrets.DOCKERHUB_USERNAME }}/my-app:latest
-            docker stop my-app-container || true
-            docker rm my-app-container || true
-            docker run -d --name my-app-container -p 80:8080 ${{ secrets.DOCKERHUB_USERNAME }}/my-app:latest
+            cd /home/ubuntu/app
+            
+            # Create the .env file for the Backend
+            cat <<EOF > .env
+            FLASK_ENV=production
+            DEBUG=false
+            PORT=5000
+            CORS_ALLOWED_ORIGINS=${{ secrets.CORS_ALLOWED_ORIGINS }}
+            SUPABASE_URL=${{ secrets.SUPABASE_URL }}
+            SUPABASE_SECRET_KEY=${{ secrets.SUPABASE_SECRET_KEY }}
+            SUPABASE_BUCKET=${{ secrets.SUPABASE_BUCKET }}
+            GEMINI_API_KEY=${{ secrets.GEMINI_API_KEY }}
+            GEMINI_MODEL=${{ secrets.GEMINI_MODEL }}
+            GEMINI_IMAGE_MODEL=${{ secrets.GEMINI_IMAGE_MODEL }}
+            SETTINGS_ENCRYPTION_KEY=${{ secrets.SETTINGS_ENCRYPTION_KEY }}
+            DEFAULT_ANALYSIS_MODEL=${{ secrets.DEFAULT_ANALYSIS_MODEL }}
+            EOF
+
+            docker compose pull
+            docker compose up -d --remove-orphans
