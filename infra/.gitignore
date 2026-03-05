@@ -3,4 +3,6 @@
 terraform.tfstate
 terraform.tfstate.*
 terraform.tfvars
-generated/
+tfplan
+*.tfplan
+crash.log

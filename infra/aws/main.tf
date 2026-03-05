@@ -13,6 +13,12 @@ provider "aws" {
   region = "us-west-2"
 }
 
+variable "terraform_execution_role_name" {
+  description = "IAM role name used to run Terraform. If set, a scoped iam:PassRole policy is attached."
+  type        = string
+  default     = null
+}
+
 data "aws_ami" "ubuntu_2404" {
   most_recent = true
   owners      = ["099720109477"] # Canonical
@@ -50,6 +56,28 @@ resource "aws_iam_role_policy_attachment" "ssm_attach" {
 resource "aws_iam_instance_profile" "ec2_profile" {
   name = "EC2_SSM_Profile"
   role = aws_iam_role.ec2_ssm_role.name
+}
+
+# Least-privilege PassRole grant for Terraform execution role.
+# This avoids wildcard iam:PassRole and limits passing only to EC2 service.
+resource "aws_iam_role_policy" "terraform_passrole_ec2_profile" {
+  count = var.terraform_execution_role_name == null ? 0 : 1
+
+  name = "ScopedPassRoleForEc2Profile"
+  role = var.terraform_execution_role_name
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [{
+      Effect   = "Allow"
+      Action   = "iam:PassRole"
+      Resource = aws_iam_role.ec2_ssm_role.arn
+      Condition = {
+        StringEquals = {
+          "iam:PassedToService" = "ec2.amazonaws.com"
+        }
+      }
+    }]
+  })
 }
 
 # 2. Security Group (Port 22 is intentionally closed; use SSM only)
