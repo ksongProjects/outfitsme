@@ -225,11 +225,17 @@ jobs:
           EOF
 
           REMOTE_B64="$(base64 -w0 "$RUNNER_TEMP/remote-deploy.sh")"
+          SSM_PARAMS="$(jq -cn \
+            --arg cmd1 "echo '$REMOTE_B64' | base64 -d > /tmp/remote-deploy.sh" \
+            --arg cmd2 "chmod +x /tmp/remote-deploy.sh" \
+            --arg cmd3 "sudo /tmp/remote-deploy.sh" \
+            '{commands: [$cmd1, $cmd2, $cmd3]}')"
+
           COMMAND_ID="$(aws ssm send-command \
             --instance-ids "$EC2_INSTANCE_ID" \
             --document-name "AWS-RunShellScript" \
             --comment "Deploy ${GITHUB_SHA}" \
-            --parameters commands="echo '$REMOTE_B64' | base64 -d > /tmp/remote-deploy.sh","chmod +x /tmp/remote-deploy.sh","sudo /tmp/remote-deploy.sh" \
+            --parameters "$SSM_PARAMS" \
             --query "Command.CommandId" \
             --output text)"
 
