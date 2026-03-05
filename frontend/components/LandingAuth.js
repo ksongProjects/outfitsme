@@ -67,37 +67,35 @@ export default function LandingAuth() {
             value={password}
             onChange={(event) => setPassword(event.target.value)}
           />
-          {authTab === "signup" ? (
-            <label className="remember-me-row">
-              <input
-                type="checkbox"
-                checked={acceptedTerms}
-                onChange={(event) => setAcceptedTerms(event.target.checked)}
-              />
-              <span>
-                I agree to the <Link href="/terms">Terms of Service</Link>.
-              </span>
-            </label>
-          ) : null}
+          <div className="form-btn-container">
+            {authTab === "signin" ? (
+              <label className="remember-me-row">
+                <input
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(event) => setRememberMe(event.target.checked)}
+                />
+                <span>Remember me</span>
+              </label>
+            ) : (
+              <label className="remember-me-row">
+                <input
+                  type="checkbox"
+                  checked={acceptedTerms}
+                  onChange={(event) => setAcceptedTerms(event.target.checked)}
+                />
+                <span>
+                  I agree to the <Link href="/terms">Terms of Service</Link>.
+                </span>
+              </label>
+            )}
 
-<div className="form-btn-container">
-          {authTab === "signin" ? (
-            <label className="remember-me-row">
-              <input
-                type="checkbox"
-                checked={rememberMe}
-                onChange={(event) => setRememberMe(event.target.checked)}
-              />
-              <span>Remember me</span>
-            </label>
-          ) : null}
-
-          {authTab === "signin" ? (
-            <BaseButton type="submit" variant="primary">Continue to dashboard</BaseButton>
-          ) : (
-            <BaseButton type="submit" variant="primary">Create account</BaseButton>
-          )}
- </div>
+            {authTab === "signin" ? (
+              <BaseButton type="submit" variant="primary">Continue to dashboard</BaseButton>
+            ) : (
+              <BaseButton type="submit" variant="primary">Create account</BaseButton>
+            )}
+          </div>
         </form>
       </section>
 

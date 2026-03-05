@@ -269,7 +269,14 @@ select {
 
 .form-btn-container {
   display: flex;
+  align-items: center;
   justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.form-btn-container .primary-btn {
+  margin-left: auto;
 }
 
 .remember-me-row {
