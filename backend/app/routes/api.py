@@ -9,7 +9,6 @@ from app.services.access_control import has_unlimited_ai_access, is_admin_role, 
 from app.services.analysis_jobs_service import enqueue_analysis_job_processing
 from app.config import settings
 from app.extensions import limiter
-from app.services.bedrock_service import BedrockNotConfiguredError
 from app.services.gemini_service import (
     GeminiNotConfiguredError,
     generate_outfitsme_image_with_gemini,
@@ -239,8 +238,6 @@ def analyze_outfit():
     except SupabaseNotConfiguredError as exc:
         return jsonify({"error": str(exc)}), 500
     except GeminiNotConfiguredError as exc:
-        return jsonify({"error": str(exc)}), 500
-    except BedrockNotConfiguredError as exc:
         return jsonify({"error": str(exc)}), 500
     except SettingsEncryptionError as exc:
         return jsonify({"error": str(exc)}), 500

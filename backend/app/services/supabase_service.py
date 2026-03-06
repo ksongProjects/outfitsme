@@ -1864,11 +1864,6 @@ def compose_outfit_from_items(
 def _empty_model_settings() -> dict:
     return {
         "user_role": "trial",
-        "is_premium": False,
-        "preferred_model": settings.DEFAULT_ANALYSIS_MODEL,
-        "aws_region": "",
-        "aws_bedrock_agent_id": "",
-        "aws_bedrock_agent_alias_id": "",
         "profile_gender": "",
         "profile_age": None,
         "profile_photo_path": "",
@@ -1880,45 +1875,23 @@ def _empty_model_settings() -> dict:
 
 def get_user_model_settings(user_id: str) -> dict:
     client = get_supabase_client()
-    try:
-        response = (
-            client.table("user_settings")
-            .select(
-                "user_role,is_premium,preferred_model,aws_region,aws_bedrock_agent_id,aws_bedrock_agent_alias_id,"
-                "profile_gender,profile_age,profile_photo_path,enable_outfit_image_generation,enable_online_store_search,enable_accessory_analysis"
-            )
-            .eq("user_id", user_id)
-            .limit(1)
-            .execute()
+    response = (
+        client.table("user_settings")
+        .select(
+            "user_role,profile_gender,profile_age,profile_photo_path,"
+            "enable_outfit_image_generation,enable_online_store_search,enable_accessory_analysis"
         )
-    except Exception:  # noqa: BLE001
-        # Backwards-compatible fallback for environments where the is_premium column
-        # hasn't been migrated yet.
-        response = (
-            client.table("user_settings")
-            .select(
-                "preferred_model,aws_region,aws_bedrock_agent_id,aws_bedrock_agent_alias_id,"
-                "profile_gender,profile_age,profile_photo_path,enable_outfit_image_generation,enable_online_store_search,enable_accessory_analysis"
-            )
-            .eq("user_id", user_id)
-            .limit(1)
-            .execute()
-        )
+        .eq("user_id", user_id)
+        .limit(1)
+        .execute()
+    )
     row = (response.data or [None])[0]
     if not row:
         return _empty_model_settings()
 
-    normalized_role = normalize_user_role(
-        row.get("user_role"),
-        legacy_is_premium=bool(row.get("is_premium"))
-    )
+    normalized_role = normalize_user_role(row.get("user_role"))
     return {
         "user_role": normalized_role,
-        "is_premium": normalized_role == "premium",
-        "preferred_model": row.get("preferred_model") or settings.DEFAULT_ANALYSIS_MODEL,
-        "aws_region": row.get("aws_region") or "",
-        "aws_bedrock_agent_id": row.get("aws_bedrock_agent_id") or "",
-        "aws_bedrock_agent_alias_id": row.get("aws_bedrock_agent_alias_id") or "",
         "profile_gender": row.get("profile_gender") or "",
         "profile_age": row.get("profile_age"),
         "profile_photo_path": row.get("profile_photo_path") or "",
@@ -1931,12 +1904,6 @@ def get_user_model_settings(user_id: str) -> dict:
 def upsert_user_model_settings(user_id: str, payload: dict) -> dict:
     client = get_supabase_client()
     current = get_user_model_settings(user_id)
-
-    preferred_model = str(payload.get("preferred_model", current.get("preferred_model", ""))).strip()
-
-    aws_region = payload.get("aws_region")
-    aws_bedrock_agent_id = payload.get("aws_bedrock_agent_id")
-    aws_bedrock_agent_alias_id = payload.get("aws_bedrock_agent_alias_id")
     profile_gender = payload.get("profile_gender")
     profile_age = payload.get("profile_age")
     profile_photo_path = payload.get("profile_photo_path")
@@ -1955,15 +1922,6 @@ def upsert_user_model_settings(user_id: str, payload: dict) -> dict:
     row = {
         "user_id": user_id,
         "user_role": current_role,
-        "is_premium": current_role == "premium",
-        "preferred_model": preferred_model or settings.DEFAULT_ANALYSIS_MODEL,
-        "aws_region": str(aws_region).strip() if aws_region is not None else current.get("aws_region", ""),
-        "aws_bedrock_agent_id": (
-            str(aws_bedrock_agent_id).strip() if aws_bedrock_agent_id is not None else current.get("aws_bedrock_agent_id", "")
-        ),
-        "aws_bedrock_agent_alias_id": (
-            str(aws_bedrock_agent_alias_id).strip() if aws_bedrock_agent_alias_id is not None else current.get("aws_bedrock_agent_alias_id", "")
-        ),
         "profile_gender": str(profile_gender).strip() if profile_gender is not None else current.get("profile_gender", ""),
         "profile_age": (
             int(profile_age)
@@ -1987,30 +1945,14 @@ def upsert_user_model_settings(user_id: str, payload: dict) -> dict:
         "updated_at": datetime.now(timezone.utc).isoformat()
     }
 
-    try:
-        (
-            client.table("user_settings")
-            .upsert(row, on_conflict="user_id")
-            .execute()
-        )
-    except Exception:  # noqa: BLE001
-        # Backwards-compatible fallback for environments where the is_premium column
-        # hasn't been migrated yet.
-        fallback_row = dict(row)
-        fallback_row.pop("is_premium", None)
-        (
-            client.table("user_settings")
-            .upsert(fallback_row, on_conflict="user_id")
-            .execute()
-        )
+    (
+        client.table("user_settings")
+        .upsert(row, on_conflict="user_id")
+        .execute()
+    )
     settings_row = get_user_model_settings(user_id)
     return {
         "user_role": settings_row.get("user_role", "trial"),
-        "is_premium": bool(settings_row.get("is_premium")),
-        "preferred_model": settings_row.get("preferred_model") or settings.DEFAULT_ANALYSIS_MODEL,
-        "aws_region": settings_row.get("aws_region", ""),
-        "aws_bedrock_agent_id": settings_row.get("aws_bedrock_agent_id", ""),
-        "aws_bedrock_agent_alias_id": settings_row.get("aws_bedrock_agent_alias_id", ""),
         "profile_gender": settings_row.get("profile_gender", ""),
         "profile_age": settings_row.get("profile_age"),
         "profile_photo_url": (
@@ -2074,8 +2016,16 @@ def get_user_cost_summary(user_id: str, month_start_iso: str) -> dict:
     composed_outfit_count = get_user_monthly_composed_outfit_count(user_id, month_start_iso)
     generated_item_image_count = get_user_monthly_generated_image_count(user_id, month_start_iso, "items")
     generated_outfit_image_count = get_user_monthly_generated_image_count(user_id, month_start_iso, "outfits")
-    analysis_cost = round(analysis_count * settings.ANALYSIS_COST_USD, 4)
-    outfit_image_cost = round(generated_outfit_image_count * settings.OUTFIT_IMAGE_COST_USD, 4)
+    analysis_unit_cost = round(
+        settings.ANALYSIS_INPUT_COST_USD + settings.ANALYSIS_OUTPUT_IMAGE_COST_USD,
+        4
+    )
+    outfit_image_unit_cost = round(
+        settings.OUTFIT_IMAGE_INPUT_COST_USD + settings.OUTFIT_IMAGE_OUTPUT_COST_USD,
+        4
+    )
+    analysis_cost = round(analysis_count * analysis_unit_cost, 4)
+    outfit_image_cost = round(generated_outfit_image_count * outfit_image_unit_cost, 4)
     item_image_cost = round(generated_item_image_count * settings.ITEM_IMAGE_COST_USD, 4)
     total_cost = round(analysis_cost + outfit_image_cost + item_image_cost, 4)
     return {
@@ -2084,9 +2034,18 @@ def get_user_cost_summary(user_id: str, month_start_iso: str) -> dict:
         "custom_outfit_generations": composed_outfit_count,
         "generated_item_images": generated_item_image_count,
         "generated_outfit_images": generated_outfit_image_count,
+        "cost_formula": {
+            "analysis": "1 text/image input call + 1 image output call per completed analysis",
+            "outfit_image_generation": "1 text/image input call + 1 image output call per generated outfit image",
+            "item_image_generation": "1 generated item image counted per stored item image output"
+        },
         "unit_costs_usd": {
-            "analysis": settings.ANALYSIS_COST_USD,
-            "outfit_image_generation": settings.OUTFIT_IMAGE_COST_USD,
+            "analysis": analysis_unit_cost,
+            "analysis_input": settings.ANALYSIS_INPUT_COST_USD,
+            "analysis_output_image": settings.ANALYSIS_OUTPUT_IMAGE_COST_USD,
+            "outfit_image_generation": outfit_image_unit_cost,
+            "outfit_image_input": settings.OUTFIT_IMAGE_INPUT_COST_USD,
+            "outfit_image_output": settings.OUTFIT_IMAGE_OUTPUT_COST_USD,
             "item_image_generation": settings.ITEM_IMAGE_COST_USD
         },
         "estimated_costs_usd": {

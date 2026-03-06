@@ -235,9 +235,17 @@ export default function SettingsTab() {
                 <li>Total: <strong>${costSummary.estimated_costs_usd?.total ?? 0}</strong></li>
               </ul>
               <p className="subtext">
-                Unit rates: analysis ${costSummary.unit_costs_usd?.analysis ?? 0}, outfit image $
-                {costSummary.unit_costs_usd?.outfit_image_generation ?? 0}, item image $
+                Unit rates: analysis ${costSummary.unit_costs_usd?.analysis ?? 0} (
+                ${costSummary.unit_costs_usd?.analysis_input ?? 0} input + $
+                {costSummary.unit_costs_usd?.analysis_output_image ?? 0} output), outfit image $
+                {costSummary.unit_costs_usd?.outfit_image_generation ?? 0} ($
+                {costSummary.unit_costs_usd?.outfit_image_input ?? 0} input + $
+                {costSummary.unit_costs_usd?.outfit_image_output ?? 0} output), item image $
                 {costSummary.unit_costs_usd?.item_image_generation ?? 0}
+              </p>
+              <p className="subtext">
+                Cost formulas: analysis uses 1 input call + 1 image output call, and OutfitsMe uses 1 input call +
+                1 image output call per generated outfit image.
               </p>
             </>
           ) : (

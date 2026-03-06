@@ -10,7 +10,6 @@ from PIL import Image, ImageOps
 
 from app.config import settings
 from app.services.access_control import has_accessory_access
-from app.services.bedrock_service import analyze_outfit_with_bedrock_agent
 from app.services.gemini_service import (
     analyze_outfit_with_gemini,
     generate_item_sprite_with_gemini
@@ -436,14 +435,6 @@ def process_analysis_job(job_id: str) -> None:
                 image_bytes,
                 mime_type,
                 model=chosen_model_id
-            )
-        elif model_entry["provider"] == "bedrock_agent":
-            analysis = analyze_outfit_with_bedrock_agent(
-                image_bytes=image_bytes,
-                mime_type=mime_type,
-                agent_id=user_settings.get("aws_bedrock_agent_id", ""),
-                agent_alias_id=user_settings.get("aws_bedrock_agent_alias_id", ""),
-                aws_region=user_settings.get("aws_region", "")
             )
         else:
             raise ValueError(f"Unsupported model provider: {model_entry['provider']}")
