@@ -74,9 +74,8 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Deploy via SSM and verify command status
+      - name: Package deploy bundle
         env:
-          EC2_INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
           CORS_ALLOWED_ORIGINS: ${{ secrets.CORS_ALLOWED_ORIGINS }}
@@ -93,58 +92,84 @@ jobs:
           set -euo pipefail
           : "${CERTBOT_EMAIL:?CERTBOT_EMAIL GitHub secret is required}"
 
-          COMPOSE_B64="$(base64 -w0 compose.yaml)"
-          NGINX_HTTP_B64="$(base64 -w0 proxy/nginx.http.conf)"
-          NGINX_SSL_B64="$(base64 -w0 proxy/nginx.ssl.conf)"
-          REMOTE_DEPLOY_B64="$(base64 -w0 deploy/remote-deploy.sh)"
-          DOCKERHUB_USERNAME_B64="$(printf '%s' "$DOCKERHUB_USERNAME" | base64 -w0)"
-          IMAGE_TAG_B64="$(printf '%s' "$IMAGE_TAG" | base64 -w0)"
-          CORS_ALLOWED_ORIGINS_B64="$(printf '%s' "$CORS_ALLOWED_ORIGINS" | base64 -w0)"
-          SUPABASE_URL_B64="$(printf '%s' "$SUPABASE_URL" | base64 -w0)"
-          SUPABASE_SECRET_KEY_B64="$(printf '%s' "$SUPABASE_SECRET_KEY" | base64 -w0)"
-          SUPABASE_BUCKET_B64="$(printf '%s' "$SUPABASE_BUCKET" | base64 -w0)"
-          GEMINI_API_KEY_B64="$(printf '%s' "$GEMINI_API_KEY" | base64 -w0)"
-          GEMINI_MODEL_B64="$(printf '%s' "$GEMINI_MODEL" | base64 -w0)"
-          GEMINI_IMAGE_MODEL_B64="$(printf '%s' "$GEMINI_IMAGE_MODEL" | base64 -w0)"
-          SETTINGS_ENCRYPTION_KEY_B64="$(printf '%s' "$SETTINGS_ENCRYPTION_KEY" | base64 -w0)"
-          DEFAULT_ANALYSIS_MODEL_B64="$(printf '%s' "$DEFAULT_ANALYSIS_MODEL" | base64 -w0)"
-          CERTBOT_EMAIL_B64="$(printf '%s' "$CERTBOT_EMAIL" | base64 -w0)"
+          BUNDLE_DIR="$RUNNER_TEMP/deploy-bundle"
+          mkdir -p "$BUNDLE_DIR/proxy" "$BUNDLE_DIR/deploy"
+
+          cp compose.yaml "$BUNDLE_DIR/compose.yaml"
+          cp proxy/nginx.http.conf "$BUNDLE_DIR/proxy/nginx.http.conf"
+          cp proxy/nginx.ssl.conf "$BUNDLE_DIR/proxy/nginx.ssl.conf"
+          cp deploy/remote-deploy.sh "$BUNDLE_DIR/deploy/remote-deploy.sh"
+          chmod +x "$BUNDLE_DIR/deploy/remote-deploy.sh"
+
+          {
+            printf 'export APP_DIR=%q\n' "$APP_DIR"
+            printf 'export DOCKERHUB_USERNAME=%q\n' "$DOCKERHUB_USERNAME"
+            printf 'export IMAGE_TAG=%q\n' "$IMAGE_TAG"
+            printf 'export CORS_ALLOWED_ORIGINS=%q\n' "$CORS_ALLOWED_ORIGINS"
+            printf 'export SUPABASE_URL=%q\n' "$SUPABASE_URL"
+            printf 'export SUPABASE_SECRET_KEY=%q\n' "$SUPABASE_SECRET_KEY"
+            printf 'export SUPABASE_BUCKET=%q\n' "$SUPABASE_BUCKET"
+            printf 'export GEMINI_API_KEY=%q\n' "$GEMINI_API_KEY"
+            printf 'export GEMINI_MODEL=%q\n' "$GEMINI_MODEL"
+            printf 'export GEMINI_IMAGE_MODEL=%q\n' "$GEMINI_IMAGE_MODEL"
+            printf 'export SETTINGS_ENCRYPTION_KEY=%q\n' "$SETTINGS_ENCRYPTION_KEY"
+            printf 'export DEFAULT_ANALYSIS_MODEL=%q\n' "$DEFAULT_ANALYSIS_MODEL"
+            printf 'export CERTBOT_EMAIL=%q\n' "$CERTBOT_EMAIL"
+          } > "$BUNDLE_DIR/deploy.env.sh"
+
+          tar -C "$BUNDLE_DIR" -czf "$RUNNER_TEMP/outfitme-deploy.tgz" .
+
+      - name: Upload deploy bundle to S3
+        id: bundle
+        env:
+          DEPLOY_ARTIFACTS_BUCKET: ${{ secrets.DEPLOY_ARTIFACTS_BUCKET }}
+        run: |
+          set -euo pipefail
+          : "${DEPLOY_ARTIFACTS_BUCKET:?DEPLOY_ARTIFACTS_BUCKET GitHub secret is required}"
+
+          S3_KEY="deploy-bundles/${GITHUB_SHA}/outfitme-deploy.tgz"
+          aws s3 cp "$RUNNER_TEMP/outfitme-deploy.tgz" "s3://${DEPLOY_ARTIFACTS_BUCKET}/${S3_KEY}"
+          echo "s3_bucket=${DEPLOY_ARTIFACTS_BUCKET}" >> "$GITHUB_OUTPUT"
+          echo "s3_key=${S3_KEY}" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy via SSM and verify command status
+        env:
+          EC2_INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
+          DEPLOY_ARTIFACTS_BUCKET: ${{ steps.bundle.outputs.s3_bucket }}
+          DEPLOY_ARTIFACTS_KEY: ${{ steps.bundle.outputs.s3_key }}
+        run: |
+          set -euo pipefail
 
           cat > "$RUNNER_TEMP/remote-bootstrap.sh" <<EOF
           #!/usr/bin/env bash
           set -euo pipefail
 
-          mkdir -p "${APP_DIR}/proxy" "${APP_DIR}/deploy"
+          APP_DIR='${APP_DIR}'
+          BUNDLE_PATH="/tmp/outfitme-deploy.tgz"
+          EXTRACT_DIR="/tmp/outfitme-deploy"
 
-          printf '%s' '${COMPOSE_B64}' | base64 -d > "${APP_DIR}/compose.yaml"
-          printf '%s' '${NGINX_HTTP_B64}' | base64 -d > "${APP_DIR}/proxy/nginx.http.conf"
-          printf '%s' '${NGINX_SSL_B64}' | base64 -d > "${APP_DIR}/proxy/nginx.ssl.conf"
-          printf '%s' '${REMOTE_DEPLOY_B64}' | base64 -d > "${APP_DIR}/deploy/remote-deploy.sh"
+          rm -rf "\${EXTRACT_DIR}"
+          mkdir -p "\${EXTRACT_DIR}" "\${APP_DIR}"
 
-          chmod +x "${APP_DIR}/deploy/remote-deploy.sh"
+          aws s3 cp "s3://${DEPLOY_ARTIFACTS_BUCKET}/${DEPLOY_ARTIFACTS_KEY}" "\${BUNDLE_PATH}"
+          tar -C "\${EXTRACT_DIR}" -xzf "\${BUNDLE_PATH}"
 
-          export APP_DIR='${APP_DIR}'
-          export DOCKERHUB_USERNAME="$(printf '%s' '${DOCKERHUB_USERNAME_B64}' | base64 -d)"
-          export IMAGE_TAG="$(printf '%s' '${IMAGE_TAG_B64}' | base64 -d)"
-          export CORS_ALLOWED_ORIGINS="$(printf '%s' '${CORS_ALLOWED_ORIGINS_B64}' | base64 -d)"
-          export SUPABASE_URL="$(printf '%s' '${SUPABASE_URL_B64}' | base64 -d)"
-          export SUPABASE_SECRET_KEY="$(printf '%s' '${SUPABASE_SECRET_KEY_B64}' | base64 -d)"
-          export SUPABASE_BUCKET="$(printf '%s' '${SUPABASE_BUCKET_B64}' | base64 -d)"
-          export GEMINI_API_KEY="$(printf '%s' '${GEMINI_API_KEY_B64}' | base64 -d)"
-          export GEMINI_MODEL="$(printf '%s' '${GEMINI_MODEL_B64}' | base64 -d)"
-          export GEMINI_IMAGE_MODEL="$(printf '%s' '${GEMINI_IMAGE_MODEL_B64}' | base64 -d)"
-          export SETTINGS_ENCRYPTION_KEY="$(printf '%s' '${SETTINGS_ENCRYPTION_KEY_B64}' | base64 -d)"
-          export DEFAULT_ANALYSIS_MODEL="$(printf '%s' '${DEFAULT_ANALYSIS_MODEL_B64}' | base64 -d)"
-          export CERTBOT_EMAIL="$(printf '%s' '${CERTBOT_EMAIL_B64}' | base64 -d)"
+          mkdir -p "\${APP_DIR}/proxy" "\${APP_DIR}/deploy"
+          cp "\${EXTRACT_DIR}/compose.yaml" "\${APP_DIR}/compose.yaml"
+          cp "\${EXTRACT_DIR}/proxy/nginx.http.conf" "\${APP_DIR}/proxy/nginx.http.conf"
+          cp "\${EXTRACT_DIR}/proxy/nginx.ssl.conf" "\${APP_DIR}/proxy/nginx.ssl.conf"
+          cp "\${EXTRACT_DIR}/deploy/remote-deploy.sh" "\${APP_DIR}/deploy/remote-deploy.sh"
+          chmod +x "\${APP_DIR}/deploy/remote-deploy.sh"
 
-          sudo -E bash "${APP_DIR}/deploy/remote-deploy.sh"
+          source "\${EXTRACT_DIR}/deploy.env.sh"
+          bash "\${APP_DIR}/deploy/remote-deploy.sh"
           EOF
 
           REMOTE_B64="$(base64 -w0 "$RUNNER_TEMP/remote-bootstrap.sh")"
           SSM_PARAMS="$(jq -cn \
             --arg cmd1 "printf '%s' '$REMOTE_B64' | base64 -d > /tmp/remote-deploy.sh" \
             --arg cmd2 "chmod +x /tmp/remote-deploy.sh" \
-            --arg cmd3 "sudo /tmp/remote-deploy.sh" \
+            --arg cmd3 "bash /tmp/remote-deploy.sh" \
             '{commands: [$cmd1, $cmd2, $cmd3]}')"
 
           COMMAND_ID="$(aws ssm send-command \
@@ -179,3 +204,9 @@ jobs:
               --output json || true
             exit 1
           fi
+
+      - name: Remove deploy bundle from S3
+        if: ${{ always() && steps.bundle.outputs.s3_bucket != '' && steps.bundle.outputs.s3_key != '' }}
+        run: |
+          set -euo pipefail
+          aws s3 rm "s3://${{ steps.bundle.outputs.s3_bucket }}/${{ steps.bundle.outputs.s3_key }}" || true

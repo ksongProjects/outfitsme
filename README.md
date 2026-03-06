@@ -139,6 +139,11 @@ Production deploy assets:
 
 The production GitHub Actions workflow builds the frontend and backend images, pushes them to Docker Hub, uploads the checked-in deploy assets to the EC2 host via SSM, and runs `deploy/remote-deploy.sh`. Certificate renewal is handled on the instance via cron rather than on every app deploy.
 
+Deploy workflow requirements:
+- Add GitHub Actions secret `DEPLOY_ARTIFACTS_BUCKET` for the private S3 bucket used to stage the deploy bundle.
+- The GitHub AWS credentials must be allowed to `s3:PutObject` and `s3:DeleteObject` on that bucket.
+- The EC2 instance role used by SSM must be allowed to `s3:GetObject` on that bucket.
+
 ## API Endpoints
 
 - `GET /health`
