@@ -12,6 +12,8 @@ from supabase import Client, create_client
 
 from app.config import settings
 from app.services.access_control import normalize_user_role
+
+
 class SupabaseNotConfiguredError(RuntimeError):
     pass
 
@@ -60,6 +62,10 @@ ACCESSORY_ITEM_TYPES = {
     "Watch",
     "Sunglasses",
 }
+
+OUTFIT_SOURCE_PHOTO_ANALYSIS = "photo_analysis"
+OUTFIT_SOURCE_CUSTOM = "custom_outfit"
+OUTFIT_SOURCE_OUTFITSME = "outfitsme_generated"
 
 
 def _title_case_label(value: str) -> str:
@@ -113,6 +119,13 @@ def _safe_outfit_index(value) -> int:
         return 0
 
 
+def _normalize_outfit_source_type(value: str | None, fallback: str = OUTFIT_SOURCE_PHOTO_ANALYSIS) -> str:
+    normalized = str(value or "").strip().lower()
+    if normalized in {OUTFIT_SOURCE_PHOTO_ANALYSIS, OUTFIT_SOURCE_CUSTOM, OUTFIT_SOURCE_OUTFITSME}:
+        return normalized
+    return fallback
+
+
 def _insert_outfits_and_items(
     client: Client,
     *,
@@ -120,8 +133,12 @@ def _insert_outfits_and_items(
     photo_id: str,
     analysis_id: str,
     analysis_created_at: str | None,
-    analysis: dict
+    analysis: dict,
+    source_type: str = OUTFIT_SOURCE_PHOTO_ANALYSIS,
+    source_outfit_id: str | None = None,
+    generated_image_path: str | None = None
 ) -> list[dict]:
+    normalized_source_type = _normalize_outfit_source_type(source_type)
     raw_outfits = analysis.get("outfits", [])
     normalized_outfits = []
     if isinstance(raw_outfits, list) and raw_outfits:
@@ -134,6 +151,9 @@ def _insert_outfits_and_items(
                     "analysis_id": analysis_id,
                     "user_id": user_id,
                     "outfit_index": index,
+                    "source_type": normalized_source_type,
+                    "source_outfit_id": source_outfit_id,
+                    "generated_image_path": generated_image_path,
                     "style_label": _normalize_label(outfit.get("style"), "Unlabeled"),
                     "created_at": analysis_created_at or datetime.now(timezone.utc).isoformat(),
                     "updated_at": datetime.now(timezone.utc).isoformat()
@@ -147,6 +167,9 @@ def _insert_outfits_and_items(
                 "analysis_id": analysis_id,
                 "user_id": user_id,
                 "outfit_index": 0,
+                "source_type": normalized_source_type,
+                "source_outfit_id": source_outfit_id,
+                "generated_image_path": generated_image_path,
                 "style_label": _normalize_label(analysis.get("style"), "Unlabeled"),
                 "created_at": analysis_created_at or datetime.now(timezone.utc).isoformat(),
                 "updated_at": datetime.now(timezone.utc).isoformat()
@@ -362,7 +385,8 @@ def _persist_analysis_for_photo(client: Client, user_id: str, photo_row: dict, a
         photo_id=photo_row["id"],
         analysis_id=analysis_row["id"],
         analysis_created_at=analysis_row.get("created_at"),
-        analysis=analysis
+        analysis=analysis,
+        source_type=OUTFIT_SOURCE_PHOTO_ANALYSIS
     )
 
     item_rows = []
@@ -597,6 +621,9 @@ def list_wardrobe(user_id: str, limit: int = 20) -> list[dict]:
                     "analysis_id": row.get("analysis_id"),
                     "analysis_created_at": None,
                     "style_label": _normalize_label(row.get("style_label"), "Unlabeled"),
+                    "source_type": _normalize_outfit_source_type(row.get("source_type")),
+                    "source_outfit_id": row.get("source_outfit_id"),
+                    "generated_image_path": row.get("generated_image_path") or "",
                     "outfit_index": outfit_index,
                     "outfit_count": int(row.get("outfit_count") or 1),
                     "outfit_items_count": int(row.get("outfit_items_count") or 0)
@@ -609,7 +636,7 @@ def list_wardrobe(user_id: str, limit: int = 20) -> list[dict]:
 
     outfits_response = (
         client.table("outfits")
-        .select("id,photo_id,analysis_id,outfit_index,style_label,created_at")
+        .select("id,photo_id,analysis_id,outfit_index,style_label,created_at,source_type,source_outfit_id,generated_image_path")
         .eq("user_id", user_id)
         .order("created_at", desc=True)
         .limit(limit)
@@ -666,7 +693,12 @@ def list_wardrobe(user_id: str, limit: int = 20) -> list[dict]:
     for outfit in outfits:
         photo = photos_by_id.get(outfit.get("photo_id")) or {}
         outfit_id = outfit.get("id")
-        storage_path = photo.get("storage_path") or ""
+        generated_image_path = outfit.get("generated_image_path") or ""
+        storage_path = (
+            generated_image_path
+            if _normalize_outfit_source_type(outfit.get("source_type")) == OUTFIT_SOURCE_CUSTOM and generated_image_path
+            else (photo.get("storage_path") or "")
+        )
         wardrobe.append(
             {
                 "row_id": outfit_id or f"{outfit.get('photo_id')}:{outfit.get('outfit_index', 0)}",
@@ -678,6 +710,9 @@ def list_wardrobe(user_id: str, limit: int = 20) -> list[dict]:
                 "analysis_id": outfit.get("analysis_id"),
                 "analysis_created_at": None,
                 "style_label": _normalize_label(outfit.get("style_label"), "Unlabeled"),
+                "source_type": _normalize_outfit_source_type(outfit.get("source_type")),
+                "source_outfit_id": outfit.get("source_outfit_id"),
+                "generated_image_path": generated_image_path,
                 "outfit_index": _safe_outfit_index(outfit.get("outfit_index")),
                 "outfit_count": counts_by_photo.get(outfit.get("photo_id"), 1),
                 "outfit_items_count": item_counts_by_outfit.get(outfit_id, 0)
@@ -966,7 +1001,107 @@ def save_generated_outfit_image(user_id: str, outfit_id: str, data_uri: str) -> 
     )
     return {
         "storage_path": storage_path,
+        "content_type": content_type,
         "image_url": _get_signed_image_url_with_client(client, storage_path, expires_in_seconds=3600)
+    }
+
+
+def create_outfitsme_generated_outfit(
+    user_id: str,
+    *,
+    source_photo_id: str,
+    source_outfit_id: str | None,
+    source_outfit_index: int,
+    style_label: str,
+    items: list[dict],
+    generated_storage_path: str
+) -> dict:
+    client = get_supabase_client()
+    style = _normalize_label(style_label, "Outfit")
+    normalized_items = [_normalize_item_fields(item) for item in (items or []) if isinstance(item, dict)]
+    photo_row = create_photo_record(user_id, generated_storage_path, client=client)
+    raw_json = {
+        "style": style,
+        "items": normalized_items,
+        "outfits": [
+            {
+                "style": style,
+                "items": normalized_items
+            }
+        ],
+        "outfitsme_generated": True,
+        "source_photo_id": source_photo_id,
+        "source_outfit_id": source_outfit_id,
+        "source_outfit_index": _safe_outfit_index(source_outfit_index)
+    }
+    analysis_insert = (
+        client.table("outfit_analyses")
+        .insert(
+            {
+                "photo_id": photo_row["id"],
+                "user_id": user_id,
+                "style_label": style,
+                "raw_json": raw_json
+            }
+        )
+        .execute()
+    )
+    analysis_row = analysis_insert.data[0]
+    outfits = _insert_outfits_and_items(
+        client,
+        user_id=user_id,
+        photo_id=photo_row["id"],
+        analysis_id=analysis_row["id"],
+        analysis_created_at=analysis_row.get("created_at"),
+        analysis=raw_json,
+        source_type=OUTFIT_SOURCE_OUTFITSME,
+        source_outfit_id=source_outfit_id
+    )
+    generated_outfit = (outfits or [None])[0] or {}
+    return {
+        "photo_id": photo_row["id"],
+        "analysis_id": analysis_row["id"],
+        "outfit_id": generated_outfit.get("id"),
+        "outfit_index": _safe_outfit_index(generated_outfit.get("outfit_index")),
+        "style_label": style,
+        "source_type": OUTFIT_SOURCE_OUTFITSME,
+        "image_url": _get_signed_image_url_with_client(client, generated_storage_path, expires_in_seconds=3600)
+    }
+
+
+def attach_generated_image_to_outfit(user_id: str, outfit_id: str, generated_storage_path: str) -> dict | None:
+    client = get_supabase_client()
+    existing_response = (
+        client.table("outfits")
+        .select("id,photo_id,outfit_index,source_type")
+        .eq("id", outfit_id)
+        .eq("user_id", user_id)
+        .limit(1)
+        .execute()
+    )
+    existing_row = (existing_response.data or [None])[0]
+    if not existing_row:
+        return None
+
+    now_iso = datetime.now(timezone.utc).isoformat()
+    (
+        client.table("outfits")
+        .update(
+            {
+                "generated_image_path": generated_storage_path,
+                "updated_at": now_iso
+            }
+        )
+        .eq("id", outfit_id)
+        .eq("user_id", user_id)
+        .execute()
+    )
+    return {
+        "outfit_id": existing_row.get("id"),
+        "photo_id": existing_row.get("photo_id"),
+        "outfit_index": _safe_outfit_index(existing_row.get("outfit_index")),
+        "source_type": _normalize_outfit_source_type(existing_row.get("source_type")),
+        "generated_image_path": generated_storage_path
     }
 
 
@@ -1257,7 +1392,7 @@ def update_wardrobe_outfit_style_label(user_id: str, outfit_id: str, style_label
 
     existing_response = (
         client.table("outfits")
-        .select("id,photo_id,outfit_index")
+        .select("id,photo_id,outfit_index,source_type")
         .eq("id", outfit_id)
         .eq("user_id", user_id)
         .limit(1)
@@ -1284,7 +1419,8 @@ def update_wardrobe_outfit_style_label(user_id: str, outfit_id: str, style_label
         "outfit_id": existing_row.get("id"),
         "photo_id": existing_row.get("photo_id"),
         "outfit_index": _safe_outfit_index(existing_row.get("outfit_index")),
-        "style_label": normalized_style_label
+        "style_label": normalized_style_label,
+        "source_type": _normalize_outfit_source_type(existing_row.get("source_type"))
     }
 
 
@@ -1317,7 +1453,7 @@ def get_wardrobe_photo_details(user_id: str, photo_id: str, outfit_index: int | 
 
     outfit_rows_response = (
         client.table("outfits")
-        .select("id,outfit_index,style_label")
+        .select("id,outfit_index,style_label,source_type,source_outfit_id,generated_image_path")
         .eq("photo_id", photo_id)
         .eq("user_id", user_id)
         .execute()
@@ -1399,6 +1535,9 @@ def get_wardrobe_photo_details(user_id: str, photo_id: str, outfit_index: int | 
                 {
                     "outfit_id": outfit_row.get("id"),
                     "outfit_index": index,
+                    "source_type": _normalize_outfit_source_type(outfit_row.get("source_type")),
+                    "source_outfit_id": outfit_row.get("source_outfit_id"),
+                    "generated_image_path": outfit_row.get("generated_image_path") or "",
                     "style": _normalize_label(
                         outfit_row.get("style_label") or prepared.get("style"),
                         "Unlabeled"
@@ -1412,10 +1551,40 @@ def get_wardrobe_photo_details(user_id: str, photo_id: str, outfit_index: int | 
 
     storage_path = photo_row.get("storage_path") or ""
     image_url = resolve_signed_url(storage_path)
+    source_outfit_image_url = None
 
     selected_outfit = None
     if outfit_index is not None:
         selected_outfit = next((outfit for outfit in outfits if outfit.get("outfit_index") == outfit_index), None)
+        selected_outfit_row = outfits_by_index.get(_safe_outfit_index(outfit_index)) or {}
+        selected_outfit_generated_path = selected_outfit_row.get("generated_image_path") or ""
+        selected_outfit_source_type = _normalize_outfit_source_type(selected_outfit_row.get("source_type"))
+        if selected_outfit_source_type == OUTFIT_SOURCE_CUSTOM and selected_outfit_generated_path:
+            image_url = resolve_signed_url(selected_outfit_generated_path) or image_url
+        if selected_outfit_source_type == OUTFIT_SOURCE_OUTFITSME:
+            source_outfit_id = selected_outfit_row.get("source_outfit_id")
+            if source_outfit_id:
+                source_outfit_response = (
+                    client.table("outfits")
+                    .select("id,photo_id")
+                    .eq("id", source_outfit_id)
+                    .eq("user_id", user_id)
+                    .limit(1)
+                    .execute()
+                )
+                source_outfit_row = (source_outfit_response.data or [None])[0]
+                source_photo_id = source_outfit_row.get("photo_id") if source_outfit_row else None
+                if source_photo_id:
+                    source_photo_response = (
+                        client.table("photos")
+                        .select("storage_path")
+                        .eq("id", source_photo_id)
+                        .eq("user_id", user_id)
+                        .limit(1)
+                        .execute()
+                    )
+                    source_photo_row = (source_photo_response.data or [None])[0]
+                    source_outfit_image_url = resolve_signed_url((source_photo_row or {}).get("storage_path") or "")
 
     return {
         "photo_id": photo_row["id"],
@@ -1424,6 +1593,7 @@ def get_wardrobe_photo_details(user_id: str, photo_id: str, outfit_index: int | 
         "style_label": _normalize_label(analysis_row.get("style_label"), "Unlabeled") if analysis_row else None,
         "analysis_created_at": analysis_row["created_at"] if analysis_row else None,
         "image_url": image_url,
+        "source_outfit_image_url": source_outfit_image_url,
         "outfits": outfits,
         "selected_outfit_index": outfit_index,
         "selected_outfit": selected_outfit
@@ -1659,7 +1829,8 @@ def compose_outfit_from_items(
         photo_id=photo_row["id"],
         analysis_id=analysis_row["id"],
         analysis_created_at=analysis_row.get("created_at"),
-        analysis=raw_json
+        analysis=raw_json,
+        source_type=OUTFIT_SOURCE_CUSTOM
     )
 
     now_iso = datetime.now(timezone.utc).isoformat()

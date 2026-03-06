@@ -27,47 +27,49 @@ export default function HistoryTab() {
 
       {historyMessage ? <p className="subtext">{historyMessage}</p> : null}
 
-      <table className="data-table">
-        <thead>
-          <tr>
-            <th>Photo</th>
-            <th>Model</th>
-            <th>Status</th>
-            <th>Outfits</th>
-            <th>Created</th>
-            <th>Completed</th>
-          </tr>
-        </thead>
-        <tbody>
-          {history.map((entry) => (
-            <tr key={entry.job_id}>
-              <td>
-                <div className="history-photo-cell">
-                  {entry.image_url ? (
-                    <BaseButton
-                      type="button"
-                      variant="ghost"
-                      className="history-thumb-btn"
-                      onClick={() => setPreviewEntry(entry)}
-                      aria-label="Open photo preview"
-                      title="Open photo preview"
-                    >
-                      <img className="history-thumb" src={entry.image_url} alt="Analyzed outfit" />
-                    </BaseButton>
-                  ) : (
-                    <span className="subtext">No preview</span>
-                  )}
-                </div>
-              </td>
-              <td>{entry.analysis_model || "Unknown"}</td>
-              <td>{entry.status || "Unknown"}</td>
-              <td>{entry.outfit_count ?? 0}</td>
-              <td>{entry.created_at ? new Date(entry.created_at).toLocaleString() : "-"}</td>
-              <td>{entry.completed_at ? new Date(entry.completed_at).toLocaleString() : "-"}</td>
+      <div className="table-scroll-wrap">
+        <table className="data-table">
+          <thead>
+            <tr>
+              <th>Photo</th>
+              <th>Model</th>
+              <th>Status</th>
+              <th>Outfits</th>
+              <th>Created</th>
+              <th>Completed</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {history.map((entry) => (
+              <tr key={entry.job_id}>
+                <td>
+                  <div className="history-photo-cell">
+                    {entry.image_url ? (
+                      <BaseButton
+                        type="button"
+                        variant="ghost"
+                        className="history-thumb-btn"
+                        onClick={() => setPreviewEntry(entry)}
+                        aria-label="Open photo preview"
+                        title="Open photo preview"
+                      >
+                        <img className="history-thumb" src={entry.image_url} alt="Analyzed outfit" />
+                      </BaseButton>
+                    ) : (
+                      <span className="subtext">No preview</span>
+                    )}
+                  </div>
+                </td>
+                <td>{entry.analysis_model || "Unknown"}</td>
+                <td>{entry.status || "Unknown"}</td>
+                <td>{entry.outfit_count ?? 0}</td>
+                <td>{entry.created_at ? new Date(entry.created_at).toLocaleString() : "-"}</td>
+                <td>{entry.completed_at ? new Date(entry.completed_at).toLocaleString() : "-"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
       <BaseDialog
         open={Boolean(previewEntry)}

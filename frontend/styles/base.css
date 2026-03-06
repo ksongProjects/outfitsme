@@ -447,8 +447,13 @@ select.text-input {
 .tab-btn,
 .ghost-btn,
 .primary-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
   border-radius: 999px;
   padding: 10px 16px;
+  min-height: 44px;
   border: 1px solid transparent;
   cursor: pointer;
   transition: all 0.2s ease;
@@ -471,8 +476,8 @@ select.text-input {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 34px;
-  height: 34px;
+  width: 44px;
+  height: 44px;
   border-radius: 999px;
   border: 1px solid var(--btn-ghost-border);
   background: var(--btn-ghost-bg);
@@ -549,6 +554,40 @@ select.text-input {
   margin: 0 0 4px;
   font-size: clamp(1.5rem, 2.4vw, 2rem);
   line-height: 1.15;
+}
+
+@media (max-width: 640px) {
+  .landing,
+  .dashboard {
+    padding: 16px 12px 40px;
+  }
+
+  .button-row,
+  .form-btn-container {
+    gap: 10px;
+  }
+
+  .button-row > .ghost-btn,
+  .button-row > .primary-btn,
+  .form-btn-container > .ghost-btn,
+  .form-btn-container > .primary-btn {
+    width: 100%;
+    justify-content: center;
+  }
+
+  .tab-row {
+    width: 100%;
+  }
+
+  .tab-row .tab-btn {
+    flex: 1 1 calc(50% - 4px);
+    justify-content: center;
+    text-align: center;
+  }
+
+  .account-menu {
+    min-width: 180px;
+  }
 }
 
 

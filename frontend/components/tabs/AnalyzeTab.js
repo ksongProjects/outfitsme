@@ -63,6 +63,7 @@ export default function AnalyzeTab() {
     : "";
   const statusLabel = stageLabelByKey[jobStatus?.status || ""] || jobStatus?.status || "Pending";
   const stageLabel = stageLabelByKey[progress?.stage || ""] || progress?.stage || "";
+  const analysisInProgress = loading || ["queued", "processing_started"].includes(jobStatus?.status || "");
 
   const clamp01 = (value) => Math.min(1, Math.max(0, value));
   const MIN_CROP_SIZE = 0.01;
@@ -353,7 +354,7 @@ export default function AnalyzeTab() {
           fileName={fileName}
           onFileSelect={onFileDrop}
           title="Drag and drop an image here"
-          subtext="or click to browse files"
+          subtext="Choose an existing image or take a new photo"
           emptyText="No file selected"
         />
         {previewUrl ? (
@@ -402,13 +403,31 @@ export default function AnalyzeTab() {
             </BaseButton>
           ) : null}
           <BaseButton variant="primary" onClick={runAnalysis} disabled={disabled}>
-            {loading ? "Queue another photo" : "Analyze selection"}
+            {loading ? (
+              <>
+                <span className="button-spinner" aria-hidden="true" />
+                Queue another photo
+              </>
+            ) : (
+              "Analyze selection"
+            )}
           </BaseButton>
         </div>
         </section>
 
         <section>
         <h2>Results</h2>
+        {analysisInProgress ? (
+          <div className="loading-panel" role="status" aria-live="polite">
+            <span className="loading-spinner loading-spinner-lg" aria-hidden="true" />
+            <div>
+              <p className="loading-panel-title">Analysis in progress</p>
+              <p className="subtext">
+                {progress?.message || "Your photo is being analyzed. Results will appear here automatically."}
+              </p>
+            </div>
+          </div>
+        ) : null}
         {activeAnalysisCount > 1 ? (
           <p className="subtext">
             Multiple jobs are in progress. This panel shows the most recently completed result while newer jobs are still processing.
@@ -443,7 +462,14 @@ export default function AnalyzeTab() {
                                 : "Profile photo required for OutfitsMe"
                         }
                       >
-                        {outfitMeLoading ? "OutfitsMe..." : "OutfitsMe"}
+                        {outfitMeLoading ? (
+                          <>
+                            <span className="button-spinner" aria-hidden="true" />
+                            Generating...
+                          </>
+                        ) : (
+                          "OutfitsMe"
+                        )}
                       </BaseButton>
                     </div>
                     <ul className="analysis-items">
@@ -463,6 +489,14 @@ export default function AnalyzeTab() {
                         alt={`OutfitsMe preview for outfit ${index + 1}`}
                         className="analysis-outfitsme-preview"
                       />
+                    ) : outfitMeLoading ? (
+                      <div className="loading-panel loading-panel-inline" role="status" aria-live="polite">
+                        <span className="loading-spinner" aria-hidden="true" />
+                        <div>
+                          <p className="loading-panel-title">Generating OutfitsMe preview</p>
+                          <p className="subtext">Creating an image using the selected outfit and your reference photo.</p>
+                        </div>
+                      </div>
                     ) : null}
                   </div>
                 ))}
@@ -488,7 +522,14 @@ export default function AnalyzeTab() {
                             : "Profile photo required for OutfitsMe"
                     }
                   >
-                    {outfitMeLoading ? "OutfitsMe..." : "OutfitsMe"}
+                    {outfitMeLoading ? (
+                      <>
+                        <span className="button-spinner" aria-hidden="true" />
+                        Generating...
+                      </>
+                    ) : (
+                      "OutfitsMe"
+                    )}
                   </BaseButton>
                 </div>
                 <ul className="analysis-items">
@@ -508,6 +549,14 @@ export default function AnalyzeTab() {
                     alt="OutfitsMe preview"
                     className="analysis-outfitsme-preview"
                   />
+                ) : outfitMeLoading ? (
+                  <div className="loading-panel loading-panel-inline" role="status" aria-live="polite">
+                    <span className="loading-spinner" aria-hidden="true" />
+                    <div>
+                      <p className="loading-panel-title">Generating OutfitsMe preview</p>
+                      <p className="subtext">Creating an image using the selected outfit and your reference photo.</p>
+                    </div>
+                  </div>
                 ) : null}
               </>
             )}

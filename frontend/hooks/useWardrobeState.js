@@ -339,6 +339,12 @@ export function useWardrobeState({ accessToken, onWardrobeChanged }) {
           outfitsme_image_url: nextImageUrl
         };
       });
+      const refreshedWardrobe = await wardrobeQuery.refetch();
+      if (!refreshedWardrobe.isError) {
+        const nextEntries = refreshedWardrobe.data || [];
+        setWardrobeMessage(nextEntries.length === 0 ? "No wardrobe entries yet. Analyze your first outfit photo." : "");
+      }
+      await queryClient.invalidateQueries({ queryKey: ["stats", accessToken] });
       toast.success("OutfitsMe preview generated.");
       return payload;
     } catch (err) {

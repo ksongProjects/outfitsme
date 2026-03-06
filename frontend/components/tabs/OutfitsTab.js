@@ -13,6 +13,13 @@ import { useSettingsContext, useWardrobeContext } from "../../context/DashboardC
 import BaseButton from "../ui/BaseButton";
 import BaseDialog from "../ui/BaseDialog";
 import BaseInput from "../ui/BaseInput";
+import BaseSelect from "../ui/BaseSelect";
+
+const OUTFIT_SOURCE_LABELS = {
+  photo_analysis: "Photo analysis",
+  custom_outfit: "Custom outfit",
+  outfitsme_generated: "OutfitsMe generated"
+};
 
 export default function OutfitsTab() {
   const { profilePhotoUrl, settingsForm } = useSettingsContext();
@@ -36,6 +43,7 @@ export default function OutfitsTab() {
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState("");
   const [itemPreview, setItemPreview] = useState(null);
+  const [sourceFilter, setSourceFilter] = useState("all");
   const imageGenerationEnabled = Boolean(settingsForm?.enable_outfit_image_generation);
 
   useEffect(() => {
@@ -62,6 +70,10 @@ export default function OutfitsTab() {
     return style;
   };
 
+  const filteredWardrobe = useMemo(() => (
+    wardrobe.filter((entry) => sourceFilter === "all" || (entry.source_type || "photo_analysis") === sourceFilter)
+  ), [wardrobe, sourceFilter]);
+
   const columns = useMemo(() => [
     {
       accessorKey: "photo",
@@ -83,6 +95,11 @@ export default function OutfitsTab() {
       accessorKey: "created_at",
       header: "Created",
       cell: ({ row }) => row.original.created_at ? new Date(row.original.created_at).toLocaleString() : "-"
+    },
+    {
+      accessorKey: "source_type",
+      header: "Type",
+      cell: ({ row }) => OUTFIT_SOURCE_LABELS[row.original.source_type] || "Photo analysis"
     },
     {
       accessorKey: "action",
@@ -107,7 +124,7 @@ export default function OutfitsTab() {
   ], [deletingOutfitId]);
 
   const table = useReactTable({
-    data: wardrobe,
+    data: filteredWardrobe,
     columns,
     getCoreRowModel: getCoreRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
@@ -161,6 +178,27 @@ export default function OutfitsTab() {
       </div>
 
       {wardrobeMessage ? <p className="subtext">{wardrobeMessage}</p> : null}
+
+      <div className="filter-row">
+        <BaseSelect
+          value={sourceFilter}
+          onValueChange={(nextValue) => setSourceFilter(nextValue)}
+          options={[
+            { value: "all", label: "All outfit types" },
+            { value: "photo_analysis", label: "Photo analysis" },
+            { value: "custom_outfit", label: "Custom outfit" },
+            { value: "outfitsme_generated", label: "OutfitsMe generated" }
+          ]}
+          placeholder="All outfit types"
+        />
+        <BaseButton type="button" variant="ghost" onClick={() => setSourceFilter("all")}>
+          Clear filters
+        </BaseButton>
+      </div>
+
+      {wardrobe.length > 0 && filteredWardrobe.length === 0 ? (
+        <p className="subtext">No outfits match the selected type filter.</p>
+      ) : null}
 
       <div className="table-scroll-wrap">
         <table className="data-table">
@@ -249,6 +287,9 @@ export default function OutfitsTab() {
           <p className="subtext">Loading outfit details...</p>
         ) : (
           <div className="outfit-details-layout">
+            {outfitDetails?.source_outfit_image_url ? (
+              <img src={outfitDetails.source_outfit_image_url} alt="Source outfit" className="modal-image outfit-detail-image" />
+            ) : null}
             {outfitDetails?.image_url ? (
               <img src={outfitDetails.image_url} alt="Original outfit" className="modal-image outfit-detail-image" />
             ) : (
@@ -300,6 +341,9 @@ export default function OutfitsTab() {
                       <strong>Name:</strong> {outfitDetails.selected_outfit.style || "Unlabeled"}
                     </p>
                   )}
+                  <p>
+                    <strong>Type:</strong> {OUTFIT_SOURCE_LABELS[outfitDetails.selected_outfit.source_type] || "Photo analysis"}
+                  </p>
                   {(outfitDetails.selected_outfit.items || []).length ? (
                     <ul className="analysis-items">
                       {outfitDetails.selected_outfit.items.map((item, index) => (

@@ -19,6 +19,7 @@ from app.services.secrets_service import SettingsEncryptionError
 from app.services.supabase_service import (
     compose_outfit_from_items,
     create_analysis_job,
+    create_outfitsme_generated_outfit,
     create_photo_record,
     delete_wardrobe_outfit,
     download_photo_bytes,
@@ -39,6 +40,7 @@ from app.services.supabase_service import (
     get_user_cost_summary,
     get_user_generated_image_count_since,
     save_user_profile_photo,
+    attach_generated_image_to_outfit,
     save_generated_outfit_image,
     list_wardrobe,
     upsert_user_model_settings,
@@ -612,12 +614,29 @@ def generate_outfitsme_preview(photo_id: str):
 
         outfit_row_id = selected_outfit.get("outfit_id") or f"{photo_id}-{selected_outfit.get('outfit_index', 0)}"
         stored = save_generated_outfit_image(user_id, str(outfit_row_id), generated_data_uri)
+        source_outfit_id = str(selected_outfit.get("outfit_id")) if selected_outfit.get("outfit_id") else None
+        if selected_outfit.get("outfit_id"):
+            attach_generated_image_to_outfit(
+                user_id,
+                str(selected_outfit.get("outfit_id")),
+                stored.get("storage_path") or ""
+            )
+        generated_entry = create_outfitsme_generated_outfit(
+            user_id,
+            source_photo_id=photo_id,
+            source_outfit_id=source_outfit_id,
+            source_outfit_index=int(selected_outfit.get("outfit_index") or 0),
+            style_label=selected_outfit.get("style") or "Outfit",
+            items=selected_outfit.get("items") or [],
+            generated_storage_path=stored.get("storage_path") or ""
+        )
         return jsonify(
             {
                 "photo_id": photo_id,
                 "outfit_index": selected_outfit.get("outfit_index"),
                 "outfitsme_image_url": stored.get("image_url"),
-                "outfitsme_storage_path": stored.get("storage_path")
+                "outfitsme_storage_path": stored.get("storage_path"),
+                "saved_outfit": generated_entry
             }
         ), 200
     except ValueError:

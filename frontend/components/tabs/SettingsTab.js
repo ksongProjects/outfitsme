@@ -94,7 +94,7 @@ export default function SettingsTab() {
             fileName={profilePhotoFile?.name || ""}
             onFileSelect={(selectedFile) => setProfilePhotoFile(selectedFile)}
             title="Drag and drop a profile reference photo"
-            subtext="or click to browse files"
+            subtext="Choose an existing image or take a new profile photo"
             emptyText="No profile photo selected"
             disabled={profilePhotoUploading}
           />
