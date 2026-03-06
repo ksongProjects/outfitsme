@@ -102,6 +102,53 @@ def _coerce_dict(value) -> dict:
     return {}
 
 
+def _normalize_ai_usage(value) -> dict:
+    usage = _coerce_dict(value)
+    input_tokens = _safe_outfit_index(usage.get("input_tokens"))
+    output_tokens = _safe_outfit_index(usage.get("output_tokens"))
+    input_images = _safe_outfit_index(usage.get("input_images"))
+    output_images = _safe_outfit_index(usage.get("output_images"))
+    total_tokens = _safe_outfit_index(usage.get("total_tokens"))
+    if total_tokens <= 0:
+        total_tokens = input_tokens + output_tokens
+    return {
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": total_tokens,
+        "input_images": input_images,
+        "output_images": output_images
+    }
+
+
+def _sum_ai_usage(entries: list[dict]) -> dict:
+    totals = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0, "input_images": 0, "output_images": 0}
+    for entry in entries:
+        usage = _normalize_ai_usage(entry)
+        totals["input_tokens"] += usage["input_tokens"]
+        totals["output_tokens"] += usage["output_tokens"]
+        totals["total_tokens"] += usage["total_tokens"]
+        totals["input_images"] += usage["input_images"]
+        totals["output_images"] += usage["output_images"]
+    return totals
+
+
+def _estimate_token_cost_usd(usage: dict) -> dict:
+    normalized = _normalize_ai_usage(usage)
+    input_cost = round(
+        (normalized["input_tokens"] / 1_000_000.0) * settings.GEMINI_INPUT_COST_PER_1M_TOKENS_USD,
+        6
+    )
+    output_cost = round(
+        (normalized["output_tokens"] / 1_000_000.0) * settings.GEMINI_OUTPUT_COST_PER_1M_TOKENS_USD,
+        6
+    )
+    return {
+        "input": input_cost,
+        "output": output_cost,
+        "total": round(input_cost + output_cost, 6)
+    }
+
+
 def _build_item_signature(item: dict) -> tuple[str, str, str]:
     normalized = _normalize_item_fields(item)
     return (
@@ -934,7 +981,7 @@ def _decode_image_data_uri(data_uri: str) -> tuple[bytes, str]:
     return image_bytes, mime_type
 
 
-def save_generated_item_image(user_id: str, item_id: str, data_uri: str) -> dict:
+def save_generated_item_image(user_id: str, item_id: str, data_uri: str, usage_summary: dict | None = None) -> dict:
     client = get_supabase_client()
     image_bytes, content_type = _decode_image_data_uri(data_uri)
     extension = ".png" if content_type == "image/png" else ".jpg"
@@ -961,6 +1008,8 @@ def save_generated_item_image(user_id: str, item_id: str, data_uri: str) -> dict
     attributes["generated_item_image_path"] = storage_path
     attributes["generated_item_image_size_limit"] = "1K square requested from generation API"
     attributes["generated_item_image_created_at"] = datetime.now(timezone.utc).isoformat()
+    if usage_summary:
+        attributes["generated_item_image_ai_usage"] = _normalize_ai_usage(usage_summary)
     (
         client.table("items")
         .update({"attributes_json": attributes})
@@ -1014,7 +1063,8 @@ def create_outfitsme_generated_outfit(
     source_outfit_index: int,
     style_label: str,
     items: list[dict],
-    generated_storage_path: str
+    generated_storage_path: str,
+    usage_summary: dict | None = None
 ) -> dict:
     client = get_supabase_client()
     style = _normalize_label(style_label, "Outfit")
@@ -1030,6 +1080,7 @@ def create_outfitsme_generated_outfit(
             }
         ],
         "outfitsme_generated": True,
+        "ai_usage": _normalize_ai_usage(usage_summary or {}),
         "source_photo_id": source_photo_id,
         "source_outfit_id": source_outfit_id,
         "source_outfit_index": _safe_outfit_index(source_outfit_index)
@@ -2012,6 +2063,7 @@ def save_user_profile_photo(user_id: str, file_storage) -> dict:
 
 
 def get_user_cost_summary(user_id: str, month_start_iso: str) -> dict:
+    client = get_supabase_client()
     analysis_count = get_user_monthly_analysis_count(user_id, month_start_iso)
     composed_outfit_count = get_user_monthly_composed_outfit_count(user_id, month_start_iso)
     generated_item_image_count = get_user_monthly_generated_image_count(user_id, month_start_iso, "items")
@@ -2028,6 +2080,74 @@ def get_user_cost_summary(user_id: str, month_start_iso: str) -> dict:
     outfit_image_cost = round(generated_outfit_image_count * outfit_image_unit_cost, 4)
     item_image_cost = round(generated_item_image_count * settings.ITEM_IMAGE_COST_USD, 4)
     total_cost = round(analysis_cost + outfit_image_cost + item_image_cost, 4)
+
+    analysis_usage_rows = (
+        client.table("analysis_jobs")
+        .select("result_json")
+        .eq("user_id", user_id)
+        .eq("status", "completed")
+        .gte("completed_at", month_start_iso)
+        .execute()
+    ).data or []
+    analysis_usages = []
+    for row in analysis_usage_rows:
+        result_json = _coerce_dict((row or {}).get("result_json") or {})
+        analysis_usages.append(_coerce_dict(result_json.get("ai_usage") or {}))
+    analysis_token_usage = _sum_ai_usage(analysis_usages)
+
+    outfit_analysis_rows = (
+        client.table("outfit_analyses")
+        .select("raw_json")
+        .eq("user_id", user_id)
+        .gte("created_at", month_start_iso)
+        .execute()
+    ).data or []
+    outfit_usages = []
+    for row in outfit_analysis_rows:
+        raw_json = _coerce_dict((row or {}).get("raw_json") or {})
+        if not bool(raw_json.get("outfitsme_generated")):
+            continue
+        outfit_usages.append(_coerce_dict(raw_json.get("ai_usage") or {}))
+    outfit_token_usage = _sum_ai_usage(outfit_usages)
+
+    item_rows = (
+        client.table("items")
+        .select("attributes_json")
+        .eq("user_id", user_id)
+        .gte("created_at", month_start_iso)
+        .execute()
+    ).data or []
+    item_usages = []
+    for row in item_rows:
+        attributes = _coerce_dict((row or {}).get("attributes_json") or {})
+        if not attributes.get("generated_item_image_path"):
+            continue
+        item_usages.append(_coerce_dict(attributes.get("generated_item_image_ai_usage") or {}))
+    item_token_usage = _sum_ai_usage(item_usages)
+
+    token_costs = {
+        "analysis": _estimate_token_cost_usd(analysis_token_usage),
+        "outfit_image_generation": _estimate_token_cost_usd(outfit_token_usage),
+        "item_image_generation": _estimate_token_cost_usd(item_token_usage)
+    }
+    token_costs["total"] = {
+        "input": round(
+            token_costs["analysis"]["input"]
+            + token_costs["outfit_image_generation"]["input"]
+            + token_costs["item_image_generation"]["input"],
+            6
+        ),
+        "output": round(
+            token_costs["analysis"]["output"]
+            + token_costs["outfit_image_generation"]["output"]
+            + token_costs["item_image_generation"]["output"],
+            6
+        )
+    }
+    token_costs["total"]["total"] = round(
+        token_costs["total"]["input"] + token_costs["total"]["output"],
+        6
+    )
     return {
         "month_start_utc": month_start_iso,
         "analysis_runs": analysis_count,
@@ -2054,6 +2174,18 @@ def get_user_cost_summary(user_id: str, month_start_iso: str) -> dict:
             "item_image_generation": item_image_cost,
             "total": total_cost
         },
+        "token_usage_estimate": {
+            "analysis": analysis_token_usage,
+            "outfit_image_generation": outfit_token_usage,
+            "item_image_generation": item_token_usage,
+            "total": _sum_ai_usage([analysis_token_usage, outfit_token_usage, item_token_usage]),
+            "source": "Gemini usageMetadata when available; estimator fallback otherwise."
+        },
+        "token_pricing_usd_per_1m": {
+            "input": settings.GEMINI_INPUT_COST_PER_1M_TOKENS_USD,
+            "output": settings.GEMINI_OUTPUT_COST_PER_1M_TOKENS_USD
+        },
+        "estimated_token_costs_usd": token_costs,
         "limits": {
             "monthly_custom_outfit_generation_limit": settings.MONTHLY_CUSTOM_OUTFIT_LIMIT
         }

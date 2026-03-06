@@ -42,7 +42,7 @@ export default function LandingAuth() {
 
       <section className="hero">
         <div>
-          <h1>Find your style from one photo.</h1>
+          <h1>Find your style from photos.</h1>
           <p className="hero-copy">
             Upload outfit images, identify clothing items with AI, and use OutfitsMe to preview looks on your own profile photo.
           </p>

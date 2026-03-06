@@ -97,6 +97,21 @@ class Settings:
         _clean_env(os.getenv("OUTFIT_IMAGE_OUTPUT_COST_USD", "0.00"), "0.00") or "0.00"
     )
     ITEM_IMAGE_COST_USD = float(_clean_env(os.getenv("ITEM_IMAGE_COST_USD", "0.01"), "0.01") or "0.01")
+    GEMINI_INPUT_COST_PER_1M_TOKENS_USD = float(
+        _clean_env(os.getenv("GEMINI_INPUT_COST_PER_1M_TOKENS_USD", "0"), "0") or "0"
+    )
+    GEMINI_OUTPUT_COST_PER_1M_TOKENS_USD = float(
+        _clean_env(os.getenv("GEMINI_OUTPUT_COST_PER_1M_TOKENS_USD", "0"), "0") or "0"
+    )
+    GEMINI_TOKEN_ESTIMATOR_CHARS_PER_TOKEN = float(
+        _clean_env(os.getenv("GEMINI_TOKEN_ESTIMATOR_CHARS_PER_TOKEN", "4"), "4") or "4"
+    )
+    GEMINI_TOKEN_ESTIMATOR_IMAGE_TILE_SIZE = int(
+        _clean_env(os.getenv("GEMINI_TOKEN_ESTIMATOR_IMAGE_TILE_SIZE", "768"), "768") or "768"
+    )
+    GEMINI_TOKEN_ESTIMATOR_IMAGE_TOKENS_PER_TILE = int(
+        _clean_env(os.getenv("GEMINI_TOKEN_ESTIMATOR_IMAGE_TOKENS_PER_TILE", "258"), "258") or "258"
+    )
     SETTINGS_ENCRYPTION_KEY = _clean_env(os.getenv("SETTINGS_ENCRYPTION_KEY", ""))
     DEFAULT_ANALYSIS_MODEL = _clean_env(os.getenv("DEFAULT_ANALYSIS_MODEL", "gemini-2.5-flash"), "gemini-2.5-flash")
 

@@ -5,6 +5,7 @@ import { useSettingsContext } from "../../context/DashboardContext";
 import BaseButton from "../ui/BaseButton";
 import BaseCheckbox from "../ui/BaseCheckbox";
 import BaseInput from "../ui/BaseInput";
+import BaseSelect from "../ui/BaseSelect";
 import ImageUploadField from "../ui/ImageUploadField";
 
 const SETTINGS_SECTIONS = [
@@ -234,6 +235,18 @@ export default function SettingsTab() {
                 <li>Item image generation: <strong>${costSummary.estimated_costs_usd?.item_image_generation ?? 0}</strong></li>
                 <li>Total: <strong>${costSummary.estimated_costs_usd?.total ?? 0}</strong></li>
               </ul>
+              <h4>Token estimate</h4>
+              <ul className="compact-list">
+                <li>Input tokens: <strong>{costSummary.token_usage_estimate?.total?.input_tokens ?? 0}</strong></li>
+                <li>Output tokens: <strong>{costSummary.token_usage_estimate?.total?.output_tokens ?? 0}</strong></li>
+                <li>Total tokens: <strong>{costSummary.token_usage_estimate?.total?.total_tokens ?? 0}</strong></li>
+              </ul>
+              <h4>Token-priced costs (USD)</h4>
+              <ul className="compact-list">
+                <li>Input token cost: <strong>${costSummary.estimated_token_costs_usd?.total?.input ?? 0}</strong></li>
+                <li>Output token cost: <strong>${costSummary.estimated_token_costs_usd?.total?.output ?? 0}</strong></li>
+                <li>Total token cost: <strong>${costSummary.estimated_token_costs_usd?.total?.total ?? 0}</strong></li>
+              </ul>
               <p className="subtext">
                 Unit rates: analysis ${costSummary.unit_costs_usd?.analysis ?? 0} (
                 ${costSummary.unit_costs_usd?.analysis_input ?? 0} input + $
@@ -244,8 +257,15 @@ export default function SettingsTab() {
                 {costSummary.unit_costs_usd?.item_image_generation ?? 0}
               </p>
               <p className="subtext">
+                Token rates (per 1M): input ${costSummary.token_pricing_usd_per_1m?.input ?? 0}, output $
+                {costSummary.token_pricing_usd_per_1m?.output ?? 0}
+              </p>
+              <p className="subtext">
                 Cost formulas: analysis uses 1 input call + 1 image output call, and OutfitsMe uses 1 input call +
                 1 image output call per generated outfit image.
+              </p>
+              <p className="subtext">
+                Token source: {costSummary.token_usage_estimate?.source || "n/a"}
               </p>
             </>
           ) : (

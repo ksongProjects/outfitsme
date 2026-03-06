@@ -596,7 +596,7 @@ def generate_outfitsme_preview(photo_id: str):
                     "error": "OutfitsMe generation is temporarily unavailable."
                 }
             ), 503
-        generated_data_uri = generate_outfitsme_image_with_gemini(
+        generated_data_uri, usage_summary = generate_outfitsme_image_with_gemini(
             reference_image_bytes=reference_photo_bytes,
             reference_mime_type=reference_mime_type,
             outfit_style=selected_outfit.get("style") or "Outfit",
@@ -604,7 +604,8 @@ def generate_outfitsme_preview(photo_id: str):
             source_outfit_image_bytes=source_outfit_image_bytes,
             source_outfit_mime_type=source_outfit_mime_type,
             profile_gender=user_settings.get("profile_gender"),
-            profile_age=user_settings.get("profile_age")
+            profile_age=user_settings.get("profile_age"),
+            return_usage=True
         )
         if not generated_data_uri:
             return jsonify({"error": "OutfitsMe generation returned no image."}), 502
@@ -625,7 +626,8 @@ def generate_outfitsme_preview(photo_id: str):
             source_outfit_index=int(selected_outfit.get("outfit_index") or 0),
             style_label=selected_outfit.get("style") or "Outfit",
             items=selected_outfit.get("items") or [],
-            generated_storage_path=stored.get("storage_path") or ""
+            generated_storage_path=stored.get("storage_path") or "",
+            usage_summary=usage_summary
         )
         return jsonify(
             {

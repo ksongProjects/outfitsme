@@ -54,11 +54,13 @@ _ACCESSORY_KEYWORDS = {
 
 
 def _build_response_payload(analysis: dict, chosen_model_id: str, persistence: dict) -> dict:
+    usage = analysis.get("_usage") if isinstance(analysis, dict) else None
     return {
         "style": analysis.get("style"),
         "items": [dict(item) for item in (analysis.get("items") or [])],
         "outfits": [dict(outfit) for outfit in (analysis.get("outfits") or []) if isinstance(outfit, dict)],
         "analysis_model": chosen_model_id,
+        "ai_usage": usage if isinstance(usage, dict) else {},
         **persistence
     }
 
@@ -355,7 +357,7 @@ def _generate_item_images_for_analysis(
             counts=summary
         )
         try:
-            sprite_data_uri = generate_item_sprite_with_gemini(
+            sprite_data_uri, sprite_usage = generate_item_sprite_with_gemini(
                 [
                     {
                         "category": item.get("category"),
@@ -367,7 +369,8 @@ def _generate_item_images_for_analysis(
                 grid_cols=grid_cols,
                 grid_rows=grid_rows,
                 reference_image_bytes=source_image_bytes,
-                reference_mime_type=source_mime_type
+                reference_mime_type=source_mime_type,
+                return_usage=True
             )
             cropped_data_uris = _slice_sprite_to_item_data_uris(
                 sprite_data_uri or "",
@@ -375,13 +378,23 @@ def _generate_item_images_for_analysis(
                 grid_cols,
                 grid_rows
             )
+            token_divisor = max(1, len([uri for uri in cropped_data_uris if uri]))
             for index, item in enumerate(pending_items):
                 image_data_uri = cropped_data_uris[index] if index < len(cropped_data_uris) else None
                 if not image_data_uri:
                     summary["processed_items"] += 1
                     summary["failed_items"] += 1
                     continue
-                save_generated_item_image(user_id, item["id"], image_data_uri)
+                per_item_usage = {}
+                if isinstance(sprite_usage, dict):
+                    per_item_usage = {
+                        "input_tokens": int(sprite_usage.get("input_tokens", 0) / token_divisor),
+                        "output_tokens": int(sprite_usage.get("output_tokens", 0) / token_divisor),
+                        "input_images": int(sprite_usage.get("input_images", 0) / token_divisor),
+                        "output_images": int(sprite_usage.get("output_images", 0) / token_divisor)
+                    }
+                    per_item_usage["total_tokens"] = per_item_usage["input_tokens"] + per_item_usage["output_tokens"]
+                save_generated_item_image(user_id, item["id"], image_data_uri, usage_summary=per_item_usage)
                 summary["processed_items"] += 1
                 summary["generated_items"] += 1
         except Exception:  # noqa: BLE001
@@ -439,6 +452,8 @@ def process_analysis_job(job_id: str) -> None:
         else:
             raise ValueError(f"Unsupported model provider: {model_entry['provider']}")
 
+        analysis_usage = analysis.pop("_usage", {}) if isinstance(analysis, dict) else {}
+
         # Accessories are premium-only and excluded for default tier users.
         if not has_accessory_access(
             user_settings.get("user_role"),
@@ -462,6 +477,8 @@ def process_analysis_job(job_id: str) -> None:
             )
             persisted_items = list_items_for_analysis(user_id, persistence["analysis_id"])
             analysis_for_response = _attach_item_images_to_analysis(analysis, persisted_items)
+        if isinstance(analysis_for_response, dict):
+            analysis_for_response["_usage"] = analysis_usage
         _mark_job_progress(
             job_id,
             stage="finalizing",

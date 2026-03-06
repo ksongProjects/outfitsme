@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import base64
+import math
 from io import BytesIO
 
 import requests
@@ -12,6 +13,96 @@ from app.config import settings
 
 class GeminiNotConfiguredError(RuntimeError):
     pass
+
+
+def _safe_int(value, default: int = 0) -> int:
+    try:
+        parsed = int(value)
+        return parsed if parsed >= 0 else default
+    except (TypeError, ValueError):
+        return default
+
+
+def _normalize_usage(usage: dict | None = None) -> dict:
+    usage = usage or {}
+    input_tokens = _safe_int(usage.get("input_tokens"), 0)
+    output_tokens = _safe_int(usage.get("output_tokens"), 0)
+    input_images = _safe_int(usage.get("input_images"), 0)
+    output_images = _safe_int(usage.get("output_images"), 0)
+    return {
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": input_tokens + output_tokens,
+        "input_images": input_images,
+        "output_images": output_images
+    }
+
+
+def _estimate_text_tokens(text: str) -> int:
+    chars_per_token = max(settings.GEMINI_TOKEN_ESTIMATOR_CHARS_PER_TOKEN, 1.0)
+    text_len = len(str(text or ""))
+    if text_len <= 0:
+        return 0
+    return max(1, int(math.ceil(text_len / chars_per_token)))
+
+
+def _estimate_image_tokens(image_bytes: bytes | None) -> int:
+    if not image_bytes:
+        return 0
+    try:
+        with Image.open(BytesIO(image_bytes)) as img:
+            width, height = ImageOps.exif_transpose(img).size
+    except Exception:  # noqa: BLE001
+        width = 1024
+        height = 1024
+    tile_size = max(1, int(settings.GEMINI_TOKEN_ESTIMATOR_IMAGE_TILE_SIZE))
+    tokens_per_tile = max(1, int(settings.GEMINI_TOKEN_ESTIMATOR_IMAGE_TOKENS_PER_TILE))
+    tiles_w = max(1, int(math.ceil(width / tile_size)))
+    tiles_h = max(1, int(math.ceil(height / tile_size)))
+    return tiles_w * tiles_h * tokens_per_tile
+
+
+def _extract_gemini_usage(response_json: dict) -> dict:
+    usage_meta = response_json.get("usageMetadata") if isinstance(response_json, dict) else {}
+    if not isinstance(usage_meta, dict):
+        return _normalize_usage()
+    input_tokens = _safe_int(
+        usage_meta.get("promptTokenCount")
+        or usage_meta.get("cachedContentTokenCount")
+        or usage_meta.get("inputTokenCount"),
+        0
+    )
+    output_tokens = _safe_int(
+        usage_meta.get("candidatesTokenCount")
+        or usage_meta.get("outputTokenCount"),
+        0
+    )
+    total_tokens = _safe_int(usage_meta.get("totalTokenCount"), input_tokens + output_tokens)
+    if total_tokens > 0 and input_tokens + output_tokens == 0:
+        input_tokens = total_tokens
+    return _normalize_usage(
+        {
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens
+        }
+    )
+
+
+def _estimate_usage_fallback(
+    *,
+    prompt_text: str = "",
+    input_images: list[bytes] | None = None,
+    output_text: str = "",
+    output_images: list[bytes] | None = None
+) -> dict:
+    return _normalize_usage(
+        {
+            "input_tokens": _estimate_text_tokens(prompt_text) + sum(_estimate_image_tokens(img) for img in (input_images or [])),
+            "output_tokens": _estimate_text_tokens(output_text) + sum(_estimate_image_tokens(img) for img in (output_images or [])),
+            "input_images": len([img for img in (input_images or []) if img]),
+            "output_images": len([img for img in (output_images or []) if img])
+        }
+    )
 
 
 def _normalize_label(value: str, fallback: str) -> str:
@@ -189,8 +280,9 @@ def generate_item_sprite_with_gemini(
     reference_image_bytes: bytes | None = None,
     reference_mime_type: str | None = None,
     api_key: str | None = None,
-    model: str | None = None
-) -> str | None:
+    model: str | None = None,
+    return_usage: bool = False
+) -> str | tuple[str | None, dict] | None:
     effective_api_key = (api_key or settings.GEMINI_API_KEY or "").strip()
     if not effective_api_key:
         raise GeminiNotConfiguredError("GEMINI_API_KEY is required.")
@@ -253,24 +345,46 @@ def generate_item_sprite_with_gemini(
     )
 
     candidates = response_json.get("candidates", [])
-    if not candidates:
-        return None
-
-    parts = candidates[0].get("content", {}).get("parts", [])
+    parts = candidates[0].get("content", {}).get("parts", []) if candidates else []
+    output_text_parts: list[str] = []
+    output_images: list[bytes] = []
+    data_uri: str | None = None
     for part in parts:
+        if "text" in part:
+            output_text_parts.append(str(part.get("text") or ""))
         inline = part.get("inline_data") or part.get("inlineData")
         if not isinstance(inline, dict):
             continue
         data = inline.get("data")
         if not data:
             continue
+        try:
+            output_images.append(base64.b64decode(data))
+        except Exception:  # noqa: BLE001
+            pass
         mime = inline.get("mime_type") or inline.get("mimeType") or "image/png"
-        return f"data:{mime};base64,{data}"
+        data_uri = f"data:{mime};base64,{data}"
+        break
 
-    return None
+    usage = _extract_gemini_usage(response_json)
+    if usage["total_tokens"] <= 0:
+        usage = _estimate_usage_fallback(
+            prompt_text=prompt,
+            input_images=[reference_image_bytes] if reference_image_bytes else [],
+            output_text="\n".join(output_text_parts),
+            output_images=output_images
+        )
+    if return_usage:
+        return data_uri, usage
+    return data_uri
 
 
-def analyze_outfit_with_gemini(image_bytes: bytes, mime_type: str, model: str | None = None, api_key: str | None = None) -> dict:
+def analyze_outfit_with_gemini(
+    image_bytes: bytes,
+    mime_type: str,
+    model: str | None = None,
+    api_key: str | None = None
+) -> dict:
     effective_api_key = (api_key or settings.GEMINI_API_KEY or "").strip()
     if not effective_api_key:
         raise GeminiNotConfiguredError("GEMINI_API_KEY is required.")
@@ -303,7 +417,19 @@ def analyze_outfit_with_gemini(image_bytes: bytes, mime_type: str, model: str | 
     }
 
     response_json = _post_to_gemini(payload, model=effective_model, api_key=effective_api_key, timeout_seconds=30)
-    return _parse_gemini_json(response_json)
+    parsed = _parse_gemini_json(response_json)
+    usage = _extract_gemini_usage(response_json)
+    if usage["total_tokens"] <= 0:
+        candidates = response_json.get("candidates", [])
+        parts = candidates[0].get("content", {}).get("parts", []) if candidates else []
+        output_text = "\n".join([str(part.get("text") or "") for part in parts if "text" in part])
+        usage = _estimate_usage_fallback(
+            prompt_text=_build_prompt(),
+            input_images=[resized_image_bytes],
+            output_text=output_text,
+            output_images=[]
+        )
+    return {**parsed, "_usage": usage}
 
 
 def generate_item_image_with_gemini(
@@ -404,8 +530,9 @@ def generate_outfitsme_image_with_gemini(
     profile_gender: str | None = None,
     profile_age: int | None = None,
     api_key: str | None = None,
-    model: str | None = None
-) -> str | None:
+    model: str | None = None,
+    return_usage: bool = False
+) -> str | tuple[str | None, dict] | None:
     effective_api_key = (api_key or settings.GEMINI_API_KEY or "").strip()
     if not effective_api_key:
         raise GeminiNotConfiguredError("GEMINI_API_KEY is required.")
@@ -491,19 +618,39 @@ def generate_outfitsme_image_with_gemini(
     )
 
     candidates = response_json.get("candidates", [])
-    if not candidates:
-        return None
-
-    parts = candidates[0].get("content", {}).get("parts", [])
+    parts = candidates[0].get("content", {}).get("parts", []) if candidates else []
+    output_text_parts: list[str] = []
+    output_images: list[bytes] = []
+    data_uri: str | None = None
     for part in parts:
+        if "text" in part:
+            output_text_parts.append(str(part.get("text") or ""))
         inline = part.get("inline_data") or part.get("inlineData")
         if not isinstance(inline, dict):
             continue
         data = inline.get("data")
         if not data:
             continue
+        try:
+            output_images.append(base64.b64decode(data))
+        except Exception:  # noqa: BLE001
+            pass
         mime = inline.get("mime_type") or inline.get("mimeType") or "image/png"
-        return f"data:{mime};base64,{data}"
+        data_uri = f"data:{mime};base64,{data}"
+        break
 
-    return None
+    usage = _extract_gemini_usage(response_json)
+    if usage["total_tokens"] <= 0:
+        input_images = [reference_image_bytes]
+        if source_outfit_image_bytes:
+            input_images.append(source_outfit_image_bytes)
+        usage = _estimate_usage_fallback(
+            prompt_text=prompt,
+            input_images=input_images,
+            output_text="\n".join(output_text_parts),
+            output_images=output_images
+        )
+    if return_usage:
+        return data_uri, usage
+    return data_uri
 
