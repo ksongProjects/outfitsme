@@ -19,6 +19,12 @@ variable "terraform_execution_role_name" {
   default     = null
 }
 
+variable "deploy_artifacts_bucket_name" {
+  description = "Private S3 bucket used to stage deploy bundles for SSM-based production deploys."
+  type        = string
+  default     = "outfitme-deploy-artifacts"
+}
+
 data "aws_ami" "ubuntu_2404" {
   most_recent = true
   owners      = ["099720109477"] # Canonical
@@ -53,9 +59,59 @@ resource "aws_iam_role_policy_attachment" "ssm_attach" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMManagedInstanceCore"
 }
 
+resource "aws_iam_role_policy" "ec2_deploy_bundle_read" {
+  name = "Ec2ReadDeployBundles"
+  role = aws_iam_role.ec2_ssm_role.id
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["s3:GetObject"]
+        Resource = "${aws_s3_bucket.deploy_artifacts.arn}/deploy-bundles/*"
+      }
+    ]
+  })
+}
+
 resource "aws_iam_instance_profile" "ec2_profile" {
   name = "EC2_SSM_Profile"
   role = aws_iam_role.ec2_ssm_role.name
+}
+
+resource "aws_s3_bucket" "deploy_artifacts" {
+  bucket = var.deploy_artifacts_bucket_name
+
+  tags = {
+    Name = "outfitme-deploy-artifacts"
+  }
+}
+
+resource "aws_s3_bucket_public_access_block" "deploy_artifacts" {
+  bucket = aws_s3_bucket.deploy_artifacts.id
+
+  block_public_acls       = true
+  block_public_policy     = true
+  ignore_public_acls      = true
+  restrict_public_buckets = true
+}
+
+resource "aws_s3_bucket_versioning" "deploy_artifacts" {
+  bucket = aws_s3_bucket.deploy_artifacts.id
+
+  versioning_configuration {
+    status = "Enabled"
+  }
+}
+
+resource "aws_s3_bucket_server_side_encryption_configuration" "deploy_artifacts" {
+  bucket = aws_s3_bucket.deploy_artifacts.id
+
+  rule {
+    apply_server_side_encryption_by_default {
+      sse_algorithm = "AES256"
+    }
+  }
 }
 
 # Least-privilege PassRole grant for Terraform execution role.
@@ -166,4 +222,8 @@ output "ec2_elastic_ip" {
 
 output "ec2_elastic_ip_allocation_id" {
   value = aws_eip.app_server_eip.allocation_id
+}
+
+output "deploy_artifacts_bucket_name" {
+  value = aws_s3_bucket.deploy_artifacts.bucket
 }
