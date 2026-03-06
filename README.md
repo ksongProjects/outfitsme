@@ -120,18 +120,12 @@ See `infra/README.md` for step-by-step usage (`init`, `plan`, `apply`), required
 Production deploy assets:
 - `backend/Dockerfile` (Flask served by Gunicorn)
 - `frontend/Dockerfile` (Next.js production build/start)
-- `deploy/docker-compose.prod.yml` (frontend + backend + Caddy reverse proxy)
+- `compose.yaml` (frontend + backend + nginx reverse proxy + certbot)
+- `proxy/nginx.http.conf` (HTTP-only bootstrap config for first certificate issuance)
+- `proxy/nginx.ssl.conf` (primary TLS reverse-proxy config)
+- `deploy/remote-deploy.sh` (server-side deploy script invoked by GitHub Actions over SSM)
 
-For local production-like test:
-
-```bash
-# ensure frontend/.env.production exists with NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY
-# and NEXT_PUBLIC_API_BASE_URL (or add it in the file before build)
-cd deploy
-# edit Caddyfile if you are not using app.example.com
-cp Caddyfile.example Caddyfile
-docker compose -f docker-compose.prod.yml up --build
-```
+The production GitHub Actions workflow builds the frontend and backend images, pushes them to Docker Hub, uploads the checked-in deploy assets to the EC2 host via SSM, and runs `deploy/remote-deploy.sh`. Certificate renewal is handled on the instance via cron rather than on every app deploy.
 
 ## API Endpoints
 
