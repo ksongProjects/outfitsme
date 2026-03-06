@@ -81,6 +81,7 @@ jobs:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
           SUPABASE_BUCKET: ${{ secrets.SUPABASE_BUCKET }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
           GEMINI_MODEL: ${{ secrets.GEMINI_MODEL }}
           GEMINI_IMAGE_MODEL: ${{ secrets.GEMINI_IMAGE_MODEL }}
           SETTINGS_ENCRYPTION_KEY: ${{ secrets.SETTINGS_ENCRYPTION_KEY }}
@@ -90,7 +91,6 @@ jobs:
           set -euo pipefail
 
           COMPOSE_B64="$(base64 -w0 compose.yaml)"
-          NGINX_B64="$(base64 -w0 proxy/nginx.conf)"
           NGINX_HTTP_B64="$(base64 -w0 proxy/nginx.http.conf)"
           NGINX_SSL_B64="$(base64 -w0 proxy/nginx.ssl.conf)"
           REMOTE_DEPLOY_B64="$(base64 -w0 deploy/remote-deploy.sh)"
@@ -100,6 +100,7 @@ jobs:
           SUPABASE_URL_B64="$(printf '%s' "$SUPABASE_URL" | base64 -w0)"
           SUPABASE_SECRET_KEY_B64="$(printf '%s' "$SUPABASE_SECRET_KEY" | base64 -w0)"
           SUPABASE_BUCKET_B64="$(printf '%s' "$SUPABASE_BUCKET" | base64 -w0)"
+          GEMINI_API_KEY_B64="$(printf '%s' "$GEMINI_API_KEY" | base64 -w0)"
           GEMINI_MODEL_B64="$(printf '%s' "$GEMINI_MODEL" | base64 -w0)"
           GEMINI_IMAGE_MODEL_B64="$(printf '%s' "$GEMINI_IMAGE_MODEL" | base64 -w0)"
           SETTINGS_ENCRYPTION_KEY_B64="$(printf '%s' "$SETTINGS_ENCRYPTION_KEY" | base64 -w0)"
@@ -113,7 +114,6 @@ jobs:
           mkdir -p "${APP_DIR}/proxy" "${APP_DIR}/deploy"
 
           echo '${COMPOSE_B64}' | base64 -d > "${APP_DIR}/compose.yaml"
-          echo '${NGINX_B64}' | base64 -d > "${APP_DIR}/proxy/nginx.conf"
           echo '${NGINX_HTTP_B64}' | base64 -d > "${APP_DIR}/proxy/nginx.http.conf"
           echo '${NGINX_SSL_B64}' | base64 -d > "${APP_DIR}/proxy/nginx.ssl.conf"
           echo '${REMOTE_DEPLOY_B64}' | base64 -d > "${APP_DIR}/deploy/remote-deploy.sh"
@@ -127,6 +127,7 @@ jobs:
           export SUPABASE_URL="$(echo '${SUPABASE_URL_B64}' | base64 -d)"
           export SUPABASE_SECRET_KEY="$(echo '${SUPABASE_SECRET_KEY_B64}' | base64 -d)"
           export SUPABASE_BUCKET="$(echo '${SUPABASE_BUCKET_B64}' | base64 -d)"
+          export GEMINI_API_KEY="$(echo '${GEMINI_API_KEY_B64}' | base64 -d)"
           export GEMINI_MODEL="$(echo '${GEMINI_MODEL_B64}' | base64 -d)"
           export GEMINI_IMAGE_MODEL="$(echo '${GEMINI_IMAGE_MODEL_B64}' | base64 -d)"
           export SETTINGS_ENCRYPTION_KEY="$(echo '${SETTINGS_ENCRYPTION_KEY_B64}' | base64 -d)"

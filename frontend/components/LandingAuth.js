@@ -8,6 +8,7 @@ import BaseInput from "./ui/BaseInput";
 import AppFooter from "./AppFooter";
 
 export default function LandingAuth() {
+  const TERMS_VERSION = "2026-03-05";
   const {
     authTab,
     setAuthTab,
@@ -27,7 +28,10 @@ export default function LandingAuth() {
       toast.error("You must accept the Terms of Service to create an account.");
       return;
     }
-    await submitAuth(event);
+    await submitAuth(event, {
+      acceptedTerms,
+      termsVersion: TERMS_VERSION
+    });
   };
 
   return (
@@ -93,7 +97,9 @@ export default function LandingAuth() {
             {authTab === "signin" ? (
               <BaseButton type="submit" variant="primary">Continue to dashboard</BaseButton>
             ) : (
-              <BaseButton type="submit" variant="primary">Create account</BaseButton>
+              <BaseButton type="submit" variant="primary" disabled={!acceptedTerms}>
+                Create account
+              </BaseButton>
             )}
           </div>
         </form>

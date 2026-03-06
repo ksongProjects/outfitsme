@@ -1,10 +1,11 @@
 import requests
 import mimetypes
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from time import monotonic, sleep
 from flask import Blueprint, jsonify, request
 from gotrue.errors import AuthApiError
 
+from app.services.access_control import has_unlimited_ai_access, is_admin_role, normalize_user_role
 from app.services.analysis_jobs_service import enqueue_analysis_job_processing
 from app.config import settings
 from app.extensions import limiter
@@ -25,16 +26,18 @@ from app.services.supabase_service import (
     get_dashboard_stats,
     get_analysis_job_for_user,
     get_photo_storage_path_for_user,
+    get_signed_image_url,
     list_analysis_history,
     get_wardrobe_photo_details,
     get_user_model_settings,
-    get_user_model_settings_masked,
     list_user_items,
     SupabaseNotConfiguredError,
+    get_user_created_at_from_token,
     get_user_id_from_token,
-    get_user_monthly_analysis_count,
+    get_user_analysis_job_count_since,
     get_user_monthly_composed_outfit_count,
     get_user_cost_summary,
+    get_user_generated_image_count_since,
     save_user_profile_photo,
     save_generated_outfit_image,
     list_wardrobe,
@@ -73,24 +76,100 @@ def _current_month_window_utc() -> tuple[str, str]:
     return month_start_dt.isoformat(), next_month_start_dt.isoformat()
 
 
-def _build_analysis_usage(user_id: str) -> dict:
+def _parse_iso_datetime(value: str | None) -> datetime | None:
+    raw = str(value or "").strip()
+    if not raw:
+        return None
+    normalized = raw.replace("Z", "+00:00")
+    try:
+        parsed = datetime.fromisoformat(normalized)
+    except ValueError:
+        return None
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _current_day_window_utc() -> tuple[str, str, datetime]:
+    now = datetime.now(timezone.utc)
+    day_start_dt = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
+    next_day_start_dt = day_start_dt + timedelta(days=1)
+    return day_start_dt.isoformat(), next_day_start_dt.isoformat(), now
+
+
+def _build_trial_usage(user_id: str, access_token: str) -> dict:
     user_settings = get_user_model_settings(user_id)
-    is_premium = bool(user_settings.get("is_premium"))
-    monthly_limit = (
-        settings.MONTHLY_ANALYSIS_LIMIT_PREMIUM
-        if is_premium
-        else settings.MONTHLY_ANALYSIS_LIMIT_FREE
+    user_role = normalize_user_role(user_settings.get("user_role"))
+    if has_unlimited_ai_access(user_role):
+        return {
+            "user_role": user_role,
+            "trial_active": False,
+            "trial_started_at_utc": None,
+            "trial_ends_at_utc": None,
+            "trial_days_total": settings.TRIAL_DAYS,
+            "trial_days_remaining": None,
+            "daily_limit": None,
+            "used_today": 0,
+            "remaining_today": None,
+            "today_window_start_utc": None,
+            "next_reset_utc": None,
+            "analysis_actions_today": 0,
+            "outfit_generations_today": 0,
+            "access_mode": "unlimited"
+        }
+
+    created_at = _parse_iso_datetime(get_user_created_at_from_token(access_token))
+    if created_at is None:
+        created_at = datetime.now(timezone.utc)
+
+    now = datetime.now(timezone.utc)
+    trial_ends_at = created_at + timedelta(days=max(settings.TRIAL_DAYS, 0))
+    trial_active = now < trial_ends_at if settings.TRIAL_DAYS > 0 else False
+    day_start_iso, next_day_start_iso, _ = _current_day_window_utc()
+    analysis_actions = get_user_analysis_job_count_since(
+        user_id,
+        day_start_iso,
+        statuses=["queued", "processing", "completed", "failed"]
     )
-    month_start_iso, next_month_start_iso = _current_month_window_utc()
-    monthly_count = get_user_monthly_analysis_count(user_id, month_start_iso)
-    remaining = None if monthly_limit <= 0 else max(monthly_limit - monthly_count, 0)
+    outfit_generation_actions = get_user_generated_image_count_since(user_id, day_start_iso, "outfits")
+    used_today = analysis_actions + outfit_generation_actions
+    daily_limit = max(settings.TRIAL_DAILY_AI_ACTION_LIMIT, 0)
+    remaining_today = None if daily_limit <= 0 else max(daily_limit - used_today, 0)
+    days_remaining = max((trial_ends_at.date() - now.date()).days, 0) if trial_active else 0
     return {
-        "monthly_limit": monthly_limit,
-        "used_this_month": monthly_count,
-        "remaining_this_month": remaining,
-        "month_start_utc": month_start_iso,
-        "next_month_start_utc": next_month_start_iso
+        "user_role": user_role,
+        "trial_active": trial_active,
+        "trial_started_at_utc": created_at.isoformat(),
+        "trial_ends_at_utc": trial_ends_at.isoformat(),
+        "trial_days_total": settings.TRIAL_DAYS,
+        "trial_days_remaining": days_remaining,
+        "daily_limit": daily_limit,
+        "used_today": used_today,
+        "remaining_today": remaining_today,
+        "today_window_start_utc": day_start_iso,
+        "next_reset_utc": next_day_start_iso,
+        "analysis_actions_today": analysis_actions,
+        "outfit_generations_today": outfit_generation_actions,
+        "access_mode": "trial"
     }
+
+
+def _trial_limit_response(usage: dict) -> tuple[dict, int]:
+    if not usage.get("trial_active"):
+        return (
+            {
+                "error": "Your 14-day trial has ended.",
+                **usage
+            },
+            403
+        )
+    return (
+        {
+            "error": "Daily trial limit reached.",
+            **usage
+        },
+        429
+    )
 
 
 @api_bp.post("/analyze")
@@ -110,21 +189,13 @@ def analyze_outfit():
         if not user_id:
             return jsonify({"error": "Invalid or expired token."}), 401
 
-        usage = _build_analysis_usage(user_id)
-        monthly_limit = usage["monthly_limit"]
-        monthly_count = usage["used_this_month"]
-        if monthly_limit > 0 and monthly_count >= monthly_limit:
-                return (
-                    jsonify(
-                        {
-                            "error": "Monthly analysis limit reached.",
-                            "monthly_limit": monthly_limit,
-                            "used_this_month": monthly_count,
-                            "remaining_this_month": usage["remaining_this_month"]
-                        }
-                    ),
-                    429
-                )
+        usage = _build_trial_usage(user_id, access_token)
+        if usage.get("access_mode") == "trial" and not usage["trial_active"]:
+            payload, status_code = _trial_limit_response(usage)
+            return jsonify(payload), status_code
+        if usage.get("access_mode") == "trial" and usage["daily_limit"] > 0 and usage["used_today"] >= usage["daily_limit"]:
+            payload, status_code = _trial_limit_response(usage)
+            return jsonify(payload), status_code
 
         image_bytes = image.read()
         if not image_bytes:
@@ -461,6 +532,7 @@ def get_wardrobe_details(photo_id: str):
 
 
 @api_bp.post("/wardrobe/<photo_id>/outfitsme")
+@limiter.limit("3 per minute", key_func=_rate_limit_key)
 def generate_outfitsme_preview(photo_id: str):
     access_token = _extract_access_token()
     if not access_token:
@@ -504,6 +576,14 @@ def generate_outfitsme_preview(photo_id: str):
             return jsonify({"error": "Reference photo could not be loaded. Please upload it again."}), 400
         reference_mime_type = mimetypes.guess_type(profile_photo_path)[0] or "image/jpeg"
 
+        usage = _build_trial_usage(user_id, access_token)
+        if usage.get("access_mode") == "trial" and not usage["trial_active"]:
+            payload, status_code = _trial_limit_response(usage)
+            return jsonify(payload), status_code
+        if usage.get("access_mode") == "trial" and usage["daily_limit"] > 0 and usage["used_today"] >= usage["daily_limit"]:
+            payload, status_code = _trial_limit_response(usage)
+            return jsonify(payload), status_code
+
         source_outfit_image_bytes = None
         source_outfit_mime_type = "image/jpeg"
         storage_path = get_photo_storage_path_for_user(user_id, photo_id)
@@ -511,16 +591,12 @@ def generate_outfitsme_preview(photo_id: str):
             source_outfit_image_bytes = download_photo_bytes(storage_path)
             source_outfit_mime_type = mimetypes.guess_type(storage_path)[0] or "image/jpeg"
 
-        gemini_key = user_settings.get("gemini_api_key")
-        if not str(gemini_key or "").strip():
+        if not settings.GEMINI_API_KEY:
             return jsonify(
                 {
-                    "error": (
-                        "Gemini API key is required. Generate a gemini-2.5-flash key in Google AI Studio, "
-                        "then add it in Settings > Model keys."
-                    )
+                    "error": "OutfitsMe generation is temporarily unavailable."
                 }
-            ), 400
+            ), 503
         generated_data_uri = generate_outfitsme_image_with_gemini(
             reference_image_bytes=reference_photo_bytes,
             reference_mime_type=reference_mime_type,
@@ -529,8 +605,7 @@ def generate_outfitsme_preview(photo_id: str):
             source_outfit_image_bytes=source_outfit_image_bytes,
             source_outfit_mime_type=source_outfit_mime_type,
             profile_gender=user_settings.get("profile_gender"),
-            profile_age=user_settings.get("profile_age"),
-            api_key=gemini_key
+            profile_age=user_settings.get("profile_age")
         )
         if not generated_data_uri:
             return jsonify({"error": "OutfitsMe generation returned no image."}), 502
@@ -612,12 +687,16 @@ def get_limits():
         if not user_id:
             return jsonify({"error": "Invalid or expired token."}), 401
 
-        usage = _build_analysis_usage(user_id)
+        usage = _build_trial_usage(user_id, access_token)
         return jsonify(
             {
                 "user_id": user_id,
                 "analysis": usage,
-                "rate_limit": {"analyze": "5 per minute"}
+                "rate_limit": {"analyze": "5 per minute"},
+                "access": {
+                    "user_role": usage.get("user_role", "trial"),
+                    "is_admin": is_admin_role(usage.get("user_role"))
+                }
             }
         ), 200
     except SupabaseNotConfiguredError as exc:
@@ -647,7 +726,8 @@ def get_models():
             {
                 "models": models,
                 "preferred_model": preferred_model,
-                "image_ready_models": image_ready
+                "image_ready_models": image_ready,
+                "user_role": model_settings.get("user_role", "trial")
             }
         ), 200
     except SupabaseNotConfiguredError as exc:
@@ -660,8 +740,8 @@ def get_models():
         return jsonify({"error": f"Model lookup failed: {exc}"}), 500
 
 
-@api_bp.get("/settings/model-keys")
-def get_model_keys():
+@api_bp.get("/settings/preferences")
+def get_settings_preferences():
     access_token = _extract_access_token()
     if not access_token:
         return jsonify({"error": "Missing bearer token."}), 401
@@ -671,11 +751,25 @@ def get_model_keys():
         if not user_id:
             return jsonify({"error": "Invalid or expired token."}), 401
 
-        masked_settings = get_user_model_settings_masked(user_id)
-        return jsonify({"settings": masked_settings}), 200
+        current_settings = get_user_model_settings(user_id)
+        return jsonify(
+            {
+                "settings": {
+                    "user_role": current_settings.get("user_role", "trial"),
+                    "profile_gender": current_settings.get("profile_gender", ""),
+                    "profile_age": current_settings.get("profile_age"),
+                    "profile_photo_url": (
+                        get_signed_image_url(current_settings.get("profile_photo_path"), expires_in_seconds=3600)
+                        if current_settings.get("profile_photo_path")
+                        else None
+                    ),
+                    "enable_outfit_image_generation": bool(current_settings.get("enable_outfit_image_generation")),
+                    "enable_online_store_search": bool(current_settings.get("enable_online_store_search")),
+                    "enable_accessory_analysis": bool(current_settings.get("enable_accessory_analysis"))
+                }
+            }
+        ), 200
     except SupabaseNotConfiguredError as exc:
-        return jsonify({"error": str(exc)}), 500
-    except SettingsEncryptionError as exc:
         return jsonify({"error": str(exc)}), 500
     except AuthApiError:
         return jsonify({"error": "Invalid or expired token."}), 401
@@ -683,8 +777,8 @@ def get_model_keys():
         return jsonify({"error": f"Settings lookup failed: {exc}"}), 500
 
 
-@api_bp.put("/settings/model-keys")
-def update_model_keys():
+@api_bp.put("/settings/preferences")
+def update_settings_preferences():
     access_token = _extract_access_token()
     if not access_token:
         return jsonify({"error": "Missing bearer token."}), 401
@@ -698,13 +792,9 @@ def update_model_keys():
         if not user_id:
             return jsonify({"error": "Invalid or expired token."}), 401
 
-        masked = upsert_user_model_settings(user_id, payload)
-        model_settings = get_user_model_settings(user_id)
-        models = build_model_availability(model_settings)
-        return jsonify({"settings": masked, "models": models}), 200
+        updated = upsert_user_model_settings(user_id, payload)
+        return jsonify({"settings": updated}), 200
     except SupabaseNotConfiguredError as exc:
-        return jsonify({"error": str(exc)}), 500
-    except SettingsEncryptionError as exc:
         return jsonify({"error": str(exc)}), 500
     except AuthApiError:
         return jsonify({"error": "Invalid or expired token."}), 401

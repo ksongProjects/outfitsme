@@ -12,25 +12,11 @@ MODEL_CATALOG = [
     }
 ]
 
-OPTIONAL_MODEL_CATALOG = [
-    {
-        "id": "bedrock-agent",
-        "label": "AWS Bedrock Agent",
-        "provider": "bedrock_agent",
-        "supports_image": True
-    }
-]
-
-
 def get_model_catalog() -> list[dict]:
-    models = [dict(model) for model in MODEL_CATALOG]
-    if settings.ENABLE_BEDROCK_ANALYSIS:
-        models.extend(dict(model) for model in OPTIONAL_MODEL_CATALOG)
-    return models
+    return [dict(model) for model in MODEL_CATALOG]
 
 
 def build_model_availability(model_settings: dict) -> list[dict]:
-    gemini_key = (model_settings.get("gemini_api_key") or "").strip()
     aws_region = (model_settings.get("aws_region") or "").strip()
     bedrock_agent_id = (model_settings.get("aws_bedrock_agent_id") or "").strip()
     bedrock_agent_alias_id = (model_settings.get("aws_bedrock_agent_alias_id") or "").strip()
@@ -45,9 +31,9 @@ def build_model_availability(model_settings: dict) -> list[dict]:
             available = False
             unavailable_reason = "This model does not support image analysis."
         elif provider == "gemini":
-            if not gemini_key:
+            if not settings.GEMINI_API_KEY:
                 available = False
-                unavailable_reason = "Add a Gemini API key in Settings."
+                unavailable_reason = "Gemini image analysis is temporarily unavailable."
         elif provider == "bedrock_agent":
             if not aws_region:
                 available = False

@@ -99,7 +99,7 @@ def _post_to_gemini(payload: dict, model: str, api_key: str, timeout_seconds: in
 
         if "API key not valid" in message:
             raise GeminiNotConfiguredError(
-                "Gemini API key is invalid. Generate a new key in Google AI Studio and set GEMINI_API_KEY."
+                "The server Gemini configuration is invalid."
             )
 
         raise requests.HTTPError(

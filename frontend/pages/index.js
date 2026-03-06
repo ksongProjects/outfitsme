@@ -39,8 +39,7 @@ export default function HomePage() {
   const historyState = useHistoryState({ accessToken });
   const settingsState = useSettingsState({
     session: auth.session,
-    accessToken,
-    onModelSettingsUpdated: () => analysisState.loadModels()
+    accessToken
   });
 
   useEffect(() => {
@@ -50,7 +49,7 @@ export default function HomePage() {
     statsState.loadStats();
     analysisState.loadModels();
     analysisState.loadAnalysisLimits();
-    settingsState.loadModelSettings();
+    settingsState.loadPreferences();
     settingsState.loadCosts();
   }, [accessToken]);
 
@@ -238,28 +237,26 @@ export default function HomePage() {
     savePassword: settingsState.savePassword,
     settingsForm: settingsState.settingsForm,
     setSettingsForm: settingsState.setSettingsForm,
-    geminiApiKeyConfigured: settingsState.geminiApiKeyConfigured,
     profilePhotoUrl: settingsState.profilePhotoUrl,
+    userRole: settingsState.userRole,
     profilePhotoUploading: settingsState.profilePhotoUploading,
-    saveModelSettings: settingsState.saveModelSettings,
+    saveFeatureSettings: settingsState.saveFeatureSettings,
     costSummary: settingsState.costSummary,
     costSummaryLoading: settingsState.costSummaryLoading,
     loadCosts: settingsState.loadCosts,
-    uploadProfilePhoto: settingsState.uploadProfilePhoto,
-    modelOptions: analysisState.modelOptions
+    uploadProfilePhoto: settingsState.uploadProfilePhoto
   }), [
     settingsState.profileName,
     settingsState.newEmail,
     settingsState.newPassword,
     settingsState.settingsForm,
-    settingsState.geminiApiKeyConfigured,
     settingsState.profilePhotoUrl,
+    settingsState.userRole,
     settingsState.profilePhotoUploading,
     settingsState.costSummary,
     settingsState.costSummaryLoading,
     settingsState.loadCosts,
-    settingsState.uploadProfilePhoto,
-    analysisState.modelOptions
+    settingsState.uploadProfilePhoto
   ]);
 
   const historyValue = useMemo(() => ({

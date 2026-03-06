@@ -15,7 +15,7 @@ import BaseDialog from "../ui/BaseDialog";
 import BaseInput from "../ui/BaseInput";
 
 export default function OutfitsTab() {
-  const { profilePhotoUrl, settingsForm, geminiApiKeyConfigured } = useSettingsContext();
+  const { profilePhotoUrl, settingsForm } = useSettingsContext();
   const {
     wardrobe,
     wardrobeLoading,
@@ -137,10 +137,6 @@ export default function OutfitsTab() {
     if (!details.photo_id || !selected) {
       return;
     }
-    if (!geminiApiKeyConfigured) {
-      toast.error("Add a Gemini API key in Settings > Model keys before using OutfitsMe.");
-      return;
-    }
     if (!imageGenerationEnabled) {
       toast.error("Outfit image generation is off. Enable it in Settings > Features.");
       return;
@@ -225,11 +221,9 @@ export default function OutfitsTab() {
                 type="button"
                 variant="ghost"
                 onClick={handleGenerateOutfitsMe}
-                disabled={outfitMeLoading || !imageGenerationEnabled || !geminiApiKeyConfigured}
+                disabled={outfitMeLoading || !imageGenerationEnabled}
                 title={
-                  !geminiApiKeyConfigured
-                    ? "Gemini API key required in Settings > Model keys"
-                    : !imageGenerationEnabled
+                  !imageGenerationEnabled
                       ? "Enable Outfit image generation in Settings > Features"
                       : profilePhotoUrl
                         ? "Generate OutfitsMe preview"

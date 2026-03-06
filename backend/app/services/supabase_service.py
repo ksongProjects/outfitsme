@@ -11,9 +11,7 @@ from uuid import uuid4
 from supabase import Client, create_client
 
 from app.config import settings
-from app.services.secrets_service import decrypt_secret, encrypt_secret, mask_secret
-
-
+from app.services.access_control import normalize_user_role
 class SupabaseNotConfiguredError(RuntimeError):
     pass
 
@@ -295,6 +293,17 @@ def get_user_id_from_token(access_token: str) -> str | None:
     user_response = client.auth.get_user(access_token)
     user = getattr(user_response, "user", None)
     return getattr(user, "id", None)
+
+
+def get_user_from_token(access_token: str):
+    client = get_supabase_client()
+    user_response = client.auth.get_user(access_token)
+    return getattr(user_response, "user", None)
+
+
+def get_user_created_at_from_token(access_token: str) -> str | None:
+    user = get_user_from_token(access_token)
+    return getattr(user, "created_at", None)
 
 
 def upload_photo_for_user(file_storage, user_id: str) -> str:
@@ -974,6 +983,25 @@ def get_user_monthly_analysis_count(user_id: str, month_start_iso: str) -> int:
     return len(response.data or [])
 
 
+def get_user_analysis_job_count_since(
+    user_id: str,
+    since_iso: str,
+    *,
+    statuses: list[str] | None = None
+) -> int:
+    client = get_supabase_client()
+    query = (
+        client.table("analysis_jobs")
+        .select("id")
+        .eq("user_id", user_id)
+        .gte("created_at", since_iso)
+    )
+    if statuses:
+        query = query.in_("status", statuses)
+    response = query.execute()
+    return len(response.data or [])
+
+
 def get_user_monthly_composed_outfit_count(user_id: str, month_start_iso: str) -> int:
     client = get_supabase_client()
     response = (
@@ -1005,6 +1033,26 @@ def get_user_monthly_generated_image_count(user_id: str, month_start_iso: str, k
         return len(response.data or [])
     except Exception:  # noqa: BLE001
         # Keep costs endpoint resilient even if storage.objects query fails.
+        return 0
+
+
+def get_user_generated_image_count_since(user_id: str, since_iso: str, kind: str) -> int:
+    client = get_supabase_client()
+    safe_kind = str(kind or "").strip().lower()
+    if safe_kind not in {"items", "outfits"}:
+        return 0
+    prefix = f"{user_id}/generated/{safe_kind}/%"
+    try:
+        response = (
+            client.table("storage.objects")
+            .select("id")
+            .eq("bucket_id", settings.SUPABASE_BUCKET)
+            .like("name", prefix)
+            .gte("created_at", since_iso)
+            .execute()
+        )
+        return len(response.data or [])
+    except Exception:  # noqa: BLE001
         return 0
 
 
@@ -1644,9 +1692,9 @@ def compose_outfit_from_items(
 
 def _empty_model_settings() -> dict:
     return {
+        "user_role": "trial",
         "is_premium": False,
         "preferred_model": settings.DEFAULT_ANALYSIS_MODEL,
-        "gemini_api_key": "",
         "aws_region": "",
         "aws_bedrock_agent_id": "",
         "aws_bedrock_agent_alias_id": "",
@@ -1665,7 +1713,7 @@ def get_user_model_settings(user_id: str) -> dict:
         response = (
             client.table("user_settings")
             .select(
-                "is_premium,preferred_model,gemini_api_key_enc,aws_region,aws_bedrock_agent_id,aws_bedrock_agent_alias_id,"
+                "user_role,is_premium,preferred_model,aws_region,aws_bedrock_agent_id,aws_bedrock_agent_alias_id,"
                 "profile_gender,profile_age,profile_photo_path,enable_outfit_image_generation,enable_online_store_search,enable_accessory_analysis"
             )
             .eq("user_id", user_id)
@@ -1678,7 +1726,7 @@ def get_user_model_settings(user_id: str) -> dict:
         response = (
             client.table("user_settings")
             .select(
-                "preferred_model,gemini_api_key_enc,aws_region,aws_bedrock_agent_id,aws_bedrock_agent_alias_id,"
+                "preferred_model,aws_region,aws_bedrock_agent_id,aws_bedrock_agent_alias_id,"
                 "profile_gender,profile_age,profile_photo_path,enable_outfit_image_generation,enable_online_store_search,enable_accessory_analysis"
             )
             .eq("user_id", user_id)
@@ -1689,10 +1737,14 @@ def get_user_model_settings(user_id: str) -> dict:
     if not row:
         return _empty_model_settings()
 
+    normalized_role = normalize_user_role(
+        row.get("user_role"),
+        legacy_is_premium=bool(row.get("is_premium"))
+    )
     return {
-        "is_premium": bool(row.get("is_premium")),
+        "user_role": normalized_role,
+        "is_premium": normalized_role == "premium",
         "preferred_model": row.get("preferred_model") or settings.DEFAULT_ANALYSIS_MODEL,
-        "gemini_api_key": decrypt_secret(row.get("gemini_api_key_enc") or ""),
         "aws_region": row.get("aws_region") or "",
         "aws_bedrock_agent_id": row.get("aws_bedrock_agent_id") or "",
         "aws_bedrock_agent_alias_id": row.get("aws_bedrock_agent_alias_id") or "",
@@ -1705,36 +1757,12 @@ def get_user_model_settings(user_id: str) -> dict:
     }
 
 
-def get_user_model_settings_masked(user_id: str) -> dict:
-    settings_row = get_user_model_settings(user_id)
-    return {
-        "is_premium": bool(settings_row.get("is_premium")),
-        "preferred_model": settings_row.get("preferred_model") or settings.DEFAULT_ANALYSIS_MODEL,
-        "gemini_api_key_masked": mask_secret(settings_row.get("gemini_api_key", "")),
-        "aws_region": settings_row.get("aws_region", ""),
-        "aws_bedrock_agent_id": settings_row.get("aws_bedrock_agent_id", ""),
-        "aws_bedrock_agent_alias_id": settings_row.get("aws_bedrock_agent_alias_id", ""),
-        "profile_gender": settings_row.get("profile_gender", ""),
-        "profile_age": settings_row.get("profile_age"),
-        "profile_photo_url": (
-            get_signed_image_url(settings_row.get("profile_photo_path"), expires_in_seconds=3600)
-            if settings_row.get("profile_photo_path")
-            else None
-        ),
-        "enable_outfit_image_generation": bool(settings_row.get("enable_outfit_image_generation")),
-        "enable_online_store_search": bool(settings_row.get("enable_online_store_search")),
-        "enable_accessory_analysis": bool(settings_row.get("enable_accessory_analysis"))
-    }
-
-
 def upsert_user_model_settings(user_id: str, payload: dict) -> dict:
     client = get_supabase_client()
     current = get_user_model_settings(user_id)
 
     preferred_model = str(payload.get("preferred_model", current.get("preferred_model", ""))).strip()
 
-    is_premium = payload.get("is_premium")
-    gemini_api_key = payload.get("gemini_api_key")
     aws_region = payload.get("aws_region")
     aws_bedrock_agent_id = payload.get("aws_bedrock_agent_id")
     aws_bedrock_agent_alias_id = payload.get("aws_bedrock_agent_alias_id")
@@ -1745,11 +1773,6 @@ def upsert_user_model_settings(user_id: str, payload: dict) -> dict:
     enable_online_store_search = payload.get("enable_online_store_search")
     enable_accessory_analysis = payload.get("enable_accessory_analysis")
 
-    def _next_secret(incoming, existing):
-        if incoming is None:
-            return existing
-        return str(incoming).strip()
-
     def _to_bool(value, fallback):
         if value is None:
             return fallback
@@ -1757,11 +1780,12 @@ def upsert_user_model_settings(user_id: str, payload: dict) -> dict:
             return value
         return str(value).strip().lower() in {"1", "true", "yes", "on"}
 
+    current_role = normalize_user_role(current.get("user_role"))
     row = {
         "user_id": user_id,
-        "is_premium": _to_bool(is_premium, bool(current.get("is_premium"))),
+        "user_role": current_role,
+        "is_premium": current_role == "premium",
         "preferred_model": preferred_model or settings.DEFAULT_ANALYSIS_MODEL,
-        "gemini_api_key_enc": encrypt_secret(_next_secret(gemini_api_key, current.get("gemini_api_key", ""))),
         "aws_region": str(aws_region).strip() if aws_region is not None else current.get("aws_region", ""),
         "aws_bedrock_agent_id": (
             str(aws_bedrock_agent_id).strip() if aws_bedrock_agent_id is not None else current.get("aws_bedrock_agent_id", "")
@@ -1808,7 +1832,25 @@ def upsert_user_model_settings(user_id: str, payload: dict) -> dict:
             .upsert(fallback_row, on_conflict="user_id")
             .execute()
         )
-    return get_user_model_settings_masked(user_id)
+    settings_row = get_user_model_settings(user_id)
+    return {
+        "user_role": settings_row.get("user_role", "trial"),
+        "is_premium": bool(settings_row.get("is_premium")),
+        "preferred_model": settings_row.get("preferred_model") or settings.DEFAULT_ANALYSIS_MODEL,
+        "aws_region": settings_row.get("aws_region", ""),
+        "aws_bedrock_agent_id": settings_row.get("aws_bedrock_agent_id", ""),
+        "aws_bedrock_agent_alias_id": settings_row.get("aws_bedrock_agent_alias_id", ""),
+        "profile_gender": settings_row.get("profile_gender", ""),
+        "profile_age": settings_row.get("profile_age"),
+        "profile_photo_url": (
+            get_signed_image_url(settings_row.get("profile_photo_path"), expires_in_seconds=3600)
+            if settings_row.get("profile_photo_path")
+            else None
+        ),
+        "enable_outfit_image_generation": bool(settings_row.get("enable_outfit_image_generation")),
+        "enable_online_store_search": bool(settings_row.get("enable_online_store_search")),
+        "enable_accessory_analysis": bool(settings_row.get("enable_accessory_analysis"))
+    }
 
 
 def save_user_profile_photo(user_id: str, file_storage) -> dict:
@@ -1886,4 +1928,3 @@ def get_user_cost_summary(user_id: str, month_start_iso: str) -> dict:
             "monthly_custom_outfit_generation_limit": settings.MONTHLY_CUSTOM_OUTFIT_LIMIT
         }
     }
-

@@ -5,20 +5,15 @@ import { toast } from "sonner";
 import { supabase } from "../lib/supabaseClient";
 import { API_BASE } from "../lib/apiBase";
 
-export function useSettingsState({ session, accessToken, onModelSettingsUpdated }) {
+export function useSettingsState({ session, accessToken }) {
   const queryClient = useQueryClient();
   const [profileName, setProfileName] = useState("");
   const [newEmail, setNewEmail] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [profilePhotoUrl, setProfilePhotoUrl] = useState("");
   const [profilePhotoUploading, setProfilePhotoUploading] = useState(false);
-  const [geminiApiKeyConfigured, setGeminiApiKeyConfigured] = useState(false);
+  const [userRole, setUserRole] = useState("trial");
   const [settingsForm, setSettingsForm] = useState({
-    preferred_model: "gemini-2.5-flash",
-    gemini_api_key: "",
-    aws_region: "",
-    aws_bedrock_agent_id: "",
-    aws_bedrock_agent_alias_id: "",
     profile_gender: "",
     profile_age: "",
     enable_outfit_image_generation: false,
@@ -30,20 +25,20 @@ export function useSettingsState({ session, accessToken, onModelSettingsUpdated 
     setProfileName(session?.user?.user_metadata?.full_name || "");
   }, [session]);
 
-  const modelSettingsQuery = useQuery({
-    queryKey: ["model-settings", accessToken],
+  const preferencesQuery = useQuery({
+    queryKey: ["settings-preferences", accessToken],
     queryFn: async () => {
       if (!accessToken) {
         return { settings: {} };
       }
-      const response = await fetch(`${API_BASE}/api/settings/model-keys`, {
+      const response = await fetch(`${API_BASE}/api/settings/preferences`, {
         method: "GET",
         headers: {
           Authorization: `Bearer ${accessToken}`
         }
       });
       if (!response.ok) {
-        throw new Error("Unable to load model settings.");
+        throw new Error("Unable to load settings.");
       }
       return await response.json();
     },
@@ -72,31 +67,26 @@ export function useSettingsState({ session, accessToken, onModelSettingsUpdated 
     staleTime: 20_000
   });
 
-  const loadModelSettings = async () => {
+  const loadPreferences = async () => {
     if (!accessToken) {
       return;
     }
 
-    const result = await modelSettingsQuery.refetch();
+    const result = await preferencesQuery.refetch();
     if (result.isError) {
       return;
     }
 
-    const payload = result.data || {};
-    const current = payload.settings || {};
+    const current = result.data?.settings || {};
+    setUserRole(current.user_role || "trial");
     setSettingsForm((prev) => ({
       ...prev,
-      preferred_model: current.preferred_model || prev.preferred_model,
-      aws_region: current.aws_region || "",
-      aws_bedrock_agent_id: current.aws_bedrock_agent_id || "",
-      aws_bedrock_agent_alias_id: current.aws_bedrock_agent_alias_id || "",
       profile_gender: current.profile_gender || "",
       profile_age: current.profile_age ? String(current.profile_age) : "",
       enable_outfit_image_generation: Boolean(current.enable_outfit_image_generation),
       enable_online_store_search: Boolean(current.enable_online_store_search),
       enable_accessory_analysis: Boolean(current.enable_accessory_analysis)
     }));
-    setGeminiApiKeyConfigured(Boolean(String(current.gemini_api_key_masked || "").trim()));
     setProfilePhotoUrl(current.profile_photo_url || "");
   };
 
@@ -106,6 +96,31 @@ export function useSettingsState({ session, accessToken, onModelSettingsUpdated 
     }
     await costsQuery.refetch();
   };
+
+  const savePreferencesMutation = useMutation({
+    mutationFn: async (payload) => {
+      const response = await fetch(`${API_BASE}/api/settings/preferences`, {
+        method: "PUT",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}));
+        throw new Error(errorBody.error || "Failed to save settings.");
+      }
+
+      return await response.json();
+    },
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ["settings-preferences", accessToken] });
+      await queryClient.invalidateQueries({ queryKey: ["settings-costs", accessToken] });
+      await queryClient.invalidateQueries({ queryKey: ["stats", accessToken] });
+    }
+  });
 
   const saveProfile = async () => {
     const name = profileName.trim();
@@ -121,7 +136,7 @@ export function useSettingsState({ session, accessToken, onModelSettingsUpdated 
       return;
     }
     try {
-      await saveModelSettingsMutation.mutateAsync({
+      await savePreferencesMutation.mutateAsync({
         profile_gender: settingsForm.profile_gender,
         profile_age: settingsForm.profile_age,
         enable_outfit_image_generation: settingsForm.enable_outfit_image_generation,
@@ -130,7 +145,27 @@ export function useSettingsState({ session, accessToken, onModelSettingsUpdated 
       });
       toast.success("Profile updated.");
     } catch (err) {
-      toast.error(err.message || "Profile updated, but feature profile settings failed to save.");
+      toast.error(err.message || "Profile updated, but settings failed to save.");
+    }
+  };
+
+  const saveFeatureSettings = async () => {
+    if (!accessToken) {
+      return;
+    }
+
+    try {
+      await savePreferencesMutation.mutateAsync({
+        profile_gender: settingsForm.profile_gender,
+        profile_age: settingsForm.profile_age,
+        enable_outfit_image_generation: settingsForm.enable_outfit_image_generation,
+        enable_online_store_search: settingsForm.enable_online_store_search,
+        enable_accessory_analysis: settingsForm.enable_accessory_analysis
+      });
+      toast.success("Feature settings updated.");
+      await loadPreferences();
+    } catch (err) {
+      toast.error(err.message || "Failed to save feature settings.");
     }
   };
 
@@ -163,62 +198,21 @@ export function useSettingsState({ session, accessToken, onModelSettingsUpdated 
     toast.success("Password updated.");
   };
 
-  const saveModelSettings = async () => {
-    if (!accessToken) {
-      return;
-    }
-
-    try {
-      const payload = {
-        preferred_model: settingsForm.preferred_model,
-        aws_region: settingsForm.aws_region,
-        aws_bedrock_agent_id: settingsForm.aws_bedrock_agent_id,
-        aws_bedrock_agent_alias_id: settingsForm.aws_bedrock_agent_alias_id,
-        profile_gender: settingsForm.profile_gender,
-        profile_age: settingsForm.profile_age,
-        enable_outfit_image_generation: settingsForm.enable_outfit_image_generation,
-        enable_online_store_search: settingsForm.enable_online_store_search,
-        enable_accessory_analysis: settingsForm.enable_accessory_analysis
-      };
-      const nextGeminiKey = String(settingsForm.gemini_api_key || "").trim();
-      if (nextGeminiKey) {
-        payload.gemini_api_key = nextGeminiKey;
-      }
-      await saveModelSettingsMutation.mutateAsync(payload);
-      if (nextGeminiKey) {
-        setGeminiApiKeyConfigured(true);
-      }
-      setSettingsForm((prev) => ({
-        ...prev,
-        gemini_api_key: ""
-      }));
-      toast.success("Model settings updated.");
-      if (onModelSettingsUpdated) {
-        onModelSettingsUpdated();
-      }
-      loadModelSettings();
-    } catch (err) {
-      toast.error(err.message || "Failed to save model settings.");
-    }
-  };
-
   const uploadProfilePhoto = async (file) => {
     if (!accessToken || !file) {
       return;
     }
     setProfilePhotoUploading(true);
     try {
-      // Resize image
       const resizedFile = await new Promise((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = (e) => {
           const img = new Image();
           img.onload = () => {
             const targetSize = 768;
-            
             let width = img.width;
             let height = img.height;
-            
+
             if (width > targetSize || height > targetSize) {
               if (width > height) {
                 height = Math.round((height * targetSize) / width);
@@ -228,13 +222,13 @@ export function useSettingsState({ session, accessToken, onModelSettingsUpdated 
                 height = targetSize;
               }
             }
-            
+
             const canvas = document.createElement("canvas");
             canvas.width = width;
             canvas.height = height;
             const ctx = canvas.getContext("2d");
             ctx.drawImage(img, 0, 0, width, height);
-            
+
             canvas.toBlob((blob) => {
               if (blob) {
                 resolve(new File([blob], file.name, {
@@ -269,39 +263,13 @@ export function useSettingsState({ session, accessToken, onModelSettingsUpdated 
       const payload = await response.json();
       setProfilePhotoUrl(payload.profile_photo_url || "");
       toast.success("Profile photo updated.");
-      await queryClient.invalidateQueries({ queryKey: ["model-settings", accessToken] });
+      await queryClient.invalidateQueries({ queryKey: ["settings-preferences", accessToken] });
     } catch (err) {
       toast.error(err.message || "Failed to upload profile photo.");
     } finally {
       setProfilePhotoUploading(false);
     }
   };
-
-  const saveModelSettingsMutation = useMutation({
-    mutationFn: async (payload) => {
-      const response = await fetch(`${API_BASE}/api/settings/model-keys`, {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`
-        },
-        body: JSON.stringify(payload)
-      });
-
-      if (!response.ok) {
-        const errorBody = await response.json().catch(() => ({}));
-        throw new Error(errorBody.error || "Failed to save model settings.");
-      }
-
-      return await response.json();
-    },
-    onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["model-settings", accessToken] });
-      await queryClient.invalidateQueries({ queryKey: ["settings-costs", accessToken] });
-      await queryClient.invalidateQueries({ queryKey: ["models", accessToken] });
-      await queryClient.invalidateQueries({ queryKey: ["stats", accessToken] });
-    }
-  });
 
   return {
     profileName,
@@ -312,17 +280,17 @@ export function useSettingsState({ session, accessToken, onModelSettingsUpdated 
     setNewPassword,
     settingsForm,
     setSettingsForm,
-    geminiApiKeyConfigured,
     profilePhotoUrl,
+    userRole,
     profilePhotoUploading,
     costSummary: costsQuery.data?.costs || null,
     costSummaryLoading: costsQuery.isFetching,
-    loadModelSettings,
+    loadPreferences,
     loadCosts,
     uploadProfilePhoto,
     saveProfile,
     saveEmail,
     savePassword,
-    saveModelSettings
+    saveFeatureSettings
   };
 }

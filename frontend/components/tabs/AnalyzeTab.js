@@ -30,13 +30,16 @@ export default function AnalyzeTab() {
     analysisLimits,
     limitsLoading
   } = useAnalysisContext();
-  const { profilePhotoUrl, settingsForm, geminiApiKeyConfigured } = useSettingsContext();
+  const { profilePhotoUrl, settingsForm } = useSettingsContext();
   const { generateOutfitsMe, outfitMeLoading } = useWardrobeContext();
   const detectedOutfits = analysis?.outfits || [];
-  const monthlyLimit = analysisLimits?.monthly_limit ?? 0;
-  const usedThisMonth = analysisLimits?.used_this_month ?? 0;
-  const remainingThisMonth = analysisLimits?.remaining_this_month;
-  const hasMonthlyCap = monthlyLimit > 0;
+  const dailyLimit = analysisLimits?.daily_limit ?? 0;
+  const usedToday = analysisLimits?.used_today ?? 0;
+  const remainingToday = analysisLimits?.remaining_today;
+  const trialActive = Boolean(analysisLimits?.trial_active);
+  const trialDaysRemaining = analysisLimits?.trial_days_remaining ?? 0;
+  const accessMode = analysisLimits?.access_mode || "trial";
+  const userRole = analysisLimits?.user_role || "trial";
   const progress = jobStatus?.progress || null;
   const progressCounts = progress?.counts || null;
   const progressCurrentItem = progress?.current_item || null;
@@ -231,10 +234,6 @@ export default function AnalyzeTab() {
       toast.error("Analyze a photo first before using OutfitsMe.");
       return;
     }
-    if (!geminiApiKeyConfigured) {
-      toast.error("Add a Gemini API key in Settings > Model keys before using OutfitsMe.");
-      return;
-    }
     if (!imageGenerationEnabled) {
       toast.error("OutfitsMe image generation is off. Enable it in Settings > Features.");
       return;
@@ -263,36 +262,32 @@ export default function AnalyzeTab() {
       <div className="analysis-layout">
         <section>
         <label htmlFor="image-upload">Photo</label>
-        <label htmlFor="analysis-model">Analysis model</label>
-        <BaseSelect
-          id="analysis-model"
-          value={selectedModel}
-          onValueChange={(nextValue) => setSelectedModel(nextValue)}
-          options={(modelOptions || [])
-            .filter((model) => model.supports_image)
-            .map((model) => ({
-              value: model.id,
-              label: `${model.label}${model.available ? "" : " (Unavailable)"}`,
-              disabled: !model.available
-            }))}
-          placeholder="Select model"
-        />
+        {modelOptions.length > 1 ? (
+          <>
+            <label htmlFor="analysis-model">Analysis model</label>
+            <BaseSelect
+              id="analysis-model"
+              value={selectedModel}
+              onValueChange={(nextValue) => setSelectedModel(nextValue)}
+              options={(modelOptions || [])
+                .filter((model) => model.supports_image)
+                .map((model) => ({
+                  value: model.id,
+                  label: `${model.label}${model.available ? "" : " (Unavailable)"}`,
+                  disabled: !model.available
+                }))}
+              placeholder="Select model"
+            />
+          </>
+        ) : null}
         {modelOptions.length > 0 && !availableImageModel ? (
           <div className="settings-notice">
             <p>
-              <strong>Gemini key required:</strong> Add a Gemini API key to run analysis.
+              <strong>Analysis unavailable:</strong> The managed AI service is not currently available.
             </p>
             <p className="subtext">
               {firstUnavailableImageModel?.unavailable_reason || "No image-capable model is currently available."}
             </p>
-            <a
-              className="ghost-btn"
-              href="https://aistudio.google.com/app/apikey"
-              target="_blank"
-              rel="noreferrer"
-            >
-              Generate Gemini key
-            </a>
           </div>
         ) : null}
         {(modelOptions || []).some((model) => model.supports_image && !model.available) ? (
@@ -306,12 +301,14 @@ export default function AnalyzeTab() {
         <div className="quota-pill" role="status" aria-live="polite">
           {limitsLoading ? (
             <span>Loading usage limits...</span>
-          ) : hasMonthlyCap ? (
+          ) : accessMode === "unlimited" ? (
+            <span>{userRole} access: unlimited AI usage</span>
+          ) : trialActive ? (
             <span>
-              Monthly quota: {usedThisMonth}/{monthlyLimit} used ({remainingThisMonth} left)
+              Trial: {usedToday}/{dailyLimit} used today ({remainingToday} left), {trialDaysRemaining} day{trialDaysRemaining === 1 ? "" : "s"} left
             </span>
           ) : (
-            <span>Monthly quota: unlimited</span>
+            <span>Trial expired</span>
           )}
         </div>
         {jobStatus ? (
@@ -435,10 +432,10 @@ export default function AnalyzeTab() {
                         type="button"
                         variant="ghost"
                         onClick={() => handleGenerateOutfitsMe(index)}
-                        disabled={outfitMeLoading || !imageGenerationEnabled || !geminiApiKeyConfigured}
+                        disabled={outfitMeLoading || !imageGenerationEnabled || !trialActive}
                         title={
-                          !geminiApiKeyConfigured
-                            ? "Gemini API key required in Settings > Model keys"
+                          !trialActive
+                            ? "Trial required for OutfitsMe"
                             : !imageGenerationEnabled
                               ? "Enable Outfit image generation in Settings > Features"
                               : profilePhotoUrl
@@ -480,10 +477,10 @@ export default function AnalyzeTab() {
                     type="button"
                     variant="ghost"
                     onClick={() => handleGenerateOutfitsMe(0)}
-                    disabled={outfitMeLoading || !imageGenerationEnabled || !geminiApiKeyConfigured}
+                    disabled={outfitMeLoading || !imageGenerationEnabled || !trialActive}
                     title={
-                      !geminiApiKeyConfigured
-                        ? "Gemini API key required in Settings > Model keys"
+                      !trialActive
+                        ? "Trial required for OutfitsMe"
                         : !imageGenerationEnabled
                           ? "Enable Outfit image generation in Settings > Features"
                           : profilePhotoUrl

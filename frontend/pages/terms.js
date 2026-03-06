@@ -10,14 +10,14 @@ export default function TermsPage() {
 
         <h2>1. Service Requirements</h2>
         <p>
-          OutfitsMe requires a valid Google Gemini API key to run analysis and generation features.
-          Without a Gemini key, core functionality is unavailable.
+          OutfitsMe provides a limited managed-trial experience using our server-side Gemini integration.
+          Trial access, daily limits, and feature availability may change over time.
         </p>
 
-        <h2>2. Your API Key and Billing</h2>
+        <h2>2. Trial Usage and Billing</h2>
         <p>
-          You are responsible for your Gemini API key usage and any charges billed by Google.
-          For image generation features, your Google account must have billing enabled.
+          During the trial period, OutfitsMe covers the external AI usage behind the service.
+          We may limit, throttle, or suspend AI-powered features to prevent abuse or manage costs.
         </p>
 
         <h2>3. User Content</h2>

@@ -10,7 +10,7 @@ export default function PrivacyPage() {
 
         <h2>1. Data We Process</h2>
         <p>
-          We process account information, uploaded images, model settings, and generated outputs to provide
+          We process account information, uploaded images, feature preferences, and generated outputs to provide
           analysis and outfit features.
         </p>
 
@@ -26,10 +26,10 @@ export default function PrivacyPage() {
           may process data according to their own terms and privacy policies.
         </p>
 
-        <h2>4. API Keys</h2>
+        <h2>4. AI Providers</h2>
         <p>
-          Gemini API keys provided in settings are stored securely and used only to execute requested model
-          operations on your behalf.
+          OutfitsMe uses a managed Gemini integration on the server side to deliver trial analysis and generation
+          features. We do not ask users to paste personal Gemini API keys into settings.
         </p>
 
         <h2>5. Security</h2>

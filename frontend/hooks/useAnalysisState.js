@@ -137,11 +137,11 @@ export function useAnalysisState({ accessToken, onAnalysisSaved }) {
         const errorBody = await analyzeRes.json().catch(() => ({}));
         if (
           analyzeRes.status === 429 &&
-          typeof errorBody.monthly_limit === "number" &&
-          typeof errorBody.used_this_month === "number"
+          typeof errorBody.daily_limit === "number" &&
+          typeof errorBody.used_today === "number"
         ) {
           throw new Error(
-            `Monthly analysis limit reached (${errorBody.used_this_month}/${errorBody.monthly_limit}).`
+            `Daily trial limit reached (${errorBody.used_today}/${errorBody.daily_limit}).`
           );
         }
         throw new Error(errorBody.error || "Failed to analyze photo.");
@@ -225,11 +225,11 @@ export function useAnalysisState({ accessToken, onAnalysisSaved }) {
     if (raw.includes("missing bearer token") || raw.includes("invalid or expired token")) {
       return "Your session expired. Please sign in again.";
     }
-    if (raw.includes("gemini api key is required") || raw.includes("add a gemini api key in settings")) {
-      return "Gemini API key is required. Add a gemini-2.5-flash key in Settings > Model keys.";
+    if (raw.includes("trial has ended")) {
+      return "Your 14-day trial has ended.";
     }
-    if (raw.includes("monthly analysis limit reached")) {
-      return message || "You've reached your monthly analysis limit.";
+    if (raw.includes("daily trial limit reached")) {
+      return "You've reached today's trial limit. Try again after the daily reset.";
     }
     if (raw.includes("analysis timed out")) {
       return "Analysis is taking longer than expected. Please check back in a moment.";
@@ -424,7 +424,7 @@ export function useAnalysisState({ accessToken, onAnalysisSaved }) {
     }
     const selectedModelEntry = modelOptions.find((model) => model.id === selectedModel);
     if (!selectedModelEntry || !selectedModelEntry.supports_image || !selectedModelEntry.available) {
-      toast.error("Selected model is unavailable for image analysis. Update model keys in Settings.");
+      toast.error("Image analysis is unavailable right now.");
       return;
     }
     if (activeAnalysisCount >= MAX_CONCURRENT_ANALYSIS_JOBS) {

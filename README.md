@@ -72,7 +72,19 @@ Production defaults/safety:
 - `MONTHLY_ANALYSIS_LIMIT` enforces per-user monthly analyze quota (`0` disables the cap).
 - `ENABLE_BEDROCK_ANALYSIS=false` keeps analysis provider scope to Gemini-only. Set to `true` to re-enable Bedrock model options.
 
-Generate `SETTINGS_ENCRYPTION_KEY` once (Fernet key) and keep it private:
+Production/shared Gemini configuration:
+- Store the single server-managed Gemini key only in the backend environment as `GEMINI_API_KEY`.
+- Do not ask users to provide personal Gemini API keys.
+- Trial defaults are 14 days and 5 AI actions per day (`TRIAL_DAYS`, `TRIAL_DAILY_AI_ACTION_LIMIT`).
+
+User access roles:
+- `trial`: limited to the shared 14-day / daily-capped experience.
+- `premium`: unlimited AI usage in the current app logic.
+- `admin`: unlimited AI usage plus reserved for future admin-only tooling.
+- Roles are stored server-side in `public.user_settings.user_role`; normal user settings APIs do not allow self-promotion.
+- Apply the migration `supabase/migrations/20260306_000013_user_settings_roles.sql` before deploying role-based access changes.
+
+Generate `SETTINGS_ENCRYPTION_KEY` once (Fernet key) only if you still need encrypted server-side settings:
 
 ```bash
 python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"

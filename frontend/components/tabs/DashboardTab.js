@@ -16,10 +16,13 @@ export default function DashboardTab({
   const categorySplit = stats?.category_split || {};
   const clothingItemsCount = categorySplit.clothing_items_count ?? 0;
   const accessoriesItemsCount = categorySplit.accessories_items_count ?? 0;
-  const monthlyLimit = analysisLimits?.monthly_limit ?? 0;
-  const usedThisMonth = analysisLimits?.used_this_month ?? 0;
-  const remainingThisMonth = analysisLimits?.remaining_this_month;
-  const hasMonthlyCap = monthlyLimit > 0;
+  const dailyLimit = analysisLimits?.daily_limit ?? 0;
+  const usedToday = analysisLimits?.used_today ?? 0;
+  const remainingToday = analysisLimits?.remaining_today;
+  const trialActive = Boolean(analysisLimits?.trial_active);
+  const trialDaysRemaining = analysisLimits?.trial_days_remaining ?? 0;
+  const accessMode = analysisLimits?.access_mode || "trial";
+  const userRole = analysisLimits?.user_role || "trial";
   const recentActions = (history || []).slice(0, 5);
 
   return (
@@ -91,12 +94,14 @@ export default function DashboardTab({
           <h3>Quota and recent actions</h3>
           {limitsLoading ? (
             <p className="subtext">Loading usage limits...</p>
-          ) : hasMonthlyCap ? (
+          ) : accessMode === "unlimited" ? (
+            <p className="subtext">Access level: <strong>{userRole}</strong>. AI usage: <strong>unlimited</strong></p>
+          ) : trialActive ? (
             <p className="subtext">
-              Monthly quota: <strong>{usedThisMonth}/{monthlyLimit}</strong> used ({remainingThisMonth} left)
+              Trial usage today: <strong>{usedToday}/{dailyLimit}</strong> used ({remainingToday} left). Trial days left: <strong>{trialDaysRemaining}</strong>
             </p>
           ) : (
-            <p className="subtext">Monthly quota: <strong>unlimited</strong></p>
+            <p className="subtext">Trial status: <strong>expired</strong></p>
           )}
           {historyLoading ? (
             <p className="subtext">Loading recent actions...</p>

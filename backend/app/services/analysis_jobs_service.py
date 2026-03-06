@@ -9,6 +9,7 @@ import requests
 from PIL import Image, ImageOps
 
 from app.config import settings
+from app.services.access_control import has_accessory_access
 from app.services.bedrock_service import analyze_outfit_with_bedrock_agent
 from app.services.gemini_service import (
     analyze_outfit_with_gemini,
@@ -139,13 +140,6 @@ def _filter_analysis_for_free_tier(analysis: dict) -> dict:
         "items": filtered_items,
         "outfits": filtered_outfits
     }
-
-
-def _has_accessory_access(user_settings: dict) -> bool:
-    return bool(
-        user_settings.get("is_premium")
-        or user_settings.get("enable_accessory_analysis")
-    )
 
 
 def _attach_item_images_to_analysis(analysis: dict, persisted_items: list[dict]) -> dict:
@@ -313,12 +307,11 @@ def _generate_item_images_for_analysis(
             "disabled": True
         }
 
-    gemini_key = user_settings.get("gemini_api_key")
-    if not gemini_key:
+    if not settings.GEMINI_API_KEY:
         _mark_job_progress(
             job_id,
             stage="generating_item_images",
-            message="Item image generation is disabled because no Gemini API key is configured."
+            message="Item image generation is unavailable right now."
         )
         return {
             "total_items": 0,
@@ -375,8 +368,7 @@ def _generate_item_images_for_analysis(
                 grid_cols=grid_cols,
                 grid_rows=grid_rows,
                 reference_image_bytes=source_image_bytes,
-                reference_mime_type=source_mime_type,
-                api_key=gemini_key
+                reference_mime_type=source_mime_type
             )
             cropped_data_uris = _slice_sprite_to_item_data_uris(
                 sprite_data_uri or "",
@@ -440,12 +432,10 @@ def process_analysis_job(job_id: str) -> None:
             message=f"Analyzing photo with {model_entry['label']}."
         )
         if model_entry["provider"] == "gemini":
-            gemini_key = user_settings.get("gemini_api_key")
             analysis = analyze_outfit_with_gemini(
                 image_bytes,
                 mime_type,
-                model=chosen_model_id,
-                api_key=gemini_key
+                model=chosen_model_id
             )
         elif model_entry["provider"] == "bedrock_agent":
             analysis = analyze_outfit_with_bedrock_agent(
@@ -459,7 +449,10 @@ def process_analysis_job(job_id: str) -> None:
             raise ValueError(f"Unsupported model provider: {model_entry['provider']}")
 
         # Accessories are premium-only and excluded for default tier users.
-        if not _has_accessory_access(user_settings):
+        if not has_accessory_access(
+            user_settings.get("user_role"),
+            enable_accessory_analysis=bool(user_settings.get("enable_accessory_analysis"))
+        ):
             analysis = _filter_analysis_for_free_tier(analysis)
 
         _mark_job_progress(job_id, stage="persisting_results", message="Saving analysis results.")

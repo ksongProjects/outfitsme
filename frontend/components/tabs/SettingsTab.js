@@ -1,19 +1,17 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 
 import { useSettingsContext } from "../../context/DashboardContext";
 import BaseButton from "../ui/BaseButton";
 import BaseCheckbox from "../ui/BaseCheckbox";
 import BaseInput from "../ui/BaseInput";
-import BaseSelect from "../ui/BaseSelect";
 import ImageUploadField from "../ui/ImageUploadField";
 
 const SETTINGS_SECTIONS = [
   { id: "profile", label: "Profile" },
   { id: "security", label: "Security" },
   { id: "features", label: "Features" },
-  { id: "costs", label: "Cost usage" },
-  { id: "models", label: "Model keys" }
+  { id: "costs", label: "Cost usage" }
 ];
 
 export default function SettingsTab() {
@@ -29,43 +27,22 @@ export default function SettingsTab() {
     savePassword,
     settingsForm,
     setSettingsForm,
-    geminiApiKeyConfigured,
     profilePhotoUrl,
+    userRole,
     profilePhotoUploading,
-    saveModelSettings,
-    modelOptions,
+    saveFeatureSettings,
     costSummary,
     costSummaryLoading,
     loadCosts,
     uploadProfilePhoto
   } = useSettingsContext();
 
-  const [credentialsModelId, setCredentialsModelId] = useState(settingsForm.preferred_model || "");
   const [activeSection, setActiveSection] = useState("profile");
   const [profilePhotoFile, setProfilePhotoFile] = useState(null);
 
   useEffect(() => {
     loadCosts();
   }, []);
-
-  useEffect(() => {
-    if (!credentialsModelId) {
-      setCredentialsModelId(settingsForm.preferred_model || modelOptions[0]?.id || "");
-      return;
-    }
-    const exists = modelOptions.some((model) => model.id === credentialsModelId);
-    if (!exists) {
-      setCredentialsModelId(settingsForm.preferred_model || modelOptions[0]?.id || "");
-    }
-  }, [credentialsModelId, settingsForm.preferred_model, modelOptions]);
-
-  const selectedCredentialsModel = useMemo(() => (
-    modelOptions.find((model) => model.id === credentialsModelId) || null
-  ), [modelOptions, credentialsModelId]);
-
-  const selectedProvider = selectedCredentialsModel?.provider || "";
-  const showGeminiInputs = selectedProvider === "gemini" || credentialsModelId.includes("gemini");
-  const showBedrockAgentInputs = selectedProvider === "bedrock_agent" || credentialsModelId === "bedrock-agent";
 
   const scrollToSection = (sectionId) => {
     const target = document.getElementById(`settings-${sectionId}`);
@@ -82,7 +59,7 @@ export default function SettingsTab() {
         <div className="tab-header">
           <div className="tab-header-title">
             <h2>Settings</h2>
-            <p className="tab-header-subtext">Manage profile, security, features, costs, and model credentials.</p>
+            <p className="tab-header-subtext">Manage profile, security, feature access, and trial usage.</p>
             <p className="subtext">
               Review our <Link href="/terms">Terms of Service</Link>.
             </p>
@@ -131,6 +108,7 @@ export default function SettingsTab() {
             </BaseButton>
           </div>
           <label htmlFor="settings-name">Display name</label>
+          <p className="subtext">Access level: <strong>{userRole}</strong></p>
           <BaseInput
             id="settings-name"
             value={profileName}
@@ -195,8 +173,8 @@ export default function SettingsTab() {
           <h2>Features</h2>
           <p className="subtext">Control optional generation and shopping features.</p>
           <p className="subtext">
-            Image generation uses Google Gemini image endpoints. Billing must be enabled on your Google account.
-            Keep this toggle off until billing is active.
+            OutfitsMe now uses a managed Gemini key for the shared trial. Turn on image generation only if you want
+            your daily trial allowance used for outfit previews.
           </p>
           <div className="settings-feature-row">
             <div>
@@ -232,7 +210,7 @@ export default function SettingsTab() {
             <BaseCheckbox checked={false} disabled />
           </div>
           <div className="button-row">
-            <BaseButton variant="primary" onClick={saveModelSettings}>Save feature settings</BaseButton>
+            <BaseButton variant="primary" onClick={saveFeatureSettings}>Save feature settings</BaseButton>
           </div>
         </article>
 
@@ -267,96 +245,6 @@ export default function SettingsTab() {
           )}
           <div className="button-row">
             <BaseButton variant="ghost" onClick={loadCosts}>Refresh costs</BaseButton>
-          </div>
-        </article>
-
-        <article id="settings-models" className="settings-card settings-section-card">
-          <h2>Analysis model API keys</h2>
-          <div className="settings-notice">
-            <p>
-              <strong>Gemini API key is required:</strong> OutfitsMe features are unavailable until you add a
-              Gemini key for <code>gemini-2.5-flash</code>.
-            </p>
-            <p className="subtext">
-              Generate a key in Google AI Studio, then paste it below and save.
-            </p>
-            <div className="button-row">
-              <a
-                className="ghost-btn"
-                href="https://aistudio.google.com/app/apikey"
-                target="_blank"
-                rel="noreferrer"
-              >
-                Open Google AI Studio
-              </a>
-            </div>
-            <p className="subtext">
-              Current status: <strong>{geminiApiKeyConfigured ? "Configured" : "Not configured"}</strong>
-            </p>
-          </div>
-          <label htmlFor="preferred-model">Preferred model</label>
-          <BaseSelect
-            id="preferred-model"
-            value={settingsForm.preferred_model}
-            onValueChange={(value) => {
-              setSettingsForm((prev) => ({ ...prev, preferred_model: value }));
-              setCredentialsModelId(value);
-            }}
-            options={modelOptions.map((model) => ({ value: model.id, label: model.label }))}
-            placeholder="Select model"
-          />
-
-          <label htmlFor="credentials-model">Configure credentials for</label>
-          <BaseSelect
-            id="credentials-model"
-            value={credentialsModelId}
-            onValueChange={(value) => setCredentialsModelId(value)}
-            options={modelOptions.map((model) => ({ value: model.id, label: model.label }))}
-            placeholder="Select model"
-          />
-
-          {showGeminiInputs ? (
-            <>
-              <label htmlFor="gemini-api-key">Gemini API key</label>
-              <BaseInput
-                id="gemini-api-key"
-                value={settingsForm.gemini_api_key}
-                onChange={(event) => setSettingsForm((prev) => ({ ...prev, gemini_api_key: event.target.value }))}
-                placeholder="AIza..."
-              />
-            </>
-          ) : null}
-
-          {showBedrockAgentInputs ? (
-            <>
-              <label htmlFor="aws-region">AWS region</label>
-              <BaseInput
-                id="aws-region"
-                value={settingsForm.aws_region}
-                onChange={(event) => setSettingsForm((prev) => ({ ...prev, aws_region: event.target.value }))}
-                placeholder="us-east-1"
-              />
-
-              <label htmlFor="aws-bedrock-agent-id">Bedrock agent ID</label>
-              <BaseInput
-                id="aws-bedrock-agent-id"
-                value={settingsForm.aws_bedrock_agent_id}
-                onChange={(event) => setSettingsForm((prev) => ({ ...prev, aws_bedrock_agent_id: event.target.value }))}
-                placeholder="ABCDEFGHIJ"
-              />
-
-              <label htmlFor="aws-bedrock-agent-alias-id">Bedrock agent alias ID</label>
-              <BaseInput
-                id="aws-bedrock-agent-alias-id"
-                value={settingsForm.aws_bedrock_agent_alias_id}
-                onChange={(event) => setSettingsForm((prev) => ({ ...prev, aws_bedrock_agent_alias_id: event.target.value }))}
-                placeholder="TSTALIASID"
-              />
-            </>
-          ) : null}
-
-          <div className="button-row">
-            <BaseButton variant="primary" onClick={saveModelSettings}>Save model settings</BaseButton>
           </div>
         </article>
       </div>

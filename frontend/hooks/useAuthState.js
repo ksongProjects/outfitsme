@@ -98,8 +98,23 @@ export function useAuthState() {
     };
   }, []);
 
-  const signUp = async () => {
-    const { error: authError } = await supabase.auth.signUp({ email, password });
+  const signUp = async ({ acceptedTerms = false, termsVersion = "2026-03-05" } = {}) => {
+    if (!acceptedTerms) {
+      toast.error("You must accept the Terms of Service to create an account.");
+      return false;
+    }
+
+    const { error: authError } = await supabase.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          accepted_terms: true,
+          accepted_terms_version: termsVersion,
+          accepted_terms_at: new Date().toISOString()
+        }
+      }
+    });
     if (authError) {
       toast.error(authError.message);
       return false;
@@ -122,13 +137,13 @@ export function useAuthState() {
     return true;
   };
 
-  const submitAuth = async (event) => {
+  const submitAuth = async (event, options = {}) => {
     event.preventDefault();
     if (authTab === "signin") {
       await signIn();
       return;
     }
-    await signUp();
+    await signUp(options);
   };
 
   const signOut = async () => {
