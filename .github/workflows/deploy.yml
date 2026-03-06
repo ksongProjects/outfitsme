@@ -132,11 +132,17 @@ jobs:
           echo "s3_bucket=${DEPLOY_ARTIFACTS_BUCKET}" >> "$GITHUB_OUTPUT"
           echo "s3_key=${S3_KEY}" >> "$GITHUB_OUTPUT"
 
+      - name: Create temporary pre-signed deploy bundle URL
+        id: bundle_url
+        run: |
+          set -euo pipefail
+          BUNDLE_URL="$(aws s3 presign "s3://${{ steps.bundle.outputs.s3_bucket }}/${{ steps.bundle.outputs.s3_key }}" --expires-in 1800)"
+          echo "deploy_bundle_url=${BUNDLE_URL}" >> "$GITHUB_OUTPUT"
+
       - name: Deploy via SSM and verify command status
         env:
           EC2_INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
-          DEPLOY_ARTIFACTS_BUCKET: ${{ steps.bundle.outputs.s3_bucket }}
-          DEPLOY_ARTIFACTS_KEY: ${{ steps.bundle.outputs.s3_key }}
+          DEPLOY_BUNDLE_URL: ${{ steps.bundle_url.outputs.deploy_bundle_url }}
         run: |
           set -euo pipefail
 
@@ -151,7 +157,7 @@ jobs:
           rm -rf "\${EXTRACT_DIR}"
           mkdir -p "\${EXTRACT_DIR}" "\${APP_DIR}"
 
-          aws s3 cp "s3://${DEPLOY_ARTIFACTS_BUCKET}/${DEPLOY_ARTIFACTS_KEY}" "\${BUNDLE_PATH}"
+          curl -fsSL "${DEPLOY_BUNDLE_URL}" -o "\${BUNDLE_PATH}"
           tar -C "\${EXTRACT_DIR}" -xzf "\${BUNDLE_PATH}"
 
           mkdir -p "\${APP_DIR}/proxy" "\${APP_DIR}/deploy"
