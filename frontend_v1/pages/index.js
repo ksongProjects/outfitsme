@@ -122,18 +122,12 @@ export default function HomePage() {
   }, [accountMenuOpen]);
 
   const authValue = useMemo(() => ({
-    authTab: auth.authTab,
-    setAuthTab: auth.setAuthTab,
-    email: auth.email,
-    rememberMe: auth.rememberMe,
-    password: auth.password,
-    setEmail: auth.setEmail,
-    setRememberMe: auth.setRememberMe,
-    setPassword: auth.setPassword,
-    submitAuth: auth.submitAuth,
+    handleGoogleSignIn: auth.handleGoogleSignIn,
+    isSigningIn: auth.isSigningIn,
     session: auth.session,
+    isLoading: auth.isLoading,
     signOut: handleSignOut
-  }), [auth.authTab, auth.email, auth.rememberMe, auth.password, auth.session, handleSignOut]);
+  }), [auth.handleGoogleSignIn, auth.isSigningIn, auth.session, auth.isLoading, handleSignOut]);
 
   const analysisValue = useMemo(() => ({
     previewUrl: analysisState.previewUrl,

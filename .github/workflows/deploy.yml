@@ -48,8 +48,11 @@ jobs:
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/react-frontend:${{ steps.meta.outputs.image_tag }}
           build-args: |
             NEXT_PUBLIC_API_BASE_URL=${{ secrets.NEXT_PUBLIC_API_BASE_URL }}
+            NEXT_PUBLIC_APP_URL=${{ secrets.NEXT_PUBLIC_APP_URL }}
             NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
             NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+            GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
+            GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}
 
   deploy:
     needs: build-and-push
@@ -87,6 +90,8 @@ jobs:
           GEMINI_IMAGE_MODEL: ${{ secrets.GEMINI_IMAGE_MODEL }}
           SETTINGS_ENCRYPTION_KEY: ${{ secrets.SETTINGS_ENCRYPTION_KEY }}
           DEFAULT_ANALYSIS_MODEL: ${{ secrets.DEFAULT_ANALYSIS_MODEL }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
           CERTBOT_EMAIL: ${{ secrets.CERTBOT_EMAIL }}
         run: |
           set -euo pipefail
@@ -114,6 +119,8 @@ jobs:
             printf 'export GEMINI_IMAGE_MODEL=%q\n' "$GEMINI_IMAGE_MODEL"
             printf 'export SETTINGS_ENCRYPTION_KEY=%q\n' "$SETTINGS_ENCRYPTION_KEY"
             printf 'export DEFAULT_ANALYSIS_MODEL=%q\n' "$DEFAULT_ANALYSIS_MODEL"
+            printf 'export DATABASE_URL=%q\n' "$DATABASE_URL"
+            printf 'export BETTER_AUTH_SECRET=%q\n' "$BETTER_AUTH_SECRET"
             printf 'export CERTBOT_EMAIL=%q\n' "$CERTBOT_EMAIL"
           } > "$BUNDLE_DIR/deploy.env.sh"
 

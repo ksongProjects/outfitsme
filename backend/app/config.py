@@ -114,6 +114,7 @@ class Settings:
     )
     SETTINGS_ENCRYPTION_KEY = _clean_env(os.getenv("SETTINGS_ENCRYPTION_KEY", ""))
     DEFAULT_ANALYSIS_MODEL = _clean_env(os.getenv("DEFAULT_ANALYSIS_MODEL", "gemini-2.5-flash"), "gemini-2.5-flash")
+    DATABASE_URL = _clean_env(os.getenv("DATABASE_URL", ""))
 
 
 settings = Settings()

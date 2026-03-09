@@ -12,6 +12,7 @@ from supabase import Client, create_client
 
 from app.config import settings
 from app.services.access_control import normalize_user_role
+from app.services.better_auth_service import get_user_id_from_session_token
 
 
 class SupabaseNotConfiguredError(RuntimeError):
@@ -359,10 +360,19 @@ def get_supabase_client() -> Client:
 
 
 def get_user_id_from_token(access_token: str) -> str | None:
-    client = get_supabase_client()
-    user_response = client.auth.get_user(access_token)
-    user = getattr(user_response, "user", None)
-    return getattr(user, "id", None)
+    # Try Better Auth first (new auth system)
+    user_id = get_user_id_from_session_token(access_token)
+    if user_id:
+        return user_id
+    
+    # Fall back to Supabase auth (legacy)
+    try:
+        client = get_supabase_client()
+        user_response = client.auth.get_user(access_token)
+        user = getattr(user_response, "user", None)
+        return getattr(user, "id", None)
+    except Exception:
+        return None
 
 
 def get_user_from_token(access_token: str):
