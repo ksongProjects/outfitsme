@@ -77,3 +77,19 @@ export const verifications = pgTable(
     identifierIdx: index("verifications_identifier_idx").on(table.identifier),
   }),
 );
+
+export const jwks = pgTable(
+  "jwks",
+  {
+    id: text("id").primaryKey(),
+    publicKey: text("public_key").notNull(),
+    privateKey: text("private_key").notNull(),
+    createdAt: timestampColumn("created_at").notNull().defaultNow(),
+    expiresAt: timestampColumn("expires_at"),
+    alg: text("alg"),
+    crv: text("crv"),
+  },
+  (table) => ({
+    createdAtIdx: index("jwks_created_at_idx").on(table.createdAt),
+  }),
+);

@@ -1,13 +1,110 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import { signIn, signOut, useSession } from "@/lib/auth-client";
 
+function decodeJwtExp(token: string): number | null {
+  const parts = token.split(".");
+  if (parts.length !== 3) {
+    return null;
+  }
+
+  try {
+    const base64 = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+    const padded = base64.padEnd(Math.ceil(base64.length / 4) * 4, "=");
+    const payload = JSON.parse(atob(padded)) as { exp?: number };
+    return typeof payload.exp === "number" ? payload.exp * 1000 : null;
+  } catch {
+    return null;
+  }
+}
+
 export function useAuthState() {
   const { data: session, isPending: isLoading } = useSession();
   const [isSigningIn, setIsSigningIn] = useState(false);
+  const [accessToken, setAccessToken] = useState("");
+  const [tokenExpiresAt, setTokenExpiresAt] = useState<number | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadApiToken = async () => {
+      if (!session?.user?.id) {
+        setAccessToken("");
+        setTokenExpiresAt(null);
+        return;
+      }
+
+      try {
+        const response = await fetch("/api/auth/token", {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store",
+        });
+
+        if (!response.ok) {
+          throw new Error("Unable to fetch Better Auth API token.");
+        }
+
+        const payload = (await response.json()) as { token?: string };
+        const token = (payload.token || "").trim();
+        if (!token) {
+          throw new Error("Better Auth API token response was empty.");
+        }
+
+        if (!cancelled) {
+          setAccessToken(token);
+          setTokenExpiresAt(decodeJwtExp(token));
+        }
+      } catch {
+        if (!cancelled) {
+          setAccessToken("");
+          setTokenExpiresAt(null);
+        }
+      }
+    };
+
+    void loadApiToken();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.user?.id]);
+
+  useEffect(() => {
+    if (!session?.user?.id || !tokenExpiresAt) {
+      return;
+    }
+
+    const refreshAt = Math.max(tokenExpiresAt - Date.now() - 60_000, 5_000);
+    const timeoutId = window.setTimeout(async () => {
+      try {
+        const response = await fetch("/api/auth/token", {
+          method: "GET",
+          credentials: "include",
+          cache: "no-store",
+        });
+        if (!response.ok) {
+          return;
+        }
+        const payload = (await response.json()) as { token?: string };
+        const token = (payload.token || "").trim();
+        if (!token) {
+          return;
+        }
+        setAccessToken(token);
+        setTokenExpiresAt(decodeJwtExp(token));
+      } catch {
+        // Best effort only; the next refresh or page load can recover.
+      }
+    }, refreshAt);
+
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [session?.user?.id, tokenExpiresAt]);
 
   const handleGoogleSignIn = async (acceptedTerms = false, termsVersion?: string) => {
     void termsVersion;
@@ -53,7 +150,7 @@ export function useAuthState() {
 
   return {
     session,
-    accessToken: session?.session?.token || "",
+    accessToken,
     isLoading,
     isSigningIn,
     handleGoogleSignIn,

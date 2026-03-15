@@ -1,5 +1,6 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
+import { jwt } from "better-auth/plugins/jwt";
 
 import * as authSchema from "@/lib/auth-schema";
 import { getDb } from "@/lib/db";
@@ -24,6 +25,7 @@ export const auth = betterAuth({
     camelCase: true,
     schema: authSchema,
   }),
+  plugins: [jwt()],
   socialProviders: {
     google: {
       clientId: googleClientId,

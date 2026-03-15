@@ -12,7 +12,10 @@ from supabase import Client, create_client
 
 from app.config import settings
 from app.services.access_control import normalize_user_role
-from app.services.better_auth_service import get_user_id_from_session_token
+from app.services.better_auth_service import (
+    get_user_id_from_better_auth_jwt,
+    get_user_id_from_session_token,
+)
 
 
 class SupabaseNotConfiguredError(RuntimeError):
@@ -360,7 +363,12 @@ def get_supabase_client() -> Client:
 
 
 def get_user_id_from_token(access_token: str) -> str | None:
-    # Try Better Auth first (new auth system)
+    # Prefer Better Auth JWTs for backend API authorization.
+    user_id = get_user_id_from_better_auth_jwt(access_token)
+    if user_id:
+        return user_id
+
+    # Fall back to Better Auth session tokens during migration.
     user_id = get_user_id_from_session_token(access_token)
     if user_id:
         return user_id
