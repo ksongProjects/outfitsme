@@ -1,8 +1,7 @@
-name: Production Deployment (SSM)
+name: Sync Production Deploy Assets
 
 on:
-  push:
-    branches: [main]
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -13,50 +12,13 @@ env:
   APP_DIR: /home/ubuntu/app
 
 jobs:
-  build-and-push:
-    runs-on: ubuntu-latest
-    outputs:
-      image_tag: ${{ steps.meta.outputs.image_tag }}
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set immutable image tag
-        id: meta
-        run: echo "image_tag=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
-
-      - name: Build and Push Backend
-        uses: docker/build-push-action@v5
-        with:
-          context: ./backend
-          push: true
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/flask-backend:${{ steps.meta.outputs.image_tag }}
-
-      - name: Build and Push Frontend
-        uses: docker/build-push-action@v5
-        with:
-          context: ./frontend
-          push: true
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/react-frontend:${{ steps.meta.outputs.image_tag }}
-          build-args: |
-            APP_URL=${{ secrets.APP_URL }}
-            NEXT_PUBLIC_APP_URL=${{ secrets.NEXT_PUBLIC_APP_URL }}
-            NEXT_PUBLIC_API_BASE_URL=${{ secrets.NEXT_PUBLIC_API_BASE_URL }}
-
-  deploy:
-    needs: build-and-push
+  sync-assets:
     runs-on: ubuntu-latest
     env:
       AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
     steps:
+      - uses: actions/checkout@v4
+
       - name: Configure AWS credentials (OIDC)
         if: ${{ env.AWS_ROLE_TO_ASSUME != '' }}
         uses: aws-actions/configure-aws-credentials@v4
@@ -118,50 +80,53 @@ jobs:
             sleep 10
           done
 
-      - name: Deploy via SSM and verify command status
+      - name: Sync checked-in deploy assets via SSM
         env:
           EC2_INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-          IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
         run: |
           set -euo pipefail
-          : "${DOCKERHUB_USERNAME:?DOCKERHUB_USERNAME GitHub secret is required}"
-          : "${IMAGE_TAG:?IMAGE_TAG output is required}"
 
-          cat > "$RUNNER_TEMP/remote-bootstrap.sh" <<EOF
-          #!/usr/bin/env bash
-          set -euo pipefail
+          REMOTE_BOOTSTRAP="$RUNNER_TEMP/remote-bootstrap.sh"
+          {
+            echo '#!/usr/bin/env bash'
+            echo 'set -euo pipefail'
+            echo "APP_DIR='${APP_DIR}'"
+            echo 'install -d -m 755 "${APP_DIR}" "${APP_DIR}/proxy" "${APP_DIR}/deploy" /etc/outfitsme'
+          } > "$REMOTE_BOOTSTRAP"
 
-          APP_DIR='${APP_DIR}'
-          DEPLOY_ENV_FILE="/etc/outfitsme/deploy.env"
+          append_file() {
+            local source_path="$1"
+            local destination_path="$2"
+            local mode="$3"
+            local destination_dir
+            local payload
 
-          install -d -m 755 /etc/outfitsme
-          cat > "\${DEPLOY_ENV_FILE}" <<'ENVFILE'
-          DOCKERHUB_USERNAME=${DOCKERHUB_USERNAME}
-          IMAGE_TAG=${IMAGE_TAG}
-          ENVFILE
-          chmod 600 "\${DEPLOY_ENV_FILE}"
+            destination_dir="$(dirname "$destination_path")"
+            payload="$(base64 -w0 "$source_path")"
 
-          if [ ! -x "\${APP_DIR}/deploy/remote-deploy.sh" ]; then
-            echo "Missing \${APP_DIR}/deploy/remote-deploy.sh on the instance."
-            echo "Sync the checked-in deploy assets to the server before using this streamlined workflow."
-            exit 1
-          fi
+            {
+              printf 'install -d -m 755 %q\n' "$destination_dir"
+              printf "printf '%%s' '%s' | base64 -d > %q\n" "$payload" "$destination_path"
+              printf 'chmod %s %q\n' "$mode" "$destination_path"
+            } >> "$REMOTE_BOOTSTRAP"
+          }
 
-          bash "\${APP_DIR}/deploy/remote-deploy.sh"
-          EOF
+          append_file compose.yaml "${APP_DIR}/compose.yaml" 644
+          append_file proxy/nginx.http.conf "${APP_DIR}/proxy/nginx.http.conf" 644
+          append_file proxy/nginx.ssl.conf "${APP_DIR}/proxy/nginx.ssl.conf" 644
+          append_file deploy/remote-deploy.sh "${APP_DIR}/deploy/remote-deploy.sh" 755
 
-          REMOTE_B64="$(base64 -w0 "$RUNNER_TEMP/remote-bootstrap.sh")"
+          REMOTE_B64="$(base64 -w0 "$REMOTE_BOOTSTRAP")"
           SSM_PARAMS="$(jq -cn \
-            --arg cmd1 "printf '%s' '$REMOTE_B64' | base64 -d > /tmp/remote-deploy.sh" \
-            --arg cmd2 "chmod +x /tmp/remote-deploy.sh" \
-            --arg cmd3 "bash /tmp/remote-deploy.sh" \
+            --arg cmd1 "printf '%s' '$REMOTE_B64' | base64 -d > /tmp/remote-sync-assets.sh" \
+            --arg cmd2 "chmod +x /tmp/remote-sync-assets.sh" \
+            --arg cmd3 "bash /tmp/remote-sync-assets.sh" \
             '{commands: [$cmd1, $cmd2, $cmd3]}')"
 
           COMMAND_ID="$(aws ssm send-command \
             --instance-ids "$EC2_INSTANCE_ID" \
             --document-name "AWS-RunShellScript" \
-            --comment "Deploy ${GITHUB_SHA}" \
+            --comment "Sync deploy assets ${GITHUB_SHA}" \
             --parameters "$SSM_PARAMS" \
             --query "Command.CommandId" \
             --output text)"
@@ -169,6 +134,7 @@ jobs:
           if ! aws ssm wait command-executed --command-id "$COMMAND_ID" --instance-id "$EC2_INSTANCE_ID"; then
             echo "SSM waiter reported a terminal failure state."
           fi
+
           STATUS="$(aws ssm list-command-invocations \
             --command-id "$COMMAND_ID" \
             --details \

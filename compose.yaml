@@ -38,7 +38,7 @@
     expose:
       - "3000"
     env_file:
-      - .env
+      - /etc/outfitsme/app.env
     pull_policy: always
     restart: unless-stopped
     networks:
@@ -49,7 +49,7 @@
     expose:
       - "5000"
     env_file:
-      - .env
+      - /etc/outfitsme/app.env
     pull_policy: always
     restart: unless-stopped
     networks:

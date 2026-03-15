@@ -5,36 +5,51 @@ import { jwt } from "better-auth/plugins/jwt";
 import * as authSchema from "@/lib/auth-schema";
 import { getDb } from "@/lib/db";
 
-const appUrl = (process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").trim();
-const googleClientId = process.env.GOOGLE_CLIENT_ID;
-const googleClientSecret = process.env.GOOGLE_CLIENT_SECRET;
-const authSecret = process.env.BETTER_AUTH_SECRET;
+function getRequiredEnv(name: string): string {
+  const value = process.env[name]?.trim();
+  if (!value) {
+    throw new Error(`${name} environment variable is required`);
+  }
 
-if (!googleClientId || !googleClientSecret) {
-  throw new Error("GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET environment variables are required");
+  return value;
 }
 
-if (!authSecret) {
-  throw new Error("BETTER_AUTH_SECRET environment variable is required");
-}
+function createAuth() {
+  const appUrl = (process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").trim();
+  const googleClientId = getRequiredEnv("GOOGLE_CLIENT_ID");
+  const googleClientSecret = getRequiredEnv("GOOGLE_CLIENT_SECRET");
+  const authSecret = getRequiredEnv("BETTER_AUTH_SECRET");
 
-export const auth = betterAuth({
-  database: drizzleAdapter(getDb(), {
-    provider: "pg",
-    usePlural: true,
-    camelCase: true,
-    schema: authSchema,
-  }),
-  plugins: [jwt()],
-  socialProviders: {
-    google: {
-      clientId: googleClientId,
-      clientSecret: googleClientSecret,
+  return betterAuth({
+    database: drizzleAdapter(getDb(), {
+      provider: "pg",
+      usePlural: true,
+      camelCase: true,
+      schema: authSchema,
+    }),
+    plugins: [jwt()],
+    socialProviders: {
+      google: {
+        clientId: googleClientId,
+        clientSecret: googleClientSecret,
+      },
     },
-  },
-  baseURL: appUrl,
-  basePath: "/api/auth",
-  secret: authSecret,
-});
+    baseURL: appUrl,
+    basePath: "/api/auth",
+    secret: authSecret,
+  });
+}
 
-export type AuthSession = typeof auth.$Infer.Session;
+type AuthInstance = ReturnType<typeof createAuth>;
+
+let authInstance: AuthInstance | null = null;
+
+export function getAuth(): AuthInstance {
+  if (!authInstance) {
+    authInstance = createAuth();
+  }
+
+  return authInstance;
+}
+
+export type AuthSession = ReturnType<typeof createAuth>["$Infer"]["Session"];

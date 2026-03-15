@@ -141,13 +141,15 @@ Production deploy assets:
 - `proxy/nginx.http.conf` (HTTP-only bootstrap config for first certificate issuance)
 - `proxy/nginx.ssl.conf` (primary TLS reverse-proxy config)
 - `deploy/remote-deploy.sh` (server-side deploy script invoked by GitHub Actions over SSM)
+- `.env.example` (copy to `/etc/outfitsme/app.env` on the instance)
+- `deploy/deploy.env.example` (shape of `/etc/outfitsme/deploy.env`, updated automatically by deploys)
 
-The production GitHub Actions workflow builds the frontend and backend images, pushes them to Docker Hub, uploads the checked-in deploy assets to the EC2 host via SSM, and runs `deploy/remote-deploy.sh`. Certificate renewal is handled on the instance via cron rather than on every app deploy.
+The production deploy workflow now builds and pushes the frontend and backend images, updates `/etc/outfitsme/deploy.env` on the EC2 instance with the latest image tag, and runs `deploy/remote-deploy.sh`. Runtime secrets stay on the host in `/etc/outfitsme/app.env` instead of being bundled through GitHub Actions on every deploy. Certificate renewal is handled on the instance via cron rather than on every app deploy.
 
 Deploy workflow requirements:
-- Add GitHub Actions secret `DEPLOY_ARTIFACTS_BUCKET` for the private S3 bucket used to stage the deploy bundle.
-- The GitHub AWS credentials must be allowed to `s3:PutObject` and `s3:DeleteObject` on that bucket.
-- The EC2 instance role used by SSM must be allowed to `s3:GetObject` on that bucket.
+- Create `/etc/outfitsme/app.env` on the server from `.env.example` and lock it down with `chmod 600`.
+- Run the manual `Sync Production Deploy Assets` workflow whenever `compose.yaml`, nginx configs, or `deploy/remote-deploy.sh` change.
+- The regular `Production Deployment (SSM)` workflow only updates the image tag metadata and restarts services.
 
 ## API Endpoints
 

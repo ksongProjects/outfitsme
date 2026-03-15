@@ -2,48 +2,46 @@
 set -euo pipefail
 
 APP_DIR="${APP_DIR:-/home/ubuntu/app}"
+RUNTIME_ENV_FILE="${RUNTIME_ENV_FILE:-/etc/outfitsme/app.env}"
+DEPLOY_ENV_FILE="${DEPLOY_ENV_FILE:-/etc/outfitsme/deploy.env}"
+
+if [ ! -f "${RUNTIME_ENV_FILE}" ]; then
+  echo "Missing runtime env file: ${RUNTIME_ENV_FILE}" >&2
+  exit 1
+fi
+
+if [ ! -f "${DEPLOY_ENV_FILE}" ]; then
+  echo "Missing deploy env file: ${DEPLOY_ENV_FILE}" >&2
+  exit 1
+fi
+
+set -a
+source "${RUNTIME_ENV_FILE}"
+source "${DEPLOY_ENV_FILE}"
+set +a
+
 DOMAIN="${DOMAIN:?DOMAIN is required}"
 WWW_DOMAIN="${WWW_DOMAIN:?WWW_DOMAIN is required}"
 APP_URL="${APP_URL:-https://${DOMAIN}}"
 NEXT_PUBLIC_APP_URL="${NEXT_PUBLIC_APP_URL:-${APP_URL}}"
 NEXT_PUBLIC_API_BASE_URL="${NEXT_PUBLIC_API_BASE_URL:-}"
 CERTBOT_EMAIL="${CERTBOT_EMAIL:?CERTBOT_EMAIL is required}"
+DOCKERHUB_USERNAME="${DOCKERHUB_USERNAME:?DOCKERHUB_USERNAME is required}"
+IMAGE_TAG="${IMAGE_TAG:?IMAGE_TAG is required}"
 
 mkdir -p "${APP_DIR}"
 cd "${APP_DIR}"
 
+for required_path in compose.yaml proxy/nginx.http.conf proxy/nginx.ssl.conf; do
+  if [ ! -f "${required_path}" ]; then
+    echo "Missing deploy asset: ${APP_DIR}/${required_path}" >&2
+    exit 1
+  fi
+done
+
 mkdir -p proxy letsencrypt certbot-www
 
-cat > .env <<ENVFILE
-FLASK_ENV=production
-DEBUG=false
-PORT=5000
-CORS_ALLOWED_ORIGINS=${CORS_ALLOWED_ORIGINS}
-DIAGNOSTICS_ENABLED=false
-RATE_LIMIT_STORAGE_URI=memory://
-MONTHLY_ANALYSIS_LIMIT=5
-ENABLE_BEDROCK_ANALYSIS=false
-SUPABASE_URL=${SUPABASE_URL}
-SUPABASE_SECRET_KEY=${SUPABASE_SECRET_KEY}
-SUPABASE_BUCKET=${SUPABASE_BUCKET}
-GEMINI_API_KEY=${GEMINI_API_KEY}
-GEMINI_MODEL=${GEMINI_MODEL}
-GEMINI_IMAGE_MODEL=${GEMINI_IMAGE_MODEL}
-ITEM_IMAGE_MAX=3
-SETTINGS_ENCRYPTION_KEY=${SETTINGS_ENCRYPTION_KEY}
-DEFAULT_ANALYSIS_MODEL=${DEFAULT_ANALYSIS_MODEL}
-DATABASE_URL=${DATABASE_URL}
-BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
-GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
-GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
-APP_URL=${APP_URL}
-NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}
-NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL}
-DOCKERHUB_USERNAME=${DOCKERHUB_USERNAME}
-IMAGE_TAG=${IMAGE_TAG}
-DOMAIN=${DOMAIN}
-WWW_DOMAIN=${WWW_DOMAIN}
-ENVFILE
+compose_cmd=(docker compose --env-file "${DEPLOY_ENV_FILE}")
 
 render_nginx_config() {
   local template_path="$1"
@@ -62,18 +60,18 @@ else
   render_nginx_config proxy/nginx.http.conf
 fi
 
-docker compose pull
-docker compose up -d --remove-orphans
+"${compose_cmd[@]}" pull
+"${compose_cmd[@]}" up -d --remove-orphans
 
 if [ ! -f "letsencrypt/live/${DOMAIN}/fullchain.pem" ] || [ ! -f "letsencrypt/live/${DOMAIN}/privkey.pem" ]; then
-  docker compose --profile certbot run --rm certbot certonly \
+  "${compose_cmd[@]}" --profile certbot run --rm certbot certonly \
     --webroot -w /var/www/certbot \
     --email "${CERTBOT_EMAIL}" \
     --agree-tos --no-eff-email \
     -d "${DOMAIN}" -d "${WWW_DOMAIN}"
 
   render_nginx_config proxy/nginx.ssl.conf
-  docker compose exec -T proxy nginx -s reload
+  "${compose_cmd[@]}" exec -T proxy nginx -s reload
 fi
 
 cat > renew-certs.sh <<RENEW
@@ -81,7 +79,7 @@ cat > renew-certs.sh <<RENEW
 set -euo pipefail
 
 cd "${APP_DIR}"
-docker compose --profile certbot run --rm certbot renew --webroot -w /var/www/certbot --quiet
+docker compose --env-file "${DEPLOY_ENV_FILE}" --profile certbot run --rm certbot renew --webroot -w /var/www/certbot --quiet
 python3 - <<PY
 from pathlib import Path
 content = Path("proxy/nginx.ssl.conf").read_text()
@@ -89,7 +87,7 @@ content = content.replace("__DOMAIN__", "${DOMAIN}")
 content = content.replace("__WWW_DOMAIN__", "${WWW_DOMAIN}")
 Path("proxy/nginx.conf").write_text(content)
 PY
-docker compose exec -T proxy nginx -s reload
+docker compose --env-file "${DEPLOY_ENV_FILE}" exec -T proxy nginx -s reload
 RENEW
 
 chmod 700 renew-certs.sh
