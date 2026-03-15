@@ -1,9 +1,12 @@
-#!/usr/bin/env bash
+﻿#!/usr/bin/env bash
 set -euo pipefail
 
 APP_DIR="${APP_DIR:-/home/ubuntu/app}"
-DOMAIN="${DOMAIN:-outfitsme.com}"
-WWW_DOMAIN="${WWW_DOMAIN:-www.outfitsme.com}"
+DOMAIN="${DOMAIN:?DOMAIN is required}"
+WWW_DOMAIN="${WWW_DOMAIN:?WWW_DOMAIN is required}"
+APP_URL="${APP_URL:-https://${DOMAIN}}"
+NEXT_PUBLIC_APP_URL="${NEXT_PUBLIC_APP_URL:-${APP_URL}}"
+NEXT_PUBLIC_API_BASE_URL="${NEXT_PUBLIC_API_BASE_URL:-}"
 CERTBOT_EMAIL="${CERTBOT_EMAIL:?CERTBOT_EMAIL is required}"
 
 cd "${APP_DIR}"
@@ -30,14 +33,32 @@ SETTINGS_ENCRYPTION_KEY=${SETTINGS_ENCRYPTION_KEY}
 DEFAULT_ANALYSIS_MODEL=${DEFAULT_ANALYSIS_MODEL}
 DATABASE_URL=${DATABASE_URL}
 BETTER_AUTH_SECRET=${BETTER_AUTH_SECRET}
+GOOGLE_CLIENT_ID=${GOOGLE_CLIENT_ID}
+GOOGLE_CLIENT_SECRET=${GOOGLE_CLIENT_SECRET}
+APP_URL=${APP_URL}
+NEXT_PUBLIC_APP_URL=${NEXT_PUBLIC_APP_URL}
+NEXT_PUBLIC_API_BASE_URL=${NEXT_PUBLIC_API_BASE_URL}
 DOCKERHUB_USERNAME=${DOCKERHUB_USERNAME}
 IMAGE_TAG=${IMAGE_TAG}
+DOMAIN=${DOMAIN}
+WWW_DOMAIN=${WWW_DOMAIN}
 ENVFILE
 
+render_nginx_config() {
+  local template_path="$1"
+  python3 - <<PY
+from pathlib import Path
+content = Path("${template_path}").read_text()
+content = content.replace("__DOMAIN__", "${DOMAIN}")
+content = content.replace("__WWW_DOMAIN__", "${WWW_DOMAIN}")
+Path("proxy/nginx.conf").write_text(content)
+PY
+}
+
 if [ -f "letsencrypt/live/${DOMAIN}/fullchain.pem" ] && [ -f "letsencrypt/live/${DOMAIN}/privkey.pem" ]; then
-  cp proxy/nginx.ssl.conf proxy/nginx.conf
+  render_nginx_config proxy/nginx.ssl.conf
 else
-  cp proxy/nginx.http.conf proxy/nginx.conf
+  render_nginx_config proxy/nginx.http.conf
 fi
 
 docker compose pull
@@ -50,7 +71,7 @@ if [ ! -f "letsencrypt/live/${DOMAIN}/fullchain.pem" ] || [ ! -f "letsencrypt/li
     --agree-tos --no-eff-email \
     -d "${DOMAIN}" -d "${WWW_DOMAIN}"
 
-  cp proxy/nginx.ssl.conf proxy/nginx.conf
+  render_nginx_config proxy/nginx.ssl.conf
   docker compose exec -T proxy nginx -s reload
 fi
 
@@ -60,7 +81,13 @@ set -euo pipefail
 
 cd "${APP_DIR}"
 docker compose --profile certbot run --rm certbot renew --webroot -w /var/www/certbot --quiet
-cp proxy/nginx.ssl.conf proxy/nginx.conf
+python3 - <<PY
+from pathlib import Path
+content = Path("proxy/nginx.ssl.conf").read_text()
+content = content.replace("__DOMAIN__", "${DOMAIN}")
+content = content.replace("__WWW_DOMAIN__", "${WWW_DOMAIN}")
+Path("proxy/nginx.conf").write_text(content)
+PY
 docker compose exec -T proxy nginx -s reload
 RENEW
 

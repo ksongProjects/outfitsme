@@ -1,4 +1,4 @@
-services:
+﻿services:
   proxy:
     image: nginx:1.28-alpine
     ports:
@@ -37,6 +37,8 @@ services:
     image: ${DOCKERHUB_USERNAME:?DOCKERHUB_USERNAME not set}/react-frontend:${IMAGE_TAG:?IMAGE_TAG not set}
     expose:
       - "3000"
+    env_file:
+      - .env
     pull_policy: always
     restart: unless-stopped
     networks:

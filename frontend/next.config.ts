@@ -1,9 +1,22 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  /* config options here */
   reactCompiler: true,
-  output: 'standalone'
+  output: "standalone",
+  async redirects() {
+    return [
+      {
+        source: "/analysis",
+        destination: "/",
+        permanent: false,
+      },
+      {
+        source: "/outfits",
+        destination: "/",
+        permanent: false,
+      },
+    ];
+  },
 };
 
 export default nextConfig;

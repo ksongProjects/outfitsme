@@ -47,12 +47,13 @@ jobs:
           push: true
           tags: ${{ secrets.DOCKERHUB_USERNAME }}/react-frontend:${{ steps.meta.outputs.image_tag }}
           build-args: |
-            NEXT_PUBLIC_API_BASE_URL=${{ secrets.NEXT_PUBLIC_API_BASE_URL }}
+            APP_URL=${{ secrets.APP_URL }}
             NEXT_PUBLIC_APP_URL=${{ secrets.NEXT_PUBLIC_APP_URL }}
-            NEXT_PUBLIC_SUPABASE_URL=${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
-            NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=${{ secrets.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY }}
+            NEXT_PUBLIC_API_BASE_URL=${{ secrets.NEXT_PUBLIC_API_BASE_URL }}
             GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
             GOOGLE_CLIENT_SECRET=${{ secrets.GOOGLE_CLIENT_SECRET }}
+            BETTER_AUTH_SECRET=${{ secrets.BETTER_AUTH_SECRET }}
+            DATABASE_URL=${{ secrets.DATABASE_URL }}
 
   deploy:
     needs: build-and-push
@@ -81,6 +82,11 @@ jobs:
         env:
           DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
           IMAGE_TAG: ${{ needs.build-and-push.outputs.image_tag }}
+          DOMAIN: ${{ secrets.DOMAIN }}
+          WWW_DOMAIN: ${{ secrets.WWW_DOMAIN }}
+          APP_URL: ${{ secrets.APP_URL }}
+          NEXT_PUBLIC_APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
+          NEXT_PUBLIC_API_BASE_URL: ${{ secrets.NEXT_PUBLIC_API_BASE_URL }}
           CORS_ALLOWED_ORIGINS: ${{ secrets.CORS_ALLOWED_ORIGINS }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
@@ -92,10 +98,20 @@ jobs:
           DEFAULT_ANALYSIS_MODEL: ${{ secrets.DEFAULT_ANALYSIS_MODEL }}
           DATABASE_URL: ${{ secrets.DATABASE_URL }}
           BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
           CERTBOT_EMAIL: ${{ secrets.CERTBOT_EMAIL }}
         run: |
           set -euo pipefail
           : "${CERTBOT_EMAIL:?CERTBOT_EMAIL GitHub secret is required}"
+          : "${DOMAIN:?DOMAIN GitHub secret is required}"
+          : "${WWW_DOMAIN:?WWW_DOMAIN GitHub secret is required}"
+          : "${APP_URL:?APP_URL GitHub secret is required}"
+          : "${NEXT_PUBLIC_APP_URL:?NEXT_PUBLIC_APP_URL GitHub secret is required}"
+          : "${GOOGLE_CLIENT_ID:?GOOGLE_CLIENT_ID GitHub secret is required}"
+          : "${GOOGLE_CLIENT_SECRET:?GOOGLE_CLIENT_SECRET GitHub secret is required}"
+          : "${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET GitHub secret is required}"
+          : "${DATABASE_URL:?DATABASE_URL GitHub secret is required}"
 
           BUNDLE_DIR="$RUNNER_TEMP/deploy-bundle"
           mkdir -p "$BUNDLE_DIR/proxy" "$BUNDLE_DIR/deploy"
@@ -110,6 +126,11 @@ jobs:
             printf 'export APP_DIR=%q\n' "$APP_DIR"
             printf 'export DOCKERHUB_USERNAME=%q\n' "$DOCKERHUB_USERNAME"
             printf 'export IMAGE_TAG=%q\n' "$IMAGE_TAG"
+            printf 'export DOMAIN=%q\n' "$DOMAIN"
+            printf 'export WWW_DOMAIN=%q\n' "$WWW_DOMAIN"
+            printf 'export APP_URL=%q\n' "$APP_URL"
+            printf 'export NEXT_PUBLIC_APP_URL=%q\n' "$NEXT_PUBLIC_APP_URL"
+            printf 'export NEXT_PUBLIC_API_BASE_URL=%q\n' "$NEXT_PUBLIC_API_BASE_URL"
             printf 'export CORS_ALLOWED_ORIGINS=%q\n' "$CORS_ALLOWED_ORIGINS"
             printf 'export SUPABASE_URL=%q\n' "$SUPABASE_URL"
             printf 'export SUPABASE_SECRET_KEY=%q\n' "$SUPABASE_SECRET_KEY"
@@ -121,6 +142,8 @@ jobs:
             printf 'export DEFAULT_ANALYSIS_MODEL=%q\n' "$DEFAULT_ANALYSIS_MODEL"
             printf 'export DATABASE_URL=%q\n' "$DATABASE_URL"
             printf 'export BETTER_AUTH_SECRET=%q\n' "$BETTER_AUTH_SECRET"
+            printf 'export GOOGLE_CLIENT_ID=%q\n' "$GOOGLE_CLIENT_ID"
+            printf 'export GOOGLE_CLIENT_SECRET=%q\n' "$GOOGLE_CLIENT_SECRET"
             printf 'export CERTBOT_EMAIL=%q\n' "$CERTBOT_EMAIL"
           } > "$BUNDLE_DIR/deploy.env.sh"
 

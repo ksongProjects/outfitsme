@@ -1,21 +1,14 @@
-import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
-import { TooltipProvider } from "@/components/ui/tooltip";
+﻿import type { Metadata } from "next";
+
+import { AppProviders } from "@/components/providers/app-providers";
 import "./globals.css";
-
-const geistSans = Geist({
-  variable: "--font-geist-sans",
-  subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
-});
 
 export const metadata: Metadata = {
   title: "OutfitsMe",
-  description: "Breakdown Outfits, Create Your Own Outfits And Try Them On",
+  description: "Analyze outfits, build a wardrobe, and preview new looks from your own photos.",
+  metadataBase: new URL(
+    process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
+  ),
 };
 
 export default function RootLayout({
@@ -24,11 +17,9 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} font-sans min-h-screen max-w-7xl m-auto antialiased dark`}
-      >
-        <TooltipProvider>{children}</TooltipProvider>
+    <html lang="en" suppressHydrationWarning>
+      <body className="app-body">
+        <AppProviders>{children}</AppProviders>
       </body>
     </html>
   );

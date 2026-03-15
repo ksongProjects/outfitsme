@@ -77,8 +77,8 @@ const Masonry: React.FC<MasonryProps> = ({
   const columns = useMemo(() => {
     if (width >= 1500) return 5;
     if (width >= 1000) return 4;
-    if (width >= 600) return 3;
-    if (width >= 400) return 2;
+    if (width >= 360) return 3;
+    if (width >= 260) return 2;
     return 1;
   }, [width]);
 
@@ -119,7 +119,7 @@ const Masonry: React.FC<MasonryProps> = ({
   const grid = useMemo<GridItem[]>(() => {
     if (!width) return [];
     const colHeights = new Array(columns).fill(0);
-    const gap = 16;
+    const gap = 12;
     const totalGaps = (columns - 1) * gap;
     const columnWidth = (width - totalGaps) / columns;
 

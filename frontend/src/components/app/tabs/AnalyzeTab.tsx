@@ -1,0 +1,523 @@
+﻿"use client";
+
+import { useEffect, useState } from "react";
+import { Search, Wand2 } from "lucide-react";
+import { toast } from "sonner";
+
+import HistoryTab from "@/components/app/tabs/HistoryTab";
+import { useAnalysisContext, useSettingsContext, useWardrobeContext } from "@/components/app/DashboardContext";
+import BaseButton from "@/components/app/ui/BaseButton";
+import BaseSelect from "@/components/app/ui/BaseSelect";
+import ImageUploadField from "@/components/app/ui/ImageUploadField";
+import { formatItemLabel, getItemIcon } from "@/lib/formatters";
+
+export default function AnalyzeTab() {
+  const [interaction, setInteraction] = useState<{
+    mode: "draw" | "move" | "resize";
+    pointerId: number;
+    startPoint: { x: number; y: number };
+    startCrop: { x: number; y: number; width: number; height: number } | null;
+    handle: "nw" | "ne" | "sw" | "se" | null;
+  } | null>(null);
+  const [outfitMePreviewByIndex, setOutfitsMePreviewByIndex] = useState<Record<number, string>>({});
+  const {
+    previewUrl,
+    onFileDrop,
+    fileName,
+    clearSelectedFile,
+    cropArea,
+    setCropArea,
+    runAnalysis,
+    disabled,
+    loading,
+    analysis,
+    similarResults,
+    selectedModel,
+    setSelectedModel,
+    modelOptions,
+    jobStatus,
+    activeAnalysisCount,
+    maxConcurrentAnalysisJobs,
+    analysisLimits,
+    limitsLoading,
+    error,
+    info,
+  } = useAnalysisContext();
+  const { profilePhotoUrl, settingsForm } = useSettingsContext();
+  const { generateOutfitsMe, outfitMeLoading } = useWardrobeContext();
+  const detectedOutfits = analysis?.outfits || [];
+  const dailyLimit = analysisLimits?.daily_limit ?? 0;
+  const usedToday = analysisLimits?.used_today ?? 0;
+  const remainingToday = analysisLimits?.remaining_today;
+  const trialActive = Boolean(analysisLimits?.trial_active);
+  const trialDaysRemaining = analysisLimits?.trial_days_remaining ?? 0;
+  const accessMode = analysisLimits?.access_mode || "trial";
+  const userRole = analysisLimits?.user_role || "trial";
+  const progress = jobStatus?.progress || null;
+  const progressCounts = progress?.counts || null;
+  const progressCurrentItem = progress?.current_item || null;
+  const availableImageModel = (modelOptions || []).find((model) => model.supports_image && model.available);
+  const firstUnavailableImageModel = (modelOptions || []).find((model) => model.supports_image && !model.available);
+  const imageGenerationEnabled = Boolean(settingsForm?.enable_outfit_image_generation);
+  const stageLabelByKey: Record<string, string> = {
+    submitting: "Submitting request",
+    queued: "Queued for processing",
+    processing_started: "Processing started",
+    loading_photo: "Loading photo",
+    photo_processed: "Photo loaded",
+    analyzing_photo: "Running model",
+    persisting_results: "Saving results",
+    generating_item_images: "Generating item images",
+    completed: "Completed",
+    failed: "Failed",
+  };
+  const queueSummaryText =
+    activeAnalysisCount > 1
+      ? `You have ${activeAnalysisCount} analysis jobs in progress. The latest job status is shown below.`
+      : "";
+  const statusLabel = stageLabelByKey[jobStatus?.status || ""] || jobStatus?.status || "Pending";
+  const stageLabel = stageLabelByKey[progress?.stage || ""] || progress?.stage || "";
+  const analysisInProgress = loading || ["queued", "processing_started", "submitting"].includes(jobStatus?.status || "");
+
+  const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
+  const minCropSize = 0.01;
+
+  const getRelativePoint = (event: React.PointerEvent<HTMLDivElement>) => {
+    const bounds = event.currentTarget.getBoundingClientRect();
+    if (!bounds.width || !bounds.height) {
+      return null;
+    }
+    const x = clamp01((event.clientX - bounds.left) / bounds.width);
+    const y = clamp01((event.clientY - bounds.top) / bounds.height);
+    return { x, y };
+  };
+
+  const isPointInsideCrop = (
+    point: { x: number; y: number } | null,
+    crop: typeof cropArea
+  ) => {
+    if (!point || !crop) {
+      return false;
+    }
+    return (
+      point.x >= crop.x &&
+      point.x <= crop.x + crop.width &&
+      point.y >= crop.y &&
+      point.y <= crop.y + crop.height
+    );
+  };
+
+  const normalizeRect = (ax: number, ay: number, bx: number, by: number) => {
+    const x = clamp01(Math.min(ax, bx));
+    const y = clamp01(Math.min(ay, by));
+    const right = clamp01(Math.max(ax, bx));
+    const bottom = clamp01(Math.max(ay, by));
+    return {
+      x,
+      y,
+      width: Math.max(0, right - x),
+      height: Math.max(0, bottom - y),
+    };
+  };
+
+  const handleCropPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.pointerType === "mouse" && event.button !== 0) {
+      return;
+    }
+    const point = getRelativePoint(event);
+    if (!point) {
+      return;
+    }
+    event.preventDefault();
+    if (typeof event.currentTarget.setPointerCapture === "function") {
+      event.currentTarget.setPointerCapture(event.pointerId);
+    }
+    const resizeHandle = (event.target as HTMLElement | null)?.dataset?.handle as
+      | "nw"
+      | "ne"
+      | "sw"
+      | "se"
+      | undefined;
+    if (resizeHandle && cropArea) {
+      setInteraction({
+        mode: "resize",
+        pointerId: event.pointerId,
+        startPoint: point,
+        startCrop: cropArea,
+        handle: resizeHandle,
+      });
+      return;
+    }
+
+    if (cropArea && isPointInsideCrop(point, cropArea)) {
+      setInteraction({
+        mode: "move",
+        pointerId: event.pointerId,
+        startPoint: point,
+        startCrop: cropArea,
+        handle: null,
+      });
+      return;
+    }
+
+    setInteraction({
+      mode: "draw",
+      pointerId: event.pointerId,
+      startPoint: point,
+      startCrop: null,
+      handle: null,
+    });
+    setCropArea({ x: point.x, y: point.y, width: 0, height: 0 });
+  };
+
+  const handleCropPointerMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!interaction || interaction.pointerId !== event.pointerId) {
+      return;
+    }
+    const point = getRelativePoint(event);
+    if (!point) {
+      return;
+    }
+    if (interaction.mode === "draw") {
+      setCropArea(normalizeRect(interaction.startPoint.x, interaction.startPoint.y, point.x, point.y));
+      return;
+    }
+
+    if (interaction.mode === "move" && interaction.startCrop) {
+      const deltaX = point.x - interaction.startPoint.x;
+      const deltaY = point.y - interaction.startPoint.y;
+      setCropArea({
+        x: Math.min(Math.max(0, interaction.startCrop.x + deltaX), 1 - interaction.startCrop.width),
+        y: Math.min(Math.max(0, interaction.startCrop.y + deltaY), 1 - interaction.startCrop.height),
+        width: interaction.startCrop.width,
+        height: interaction.startCrop.height,
+      });
+      return;
+    }
+
+    if (interaction.mode === "resize" && interaction.startCrop) {
+      const startLeft = interaction.startCrop.x;
+      const startTop = interaction.startCrop.y;
+      const startRight = interaction.startCrop.x + interaction.startCrop.width;
+      const startBottom = interaction.startCrop.y + interaction.startCrop.height;
+
+      let left = startLeft;
+      let top = startTop;
+      let right = startRight;
+      let bottom = startBottom;
+
+      if (interaction.handle === "nw") {
+        left = point.x;
+        top = point.y;
+      } else if (interaction.handle === "ne") {
+        right = point.x;
+        top = point.y;
+      } else if (interaction.handle === "sw") {
+        left = point.x;
+        bottom = point.y;
+      } else if (interaction.handle === "se") {
+        right = point.x;
+        bottom = point.y;
+      }
+
+      setCropArea(normalizeRect(left, top, right, bottom));
+    }
+  };
+
+  const handleCropPointerEnd = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (!interaction || interaction.pointerId !== event.pointerId) {
+      return;
+    }
+    if (typeof event.currentTarget.releasePointerCapture === "function") {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+    setInteraction(null);
+    if (!cropArea || cropArea.width < minCropSize || cropArea.height < minCropSize) {
+      setCropArea(null);
+    }
+  };
+
+  useEffect(() => {
+    setOutfitsMePreviewByIndex({});
+  }, [analysis?.photo_id]);
+
+  const handleGenerateOutfitsMe = async (outfitIndex: number) => {
+    if (!analysis?.photo_id) {
+      toast.error("Analyze a photo first before using OutfitsMe.");
+      return;
+    }
+    if (!imageGenerationEnabled) {
+      toast.error("OutfitsMe image generation is off. Enable it in Settings > Features.");
+      return;
+    }
+    if (!profilePhotoUrl) {
+      toast.error("Profile photo is required for OutfitsMe. Upload one in Settings > Profile.");
+      return;
+    }
+    const result = await generateOutfitsMe(analysis.photo_id, outfitIndex);
+    if (result && typeof result === "object" && "outfitsme_image_url" in result) {
+      setOutfitsMePreviewByIndex((current) => ({
+        ...current,
+        [outfitIndex]: String(result.outfitsme_image_url || ""),
+      }));
+    }
+  };
+
+  return (
+    <section className="tab-stack">
+      <div className="tab-header">
+        <div className="tab-header-title">
+          <span className="section-kicker">Create</span>
+          <h2>Photo analysis</h2>
+          <p className="tab-header-subtext">Upload a look, crop the key area, and turn it into reusable wardrobe data.</p>
+        </div>
+      </div>
+
+      <div className="analysis-layout">
+        <section className="panel-card panel-card-soft">
+          <div className="panel-card-head">
+            <h3>Upload and analyze</h3>
+            <p className="subtext">Best results come from a clear full-body or torso-focused outfit photo.</p>
+          </div>
+
+          {modelOptions.length > 1 ? (
+            <div className="field-stack">
+              <label htmlFor="analysis-model">Analysis model</label>
+              <BaseSelect
+                id="analysis-model"
+                value={selectedModel}
+                onValueChange={(nextValue) => setSelectedModel(nextValue)}
+                options={(modelOptions || [])
+                  .filter((model) => model.supports_image)
+                  .map((model) => ({
+                    value: model.id,
+                    label: `${model.label}${model.available ? "" : " (Unavailable)"}`,
+                    disabled: !model.available,
+                  }))}
+                placeholder="Select model"
+              />
+            </div>
+          ) : null}
+
+          {modelOptions.length > 0 && !availableImageModel ? (
+            <div className="settings-notice">
+              <p><strong>Analysis unavailable:</strong> The managed AI service is not currently available.</p>
+              <p className="subtext">{firstUnavailableImageModel?.unavailable_reason || "No image-capable model is currently available."}</p>
+            </div>
+          ) : null}
+
+          <div className="quota-pill" role="status" aria-live="polite">
+            {limitsLoading ? (
+              <span>Loading usage limits...</span>
+            ) : accessMode === "unlimited" ? (
+              <span>{userRole} access: unlimited AI usage</span>
+            ) : trialActive ? (
+              <span>
+                Trial: {usedToday}/{dailyLimit} used today ({remainingToday} left), {trialDaysRemaining} day{trialDaysRemaining === 1 ? "" : "s"} left
+              </span>
+            ) : (
+              <span>Trial expired</span>
+            )}
+          </div>
+
+          {jobStatus ? (
+            <div className="info-stack">
+              <p className="subtext">
+                Job status: <strong>{statusLabel}</strong>
+                {jobStatus.jobId ? ` (${jobStatus.jobId.slice(0, 8)})` : ""}
+              </p>
+              {queueSummaryText ? <p className="subtext">{queueSummaryText}</p> : null}
+              {progress?.message ? <p className="subtext">{progress.message}</p> : null}
+              {stageLabel ? <p className="subtext">Current stage: {stageLabel}</p> : null}
+              {progressCounts && typeof progressCounts.total_items === "number" && progressCounts.total_items > 0 ? (
+                <p className="subtext">
+                  Item images: {progressCounts.processed_items || 0}/{progressCounts.total_items || 0} processed, {progressCounts.generated_items || 0} generated, {progressCounts.failed_items || 0} failed
+                </p>
+              ) : null}
+              {typeof progressCurrentItem?.index === "number" ? (
+                <p className="subtext">Current item {progressCurrentItem.index}: {formatItemLabel(progressCurrentItem)}</p>
+              ) : null}
+            </div>
+          ) : null}
+
+          {activeAnalysisCount > 0 ? (
+            <p className="subtext">
+              Active analysis jobs: <strong>{activeAnalysisCount}</strong> / {maxConcurrentAnalysisJobs}
+            </p>
+          ) : null}
+
+          {error ? <p className="feedback-error">{error}</p> : null}
+          {info ? <p className="feedback-info">{info}</p> : null}
+
+          <ImageUploadField
+            id="image-upload"
+            fileName={fileName}
+            onFileSelect={onFileDrop}
+            title="Drag and drop an outfit image here"
+            subtext="Choose an existing image or take a new photo"
+            emptyText="No file selected"
+          />
+
+          {previewUrl ? (
+            <>
+              <div className="crop-preview-wrap">
+                <img className="preview" src={previewUrl} alt="Selected outfit" draggable={false} />
+                <div
+                  className="crop-overlay"
+                  onPointerDown={handleCropPointerDown}
+                  onPointerMove={handleCropPointerMove}
+                  onPointerUp={handleCropPointerEnd}
+                  onPointerCancel={handleCropPointerEnd}
+                >
+                  {cropArea ? (
+                    <div
+                      className="crop-selection"
+                      style={{
+                        left: `${cropArea.x * 100}%`,
+                        top: `${cropArea.y * 100}%`,
+                        width: `${cropArea.width * 100}%`,
+                        height: `${cropArea.height * 100}%`,
+                      }}
+                    >
+                      <span className="crop-handle nw" data-handle="nw" />
+                      <span className="crop-handle ne" data-handle="ne" />
+                      <span className="crop-handle sw" data-handle="sw" />
+                      <span className="crop-handle se" data-handle="se" />
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+              <p className="subtext">Drag on the preview to select a rectangular area. Only the selected crop is sent to analysis.</p>
+            </>
+          ) : null}
+
+          <div className="button-row">
+            {fileName ? (
+              <BaseButton type="button" variant="ghost" onClick={clearSelectedFile}>
+                Cancel
+              </BaseButton>
+            ) : null}
+            {fileName && cropArea ? (
+              <BaseButton type="button" variant="ghost" onClick={() => setCropArea(null)}>
+                Reset crop
+              </BaseButton>
+            ) : null}
+            <BaseButton variant="primary" onClick={runAnalysis} disabled={disabled}>
+              {loading ? "Queue another photo" : "Analyze selection"}
+            </BaseButton>
+          </div>
+        </section>
+
+        <section className="panel-card results-card">
+          <div className="panel-card-head">
+            <h3>Results</h3>
+            <p className="subtext">Detected outfits, items, and starting points for retailer discovery.</p>
+          </div>
+
+          {analysisInProgress ? (
+            <div className="loading-panel" role="status" aria-live="polite">
+              <span className="loading-spinner loading-spinner-lg" aria-hidden="true" />
+              <div>
+                <p className="loading-panel-title">Analysis in progress</p>
+                <p className="subtext">{progress?.message || "Your photo is being analyzed. Results will appear here automatically."}</p>
+              </div>
+            </div>
+          ) : null}
+
+          {!analysis && !loading ? <p className="subtext">Analyze a photo to view detected style, item breakdowns, and similar shopping leads.</p> : null}
+
+          {analysis ? (
+            <div className="analysis-results-stack">
+              {(detectedOutfits.length > 0 ? detectedOutfits : [{ style: analysis.style, items: analysis.items }]).map((outfit, index) => (
+                <article key={`analysis-outfit-${index}`} className="result-card">
+                  <div className="result-card-head">
+                    <div>
+                      <p className="result-label">Outfit {index + 1}</p>
+                      <h4>{outfit.style || "Unlabeled style"}</h4>
+                    </div>
+                    <BaseButton
+                      type="button"
+                      variant="ghost"
+                      onClick={() => handleGenerateOutfitsMe(index)}
+                      disabled={outfitMeLoading || !imageGenerationEnabled || !trialActive}
+                      title={
+                        !trialActive
+                          ? "Trial required for OutfitsMe"
+                          : !imageGenerationEnabled
+                            ? "Enable outfit image generation in Settings"
+                            : profilePhotoUrl
+                              ? "Generate OutfitsMe preview"
+                              : "Profile photo required for OutfitsMe"
+                      }
+                    >
+                      <Wand2 size={16} />
+                      {outfitMeLoading ? "Generating..." : "OutfitsMe"}
+                    </BaseButton>
+                  </div>
+
+                  <ul className="analysis-items">
+                    {(outfit.items || []).map((item, itemIndex) => (
+                      <li key={`analysis-item-${index}-${itemIndex}`} className="analysis-item">
+                        {item.image_url ? (
+                          <img src={item.image_url} alt={item.name || "Detected item"} className="analysis-item-thumb" />
+                        ) : null}
+                        <span className="item-icon" aria-hidden="true">{getItemIcon(item)}</span>
+                        <span>{formatItemLabel(item)}</span>
+                      </li>
+                    ))}
+                  </ul>
+
+                  {outfitMePreviewByIndex[index] ? (
+                    <img
+                      src={outfitMePreviewByIndex[index]}
+                      alt={`OutfitsMe preview for outfit ${index + 1}`}
+                      className="analysis-outfitsme-preview"
+                    />
+                  ) : null}
+                </article>
+              ))}
+
+              {similarResults.length > 0 ? (
+                <article className="result-card retailer-card">
+                  <div className="result-card-head">
+                    <div>
+                      <p className="result-label">Discovery</p>
+                      <h4>Similar items</h4>
+                    </div>
+                    <span className="search-pill"><Search size={14} /> beta</span>
+                  </div>
+                  <div className="similar-grid">
+                    {similarResults.map((result, index) => (
+                      <div key={`similar-${result.item}-${index}`} className="similar-card">
+                        <p className="similar-item">{result.item}</p>
+                        <p className="subtext">{result.store}</p>
+                        <div className="similar-meta">
+                          <span>{result.price}</span>
+                          <span>{result.availability}</span>
+                        </div>
+                        <p className="subtext">Delivery: {result.delivery_timeline}</p>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="subtext">
+                    These results are still placeholder-level matching. For real retailer search, we should add store integrations plus optional size and country preferences.
+                  </p>
+                </article>
+              ) : null}
+            </div>
+          ) : null}
+        </section>
+      </div>
+
+      <div className="history-panel panel-card">
+        <div className="panel-card-head">
+          <h3>Recent analyses</h3>
+          <p className="subtext">Keep an eye on earlier uploads while you work through new outfit ideas.</p>
+        </div>
+        <HistoryTab />
+      </div>
+    </section>
+  );
+}
+
+
