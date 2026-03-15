@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { LayoutDashboard, LogOut, Search, Settings2, Shirt, Sparkles, User } from "lucide-react";
 
@@ -43,8 +43,7 @@ type DashboardTabId = (typeof TAB_OPTIONS)[number]["id"];
 export default function HomePage() {
   const router = useRouter();
   const [dashboardTab, setDashboardTab] = useState<DashboardTabId>("dashboard");
-  const [hasRetriedSession, setHasRetriedSession] = useState(false);
-  const [isRecoveringSession, setIsRecoveringSession] = useState(false);
+  const hasRetriedSessionRef = useRef(false);
 
   const auth = useAuthState();
   const accessToken = auth.accessToken;
@@ -69,68 +68,70 @@ export default function HomePage() {
     accessToken,
   });
 
-  useEffect(() => {
-    if (auth.session) {
-      setHasRetriedSession(false);
-      setIsRecoveringSession(false);
-      return;
-    }
+  const retrySession = useEffectEvent(() => {
+    void auth.refetchSession();
+  });
 
-    if (auth.isLoading || (auth.isSessionRefetching && !auth.sessionError) || hasRetriedSession || isRecoveringSession) {
-      return;
-    }
-
-    let cancelled = false;
-    setHasRetriedSession(true);
-    setIsRecoveringSession(true);
-
-    void auth.refetchSession().finally(() => {
-      if (!cancelled) {
-        setIsRecoveringSession(false);
-      }
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [auth.isLoading, auth.isSessionRefetching, auth.refetchSession, auth.session, auth.sessionError, hasRetriedSession, isRecoveringSession]);
-
-  useEffect(() => {
-    if (auth.isLoading || (auth.isSessionRefetching && !auth.sessionError) || isRecoveringSession || auth.session) {
-      return;
-    }
-
-    if (!hasRetriedSession) {
-      return;
-    }
-
-    router.replace("/");
-  }, [auth.isLoading, auth.isSessionRefetching, auth.session, auth.sessionError, hasRetriedSession, isRecoveringSession, router]);
-
-  useEffect(() => {
-    if (!accessToken) {
-      return;
-    }
+  const loadAuthenticatedData = useEffectEvent(() => {
     void statsState.loadStats();
     void analysisState.loadModels();
     void analysisState.loadAnalysisLimits();
     void settingsState.loadPreferences();
     void settingsState.loadCosts();
+  });
+
+  const loadDashboardTabData = useEffectEvent((tab: DashboardTabId) => {
+    if (tab === "wardrobe") {
+      void wardrobeState.loadWardrobe();
+    }
+    if (tab === "items") {
+      void itemsState.loadItems();
+    }
+    if (tab === "dashboard" || tab === "analyze") {
+      void historyState.loadHistory();
+    }
+  });
+
+  useEffect(() => {
+    if (auth.session) {
+      hasRetriedSessionRef.current = false;
+      return;
+    }
+
+    if (auth.isLoading || (auth.isSessionRefetching && !auth.sessionError) || hasRetriedSessionRef.current) {
+      return;
+    }
+
+    hasRetriedSessionRef.current = true;
+    retrySession();
+  }, [auth.isLoading, auth.isSessionRefetching, auth.session, auth.sessionError]);
+
+  useEffect(() => {
+    if (auth.isLoading || (auth.isSessionRefetching && !auth.sessionError) || auth.session) {
+      return;
+    }
+
+    if (!hasRetriedSessionRef.current) {
+      return;
+    }
+
+    router.replace("/");
+  }, [auth.isLoading, auth.isSessionRefetching, auth.session, auth.sessionError, router]);
+
+  useEffect(() => {
+    if (!accessToken) {
+      return;
+    }
+
+    loadAuthenticatedData();
   }, [accessToken]);
 
   useEffect(() => {
     if (!accessToken) {
       return;
     }
-    if (dashboardTab === "wardrobe") {
-      void wardrobeState.loadWardrobe();
-    }
-    if (dashboardTab === "items") {
-      void itemsState.loadItems();
-    }
-    if (dashboardTab === "dashboard" || dashboardTab === "analyze") {
-      void historyState.loadHistory();
-    }
+
+    loadDashboardTabData(dashboardTab);
   }, [dashboardTab, accessToken]);
 
   const handleTabChange = (nextTab: DashboardTabId) => {
@@ -156,7 +157,7 @@ export default function HomePage() {
   const userEmail = auth.session?.user?.email || "";
   const userLabel = userFullName || userEmail || "your account";
 
-  if (auth.isLoading || (auth.isSessionRefetching && !auth.sessionError) || isRecoveringSession) {
+  if (auth.isLoading || (auth.isSessionRefetching && !auth.sessionError)) {
     return (
       <AppLoadingScreen
         title="Preparing OutfitsMe"

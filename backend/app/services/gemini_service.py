@@ -525,6 +525,7 @@ def generate_outfitsme_image_with_gemini(
     reference_mime_type: str,
     outfit_style: str,
     outfit_items: list[dict],
+    outfit_item_reference_images: list[tuple[bytes, str]] | None = None,
     source_outfit_image_bytes: bytes | None = None,
     source_outfit_mime_type: str | None = None,
     profile_gender: str | None = None,
@@ -548,6 +549,16 @@ def generate_outfitsme_image_with_gemini(
             source_outfit_mime_type or "image/jpeg",
             max_side=settings.GEMINI_SOURCE_IMAGE_MAX_SIDE
         )
+    normalized_item_reference_images: list[tuple[bytes, str]] = []
+    for image_bytes, mime_type in (outfit_item_reference_images or []):
+        if not image_bytes:
+            continue
+        resized_bytes, resized_mime_type = _resize_image_for_model(
+            image_bytes,
+            mime_type or "image/jpeg",
+            max_side=settings.GEMINI_SOURCE_IMAGE_MAX_SIDE
+        )
+        normalized_item_reference_images.append((resized_bytes, resized_mime_type))
 
     cleaned_items = []
     for item in (outfit_items or []):
@@ -576,7 +587,7 @@ def generate_outfitsme_image_with_gemini(
         f"Outfit style: {str(outfit_style or 'Outfit').strip()}. "
         f"Items: {'; '.join(cleaned_items) if cleaned_items else 'best effort from available data'}. "
         f"Profile hints: {'; '.join(profile_parts) if profile_parts else 'none'}. "
-        "If a second image is provided, use it only as clothing/style reference. "
+        "If additional clothing or item images are provided, use them only as garment/style references. "
         "Return a single generated image, no text, no watermark."
     )
 
@@ -595,6 +606,15 @@ def generate_outfitsme_image_with_gemini(
                 "inline_data": {
                     "mime_type": source_outfit_mime_type or "image/jpeg",
                     "data": base64.b64encode(source_outfit_image_bytes).decode("utf-8")
+                }
+            }
+        )
+    for image_bytes, mime_type in normalized_item_reference_images:
+        parts.append(
+            {
+                "inline_data": {
+                    "mime_type": mime_type or "image/jpeg",
+                    "data": base64.b64encode(image_bytes).decode("utf-8")
                 }
             }
         )
@@ -644,6 +664,7 @@ def generate_outfitsme_image_with_gemini(
         input_images = [reference_image_bytes]
         if source_outfit_image_bytes:
             input_images.append(source_outfit_image_bytes)
+        input_images.extend(image_bytes for image_bytes, _mime in normalized_item_reference_images)
         usage = _estimate_usage_fallback(
             prompt_text=prompt,
             input_images=input_images,

@@ -589,6 +589,26 @@ def generate_outfitsme_preview(photo_id: str):
         if storage_path and not str(storage_path).startswith("virtual/"):
             source_outfit_image_bytes = download_photo_bytes(storage_path)
             source_outfit_mime_type = mimetypes.guess_type(storage_path)[0] or "image/jpeg"
+        item_reference_images: list[tuple[bytes, str]] = []
+        seen_item_paths: set[str] = set()
+        for item in (selected_outfit.get("items") or []):
+            if len(item_reference_images) >= max(0, settings.ITEM_IMAGE_MAX):
+                break
+            if not isinstance(item, dict):
+                continue
+            image_path = str(item.get("image_path") or "").strip()
+            if not image_path or image_path in seen_item_paths:
+                continue
+            seen_item_paths.add(image_path)
+            item_image_bytes = download_photo_bytes(image_path)
+            if not item_image_bytes:
+                continue
+            item_reference_images.append(
+                (
+                    item_image_bytes,
+                    mimetypes.guess_type(image_path)[0] or "image/jpeg",
+                )
+            )
 
         if not settings.GEMINI_API_KEY:
             return jsonify(
@@ -601,6 +621,7 @@ def generate_outfitsme_preview(photo_id: str):
             reference_mime_type=reference_mime_type,
             outfit_style=selected_outfit.get("style") or "Outfit",
             outfit_items=selected_outfit.get("items") or [],
+            outfit_item_reference_images=item_reference_images,
             source_outfit_image_bytes=source_outfit_image_bytes,
             source_outfit_mime_type=source_outfit_mime_type,
             profile_gender=user_settings.get("profile_gender"),

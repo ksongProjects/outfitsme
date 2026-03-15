@@ -3,8 +3,9 @@
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowRight, SearchIcon, ShirtIcon, Wand2 } from "lucide-react";
-import { useState } from "react";
+import { ArrowRight, LogIn, SearchIcon, ShirtIcon, Wand2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 
 import AppFooter from "@/components/app/AppFooter";
@@ -20,36 +21,67 @@ const Masonry = dynamic(() => import("@/components/custom/Masonry"), {
 export default function LandingAuth() {
   const termsVersion = "2026-03-05";
   const [acceptedTerms, setAcceptedTerms] = useState(false);
-  const [isSigningIn, setIsSigningIn] = useState(false);
+  const [activeAuthFlow, setActiveAuthFlow] = useState<"signin" | "signup" | null>(null);
+  const router = useRouter();
+  const searchParams = useSearchParams();
 
+  useEffect(() => {
+    const authError = (searchParams.get("error") || "").trim().toLowerCase();
+    if (!authError) {
+      return;
+    }
 
-  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
-    if (!acceptedTerms) {
+    const authFlow = (searchParams.get("authFlow") || "").trim().toLowerCase();
+    const errorDescription = (searchParams.get("error_description") || "").trim();
+    let message = errorDescription || "Google sign-in failed. Please try again.";
+
+    if (authError === "signup_disabled") {
+      message = authFlow === "signin"
+        ? "No OutfitsMe account exists for that Google login yet. Accept the terms first if you want to create one."
+        : "Account creation is currently unavailable for that Google login.";
+    } else if (authError === "account_not_linked") {
+      message = "This Google account is not linked to your existing OutfitsMe account.";
+    } else if (authError === "unable_to_link_account") {
+      message = "We couldn't connect that Google account to OutfitsMe.";
+    }
+
+    toast.error(message);
+    router.replace("/");
+  }, [router, searchParams]);
+
+  const handleGoogleAuth = async (mode: "signin" | "signup") => {
+    if (!acceptedTerms && mode === "signup") {
       toast.error("You must accept the Terms of Service to create an account.");
       return;
     }
 
     try {
-      setIsSigningIn(true);
+      setActiveAuthFlow(mode);
       await signIn.social(
         {
           provider: "google",
           callbackURL: "/dashboard",
+          errorCallbackURL: mode === "signin" ? "/?authFlow=signin" : "/?authFlow=signup",
+          ...(mode === "signup"
+            ? {
+                requestSignUp: true,
+                newUserCallbackURL: "/dashboard",
+              }
+            : {}),
         },
         {
           onSuccess: () => {
-            toast.success("Signed in successfully with Google.");
+            toast.success(mode === "signin" ? "Signed in successfully with Google." : "Account created successfully with Google.");
           },
           onError: (ctx) => {
-            toast.error(ctx.error?.message || "Sign in failed. Please try again.");
-            setIsSigningIn(false);
+            toast.error(ctx.error?.message || "Google sign-in failed. Please try again.");
+            setActiveAuthFlow(null);
           },
         }
       );
     } catch {
-      toast.error("Sign in failed. Please try again.");
-      setIsSigningIn(false);
+      toast.error("Google sign-in failed. Please try again.");
+      setActiveAuthFlow(null);
     }
 
     void termsVersion;
@@ -113,7 +145,7 @@ export default function LandingAuth() {
               </article>
             </div>
 
-            <form className="auth-panel card" onSubmit={handleSubmit}>
+            <section className="auth-panel card">
               <div className="auth-header">
                 <span className="section-kicker">Get started</span>
               </div>
@@ -128,18 +160,29 @@ export default function LandingAuth() {
                   I agree to the <Link href="/terms" className="underline">Terms of Service</Link> and understand this version tracks usage under the managed trial.
                 </span>
               </label>
-              <div className="flex justify-end">
+              <div className="auth-button-row">
                 <BaseButton
-                  type="submit"
-                  variant="primary"
-                  disabled={!acceptedTerms || isSigningIn}
-                  className="auth-submit-btn"
+                  type="button"
+                  variant="ghost"
+                  disabled={activeAuthFlow !== null}
+                  className="auth-secondary-btn"
+                  onClick={() => void handleGoogleAuth("signin")}
                 >
-                  {isSigningIn ? "Signing in..." : "Continue with Google"}
+                  {activeAuthFlow === "signin" ? "Signing in..." : "Sign in with Google"}
+                  <LogIn size={16} />
+                </BaseButton>
+                <BaseButton
+                  type="button"
+                  variant="primary"
+                  disabled={!acceptedTerms || activeAuthFlow !== null}
+                  className="auth-submit-btn"
+                  onClick={() => void handleGoogleAuth("signup")}
+                >
+                  {activeAuthFlow === "signup" ? "Creating account..." : "Sign up with Google"}
                   <ArrowRight size={16} />
                 </BaseButton>
               </div>
-            </form>
+            </section>
           </div>
 
           <div className="landing-visual-column" aria-hidden="true">

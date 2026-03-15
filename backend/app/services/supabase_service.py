@@ -13,6 +13,7 @@ from supabase import Client, create_client
 from app.config import settings
 from app.services.access_control import normalize_user_role
 from app.services.better_auth_service import (
+    get_database_connection,
     get_user_created_at_from_better_auth_token,
     get_user_id_from_better_auth_jwt,
     get_user_id_from_session_token,
@@ -363,6 +364,21 @@ def get_supabase_client() -> Client:
     return create_client(settings.SUPABASE_URL, settings.SUPABASE_SECRET_KEY)
 
 
+def _is_better_auth_jwt_candidate(access_token: str) -> bool:
+    raw_token = str(access_token or "").strip()
+    parts = raw_token.split(".")
+    if len(parts) != 3:
+        return False
+
+    try:
+        header_bytes = base64.urlsafe_b64decode(f"{parts[0]}{'=' * (-len(parts[0]) % 4)}")
+        header = json.loads(header_bytes.decode("utf-8"))
+    except (ValueError, json.JSONDecodeError, UnicodeDecodeError):
+        return False
+
+    return str(header.get("alg") or "").strip() == "EdDSA"
+
+
 def get_user_id_from_token(access_token: str) -> str | None:
     # Prefer Better Auth JWTs for backend API authorization.
     user_id = get_user_id_from_better_auth_jwt(access_token)
@@ -373,7 +389,11 @@ def get_user_id_from_token(access_token: str) -> str | None:
     user_id = get_user_id_from_session_token(access_token)
     if user_id:
         return user_id
-    
+
+    # Better Auth JWTs use EdDSA, which the legacy Supabase parser cannot verify.
+    if _is_better_auth_jwt_candidate(access_token):
+        return None
+
     # Fall back to Supabase auth (legacy)
     try:
         client = get_supabase_client()
@@ -385,15 +405,53 @@ def get_user_id_from_token(access_token: str) -> str | None:
 
 
 def get_user_from_token(access_token: str):
+    if _is_better_auth_jwt_candidate(access_token):
+        return None
     client = get_supabase_client()
     user_response = client.auth.get_user(access_token)
     return getattr(user_response, "user", None)
+
+
+def _get_better_auth_user_created_at_by_user_id(user_id: str) -> str | None:
+    normalized_user_id = str(user_id or "").strip()
+    if not normalized_user_id:
+        return None
+
+    try:
+        with get_database_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                        SELECT created_at FROM "users"
+                        WHERE id = %s
+                        LIMIT 1
+                    """,
+                    (normalized_user_id,)
+                )
+                result = cur.fetchone()
+        created_at = result[0] if result else None
+        if isinstance(created_at, datetime):
+            if created_at.tzinfo is None:
+                created_at = created_at.replace(tzinfo=timezone.utc)
+            return created_at.astimezone(timezone.utc).isoformat()
+        return str(created_at) if created_at else None
+    except Exception:
+        return None
 
 
 def get_user_created_at_from_token(access_token: str) -> str | None:
     created_at = get_user_created_at_from_better_auth_token(access_token)
     if created_at:
         return created_at
+
+    user_id = get_user_id_from_token(access_token)
+    if user_id:
+        created_at = _get_better_auth_user_created_at_by_user_id(user_id)
+        if created_at:
+            return created_at
+
+    if str(access_token or "").count(".") == 2:
+        return None
 
     user = get_user_from_token(access_token)
     return getattr(user, "created_at", None)
@@ -644,7 +702,8 @@ def _build_generated_item_image_lookup(
 
 def _normalize_items_with_images(
     raw_items: list[dict],
-    images_by_signature: dict[tuple[str, str, str], list[str]]
+    images_by_signature: dict[tuple[str, str, str], list[str]],
+    resolve_signed_url=None
 ) -> list[dict]:
     remaining_by_signature = {
         signature: list(candidates)
@@ -655,14 +714,28 @@ def _normalize_items_with_images(
         if not isinstance(item, dict):
             continue
         normalized = _normalize_item_fields(item)
+        direct_image_path = str(
+            item.get("image_path")
+            or item.get("generated_item_image_path")
+            or ""
+        ).strip()
+        direct_image_url = resolve_signed_url(direct_image_path) if resolve_signed_url and direct_image_path else None
         signature = (
             normalized["category"].lower(),
             normalized["name"].lower(),
             normalized["color"].lower()
         )
         candidates = remaining_by_signature.get(signature) or []
-        image_url = candidates.pop(0) if candidates else None
-        normalized_items.append({**normalized, "image_url": image_url})
+        image_url = direct_image_url or (candidates.pop(0) if candidates else None)
+        source_item_id = str(item.get("source_item_id") or "").strip() or None
+        normalized_items.append(
+            {
+                **normalized,
+                "image_url": image_url,
+                "image_path": direct_image_path or None,
+                "source_item_id": source_item_id,
+            }
+        )
     return normalized_items
 
 
@@ -1618,7 +1691,8 @@ def get_wardrobe_photo_details(user_id: str, photo_id: str, outfit_index: int | 
                     ),
                     "items": _normalize_items_with_images(
                         [item for item in (prepared.get("items") or []) if isinstance(item, dict)],
-                        images_by_signature
+                        images_by_signature,
+                        resolve_signed_url
                     )
                 }
             )
@@ -1843,21 +1917,35 @@ def compose_outfit_from_items(
     if not unique_item_ids:
         raise ValueError("item_ids must include at least one valid item id.")
 
-    source_items = (
+    source_items_response = (
         client.table("items")
-        .select("id,category,name,color")
+        .select("id,category,name,color,attributes_json")
         .eq("user_id", user_id)
         .in_("id", unique_item_ids)
         .execute()
-    ).data or []
+    )
+    source_items_by_id = {
+        str(item.get("id")): item
+        for item in (source_items_response.data or [])
+        if item.get("id")
+    }
+    source_items = [source_items_by_id[item_id] for item_id in unique_item_ids if item_id in source_items_by_id]
     if not source_items:
         raise ValueError("No matching items found for this user.")
 
     style = _normalize_label(style_label, "Composed Outfit")
-    composed_items = [
-        _normalize_item_fields(item)
-        for item in source_items
-    ]
+    composed_items = []
+    for item in source_items:
+        normalized_item = _normalize_item_fields(item)
+        attributes = _coerce_dict(item.get("attributes_json") or {})
+        image_path = str(attributes.get("generated_item_image_path") or "").strip()
+        composed_items.append(
+            {
+                **normalized_item,
+                "source_item_id": item.get("id"),
+                **({"image_path": image_path} if image_path else {})
+            }
+        )
 
     photo_insert = (
         client.table("photos")
@@ -1907,31 +1995,11 @@ def compose_outfit_from_items(
         source_type=OUTFIT_SOURCE_CUSTOM
     )
 
-    now_iso = datetime.now(timezone.utc).isoformat()
-    new_item_rows = [
-        {
-            "analysis_id": analysis_row["id"],
-            "user_id": user_id,
-            "category": _normalize_label(item.get("category"), "Item"),
-            "name": _normalize_label(item.get("name"), "Unknown Item"),
-            "color": _normalize_label(item.get("color"), "Unknown"),
-            "attributes_json": {
-                "captured_at": now_iso,
-                "outfit_index": 0,
-                "outfit_style": style,
-                "composed_from_item_id": item.get("id")
-            }
-        }
-        for item in source_items
-    ]
-    if new_item_rows:
-        client.table("items").insert(new_item_rows).execute()
-
     return {
         "photo_id": photo_row["id"],
         "analysis_id": analysis_row["id"],
         "style_label": style,
-        "items_count": len(new_item_rows)
+        "items_count": len(composed_items)
     }
 
 

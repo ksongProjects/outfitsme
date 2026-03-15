@@ -7,7 +7,7 @@ export default function AppFooter() {
 
   return (
     <footer className="app-footer">
-      <p className="app-footer-copy">&copy; {year} OutfitsMe. Dress with more confidence.</p>
+      <p className="app-footer-copy">&copy; {year} OutfitsMe.</p>
       <nav className="app-footer-links" aria-label="Legal">
         <Link href="/terms">Terms of Service</Link>
         <Link href="/privacy">Privacy Policy</Link>

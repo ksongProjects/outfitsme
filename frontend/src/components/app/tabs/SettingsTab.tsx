@@ -14,7 +14,6 @@ const SETTINGS_SECTIONS = [
   { id: "profile", label: "Profile" },
   { id: "features", label: "Features" },
   { id: "costs", label: "Cost usage" },
-  { id: "retail", label: "Retail search" },
 ];
 
 export default function SettingsTab() {
@@ -171,14 +170,13 @@ export default function SettingsTab() {
           </div>
           <div className="settings-feature-row">
             <div>
-              <p><strong>Online store search</strong></p>
-              <p className="subtext">Keep the shopping-discovery feature visible while we wire in real retailer APIs.</p>
+              <p><strong>Online store search (Coming soon)</strong></p>
+              <p className="subtext">Retail search is temporarily disabled while we finish the storefront integration.</p>
             </div>
             <BaseCheckbox
-              checked={Boolean(settingsForm.enable_online_store_search)}
-              onCheckedChange={(value) =>
-                setSettingsForm((prev) => ({ ...prev, enable_online_store_search: Boolean(value) }))
-              }
+              checked={false}
+              disabled
+              aria-label="Online store search coming soon"
             />
           </div>
           <div className="button-row">
@@ -219,16 +217,6 @@ export default function SettingsTab() {
           </div>
         </article>
 
-        <article id="settings-retail" className="settings-card settings-section-card">
-          <h2>Retail search readiness</h2>
-          <p className="subtext">The similar-items feature can launch without extra user data, but match quality improves with a little more context.</p>
-          <ul className="compact-list">
-            <li><strong>Recommended next fields:</strong> country or shipping region, clothing sizes, and preferred price range.</li>
-            <li><strong>MVP:</strong> let users browse similar items without saving personal fit data.</li>
-            <li><strong>Best version:</strong> use optional sizes and region to filter stock, delivery estimates, and size availability.</li>
-          </ul>
-          <p className="subtext">These preferences are not persisted in the current backend yet, so the UI stays advisory for now.</p>
-        </article>
       </div>
     </section>
   );

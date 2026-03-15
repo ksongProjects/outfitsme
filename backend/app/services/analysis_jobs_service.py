@@ -269,14 +269,9 @@ def _slice_sprite_to_item_data_uris(
                 if crop.mode not in {"RGB", "L"}:
                     crop = crop.convert("RGB")
                 max_side = settings.ITEM_IMAGE_MAX_SIDE
-                if max_side > 0:
+                resize_threshold = max(0, int(settings.ITEM_IMAGE_RESIZE_THRESHOLD))
+                if max_side > 0 and max(crop.width, crop.height) > resize_threshold:
                     crop.thumbnail((max_side, max_side), resample=Image.Resampling.LANCZOS)
-                    # Compose onto a square white canvas so the final dimensions are strictly max_side x max_side
-                    square = Image.new("RGB", (max_side, max_side), (255, 255, 255))
-                    paste_x = (max_side - crop.width) // 2
-                    paste_y = (max_side - crop.height) // 2
-                    square.paste(crop, (paste_x, paste_y))
-                    crop = square
                 output = BytesIO()
                 crop.save(output, format="JPEG", quality=90, optimize=True)
                 result.append(f"data:image/jpeg;base64,{base64.b64encode(output.getvalue()).decode('utf-8')}")
@@ -511,3 +506,5 @@ def get_job_status_response(job_id: str) -> dict | None:
         "completed_at": row.get("completed_at"),
         "updated_at": row.get("updated_at")
     }
+
+

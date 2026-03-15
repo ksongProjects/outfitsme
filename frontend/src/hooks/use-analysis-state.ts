@@ -24,7 +24,7 @@ export function useAnalysisState({
   onAnalysisSaved?: () => void;
 }) {
   const MAX_CONCURRENT_ANALYSIS_JOBS = 5;
-  const MAX_ANALYZE_IMAGE_SIDE = 768;
+  const MAX_ANALYZE_IMAGE_SIDE = 1024;
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState("");
   const [cropArea, setCropArea] = useState<CropArea | null>(null);
@@ -584,3 +584,4 @@ export function useAnalysisState({
     info,
   };
 }
+

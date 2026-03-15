@@ -63,16 +63,17 @@ class Settings:
         "gemini-2.5-flash-image"
     )
     GEMINI_ANALYSIS_IMAGE_MAX_SIDE = int(
-        _clean_env(os.getenv("GEMINI_ANALYSIS_IMAGE_MAX_SIDE", "768"), "768") or "768"
+        _clean_env(os.getenv("GEMINI_ANALYSIS_IMAGE_MAX_SIDE", "1024"), "1024") or "1024"
     )
     GEMINI_REFERENCE_IMAGE_MAX_SIDE = int(
-        _clean_env(os.getenv("GEMINI_REFERENCE_IMAGE_MAX_SIDE", "768"), "768") or "768"
+        _clean_env(os.getenv("GEMINI_REFERENCE_IMAGE_MAX_SIDE", "1024"), "1024") or "1024"
     )
     GEMINI_SOURCE_IMAGE_MAX_SIDE = int(
-        _clean_env(os.getenv("GEMINI_SOURCE_IMAGE_MAX_SIDE", "384"), "384") or "384"
+        _clean_env(os.getenv("GEMINI_SOURCE_IMAGE_MAX_SIDE", "1024"), "1024") or "1024"
     )
     ITEM_IMAGE_MAX = int(_clean_env(os.getenv("ITEM_IMAGE_MAX", "3"), "3") or "3")
-    ITEM_IMAGE_MAX_SIDE = int(_clean_env(os.getenv("ITEM_IMAGE_MAX_SIDE", "250"), "250") or "250")
+    ITEM_IMAGE_RESIZE_THRESHOLD = int(_clean_env(os.getenv("ITEM_IMAGE_RESIZE_THRESHOLD", "500"), "500") or "500")
+    ITEM_IMAGE_MAX_SIDE = int(_clean_env(os.getenv("ITEM_IMAGE_MAX_SIDE", "350"), "350") or "350")
     MONTHLY_CUSTOM_OUTFIT_LIMIT = int(_clean_env(os.getenv("MONTHLY_CUSTOM_OUTFIT_LIMIT", "5"), "5") or "5")
     TRIAL_DAYS = int(_clean_env(os.getenv("TRIAL_DAYS", "14"), "14") or "14")
     TRIAL_DAILY_AI_ACTION_LIMIT = int(_clean_env(os.getenv("TRIAL_DAILY_AI_ACTION_LIMIT", "10"), "10") or "10")
@@ -124,3 +125,5 @@ class Settings:
 
 
 settings = Settings()
+
+

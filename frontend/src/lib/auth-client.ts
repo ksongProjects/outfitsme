@@ -12,6 +12,9 @@ export const { signIn, signOut, useSession } = authClient as typeof authClient &
       input: {
         provider: "google";
         callbackURL?: string;
+        errorCallbackURL?: string;
+        newUserCallbackURL?: string;
+        requestSignUp?: boolean;
       },
       config?: {
         onSuccess?: () => void;
