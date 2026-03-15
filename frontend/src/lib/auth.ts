@@ -1,6 +1,7 @@
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { jwt } from "better-auth/plugins/jwt";
+import { sql } from "drizzle-orm";
 
 import * as authSchema from "@/lib/auth-schema";
 import { getDb } from "@/lib/db";
@@ -12,6 +13,36 @@ function getRequiredEnv(name: string): string {
   }
 
   return value;
+}
+
+async function ensureDefaultAppUserRows(userId: string) {
+  const normalizedUserId = userId.trim();
+
+  if (!normalizedUserId) {
+    return;
+  }
+
+  await getDb().execute(sql`
+    insert into public.user_settings (
+      user_id,
+      user_role,
+      profile_gender,
+      profile_photo_path,
+      enable_outfit_image_generation,
+      enable_online_store_search,
+      enable_accessory_analysis
+    )
+    values (
+      ${normalizedUserId},
+      'trial',
+      '',
+      '',
+      false,
+      false,
+      false
+    )
+    on conflict (user_id) do nothing
+  `);
 }
 
 function createAuth() {
@@ -32,6 +63,19 @@ function createAuth() {
       google: {
         clientId: googleClientId,
         clientSecret: googleClientSecret,
+      },
+    },
+    databaseHooks: {
+      user: {
+        create: {
+          async after(user) {
+            if (!user?.id) {
+              return;
+            }
+
+            await ensureDefaultAppUserRows(user.id);
+          },
+        },
       },
     },
     baseURL: appUrl,

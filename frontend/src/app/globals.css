@@ -738,13 +738,20 @@
 }
 
 .app-loading-shell {
+  width: 100%;
+  max-width: none;
+  margin: 0;
+  padding-inline: 0;
+  min-height: 100vh;
   display: flex;
   flex-direction: column;
   justify-content: center;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .app-loading-stage {
+  width: min(1340px, calc(100% - 3rem));
+  margin: 0 auto;
   flex: 1;
   display: grid;
   place-items: center;
@@ -1400,6 +1407,10 @@ pre {
 
   .app-loading-head {
     width: 100%;
+  }
+
+  .app-loading-stage {
+    width: min(100% - 1rem, 100%);
   }
 
   .app-loading-grid,

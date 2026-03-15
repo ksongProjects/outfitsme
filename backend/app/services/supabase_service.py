@@ -1947,19 +1947,7 @@ def _empty_model_settings() -> dict:
     }
 
 
-def get_user_model_settings(user_id: str) -> dict:
-    client = get_supabase_client()
-    response = (
-        client.table("user_settings")
-        .select(
-            "user_role,profile_gender,profile_age,profile_photo_path,"
-            "enable_outfit_image_generation,enable_online_store_search,enable_accessory_analysis"
-        )
-        .eq("user_id", user_id)
-        .limit(1)
-        .execute()
-    )
-    row = (response.data or [None])[0]
+def _normalize_model_settings_row(row: dict | None) -> dict:
     if not row:
         return _empty_model_settings()
 
@@ -1975,9 +1963,56 @@ def get_user_model_settings(user_id: str) -> dict:
     }
 
 
+def _fetch_user_model_settings_row(client: Client, user_id: str) -> dict | None:
+    response = (
+        client.table("user_settings")
+        .select(
+            "user_role,profile_gender,profile_age,profile_photo_path,"
+            "enable_outfit_image_generation,enable_online_store_search,enable_accessory_analysis"
+        )
+        .eq("user_id", user_id)
+        .limit(1)
+        .execute()
+    )
+    return (response.data or [None])[0]
+
+
+def ensure_user_model_settings(user_id: str, client: Client | None = None) -> dict:
+    effective_client = client or get_supabase_client()
+    existing_row = _fetch_user_model_settings_row(effective_client, user_id)
+    if existing_row:
+        return _normalize_model_settings_row(existing_row)
+
+    defaults = _empty_model_settings()
+    (
+        effective_client.table("user_settings")
+        .upsert(
+            {
+                "user_id": user_id,
+                "user_role": defaults["user_role"],
+                "profile_gender": defaults["profile_gender"],
+                "profile_age": defaults["profile_age"],
+                "profile_photo_path": defaults["profile_photo_path"],
+                "enable_outfit_image_generation": defaults["enable_outfit_image_generation"],
+                "enable_online_store_search": defaults["enable_online_store_search"],
+                "enable_accessory_analysis": defaults["enable_accessory_analysis"],
+                "updated_at": datetime.now(timezone.utc).isoformat()
+            },
+            on_conflict="user_id"
+        )
+        .execute()
+    )
+
+    return _normalize_model_settings_row(_fetch_user_model_settings_row(effective_client, user_id))
+
+
+def get_user_model_settings(user_id: str) -> dict:
+    return ensure_user_model_settings(user_id)
+
+
 def upsert_user_model_settings(user_id: str, payload: dict) -> dict:
     client = get_supabase_client()
-    current = get_user_model_settings(user_id)
+    current = ensure_user_model_settings(user_id, client)
     profile_gender = payload.get("profile_gender")
     profile_age = payload.get("profile_age")
     profile_photo_path = payload.get("profile_photo_path")
@@ -2042,7 +2077,7 @@ def upsert_user_model_settings(user_id: str, payload: dict) -> dict:
 
 def save_user_profile_photo(user_id: str, file_storage) -> dict:
     client = get_supabase_client()
-    current = get_user_model_settings(user_id)
+    current = ensure_user_model_settings(user_id, client)
     previous_path = current.get("profile_photo_path", "")
 
     ext = ".jpg"
