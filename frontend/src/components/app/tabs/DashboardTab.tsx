@@ -1,6 +1,6 @@
-﻿"use client";
+"use client";
 
-import { BarChart3, Clock3, Palette, Shirt, ShirtIcon, Sparkles, SparklesIcon } from "lucide-react";
+import { BarChart3, Clock3, Images, ShirtIcon, SparklesIcon } from "lucide-react";
 
 import BaseButton from "@/components/app/ui/BaseButton";
 import type { AnalysisLimits, HistoryEntry, StatsPayload } from "@/lib/types";
@@ -24,11 +24,7 @@ export default function DashboardTab({
   history,
   historyLoading,
 }: DashboardTabProps) {
-  const highlights = stats?.highlights || {};
-  const clothingItemTypes = stats?.clothing_item_types || [];
-  const accessoryItemTypes = stats?.accessory_item_types || [];
-  const topColors = stats?.top_colors || [];
-  const categorySplit = stats?.category_split || {};
+  const itemTypeCounts = stats?.top_item_types || [];
   const dailyLimit = analysisLimits?.daily_limit ?? 0;
   const usedToday = analysisLimits?.used_today ?? 0;
   const remainingToday = analysisLimits?.remaining_today;
@@ -56,16 +52,16 @@ export default function DashboardTab({
       <div className="stats-grid">
         <article className="stats-card stats-card-accent">
           <SparklesIcon size={18} className="stats-icon"/>
-          <p className="stats-label">Photos analyzed</p>
-          <p className="stats-value">{stats.photos_count ?? stats.analyses_count}</p>
+          <p className="stats-label">Completed jobs</p>
+          <p className="stats-value">{stats.analyses_count}</p>
+        </article>
+        <article className="stats-card stats-card-accent">
+          <Images size={18} className="stats-icon"/>
+          <p className="stats-label">Generated outfit images</p>
+          <p className="stats-value">{stats.generated_outfit_images_count ?? stats.outfits_count}</p>
         </article>
         <article className="stats-card stats-card-accent">
           <ShirtIcon size={18} className="stats-icon"/>
-          <p className="stats-label">Outfits saved</p>
-          <p className="stats-value">{stats.outfits_count}</p>
-        </article>
-        <article className="stats-card stats-card-accent">
-          <Palette size={18} className="stats-icon"/>
           <p className="stats-label">Items cataloged</p>
           <p className="stats-value">{stats.items_count}</p>
         </article>
@@ -77,11 +73,11 @@ export default function DashboardTab({
             <h3>Top clothing types</h3>
             <BarChart3 size={18} />
           </div>
-          {clothingItemTypes.length === 0 ? (
-            <p className="subtext">Analyze a few outfits to unlock detailed clothing breakdowns.</p>
+          {itemTypeCounts.length === 0 ? (
+            <p className="subtext">Analyze a few outfits to unlock clothing type counts.</p>
           ) : (
             <ul className="compact-list">
-              {clothingItemTypes.map((entry) => (
+              {itemTypeCounts.map((entry) => (
                 <li key={`item-type-${entry.label}`}>
                   <strong>{entry.label}</strong>
                   <span className="subtext">{entry.count} tracked</span>
@@ -93,27 +89,14 @@ export default function DashboardTab({
 
         <article className="settings-card insight-card">
           <div className="card-heading-row">
-            <h3>Accessory and color highlights</h3>
-            <Sparkles size={18} />
+            <h3>Simple totals</h3>
+            <ShirtIcon size={18} />
           </div>
-          {accessoryItemTypes.length === 0 ? (
-            <p className="subtext">No accessories tracked yet. Turn on accessory analysis to enrich this view.</p>
-          ) : (
-            <ul className="compact-list">
-              {accessoryItemTypes.slice(0, 4).map((entry) => (
-                <li key={`accessory-type-${entry.label}`}>
-                  <strong>{entry.label}</strong>
-                  <span className="subtext">{entry.count} tracked</span>
-                </li>
-              ))}
-            </ul>
-          )}
           <div className="insight-summary">
-            <p>Most common accessory: <strong>{highlights.most_common_accessory_type || "N/A"}</strong></p>
-            <p>Most common color: <strong>{highlights.most_common_color || "N/A"}</strong></p>
-            <p>Clothing items tracked: <strong>{categorySplit.clothing_items_count ?? 0}</strong></p>
-            <p>Accessory items tracked: <strong>{categorySplit.accessories_items_count ?? 0}</strong></p>
-            <p>Top colors captured: <strong>{topColors.length}</strong></p>
+            <p>Photos analyzed: <strong>{stats.photos_count ?? 0}</strong></p>
+            <p>Completed jobs this week: <strong>{stats.weekly_activity?.analyses_count ?? 0}</strong></p>
+            <p>Generated outfit images this week: <strong>{stats.weekly_activity?.outfits_count ?? 0}</strong></p>
+            <p>Items added this week: <strong>{stats.weekly_activity?.items_count ?? 0}</strong></p>
           </div>
         </article>
 
@@ -154,4 +137,5 @@ export default function DashboardTab({
     </section>
   );
 }
+
 

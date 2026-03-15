@@ -10,6 +10,7 @@ const emptyStats: StatsPayload = {
   outfits_count: 0,
   analyses_count: 0,
   items_count: 0,
+  generated_outfit_images_count: 0,
   weekly_activity: {
     analyses_count: 0,
     outfits_count: 0,
@@ -17,30 +18,14 @@ const emptyStats: StatsPayload = {
     window_start_utc: null,
   },
   top_item_types: [],
-  detailed_item_types: [],
-  clothing_item_types: [],
-  accessory_item_types: [],
-  top_colors: [],
-  category_split: {
-    clothing_items_count: 0,
-    accessories_items_count: 0,
-  },
-  latest_outfit: null,
-  highlights: {
-    most_common_item_type: "N/A",
-    most_common_color: "N/A",
-    most_common_accessory_type: "N/A",
-  },
 };
+
+const STATS_STALE_MS = 20 * 1000;
 
 export function useStatsState({ accessToken }: { accessToken: string }) {
   const statsQuery = useQuery({
     queryKey: ["stats", accessToken],
     queryFn: async () => {
-      if (!accessToken) {
-        return emptyStats;
-      }
-
       const response = await fetch(`${API_BASE}/api/stats`, {
         method: "GET",
         headers: {
@@ -56,13 +41,13 @@ export function useStatsState({ accessToken }: { accessToken: string }) {
       return (payload.stats || emptyStats) as StatsPayload;
     },
     enabled: Boolean(accessToken),
-    staleTime: 20_000,
+    staleTime: STATS_STALE_MS,
   });
 
   return {
     stats: statsQuery.data || emptyStats,
-    statsLoading: statsQuery.isFetching,
-    loadStats: async () => {
+    statsLoading: statsQuery.isLoading || statsQuery.isFetching,
+    refreshStats: async () => {
       await statsQuery.refetch();
     },
   };

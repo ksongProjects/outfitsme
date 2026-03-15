@@ -3,11 +3,12 @@
 import { useState } from "react";
 
 import { useHistoryContext } from "@/components/app/DashboardContext";
+import AppImage from "@/components/app/ui/AppImage";
 import BaseButton from "@/components/app/ui/BaseButton";
 import BaseDialog from "@/components/app/ui/BaseDialog";
 
 export default function HistoryTab() {
-  const { history, historyLoading, historyMessage, loadHistory } = useHistoryContext();
+  const { history, historyLoading, historyMessage, refreshHistory } = useHistoryContext();
   const [previewEntry, setPreviewEntry] = useState<(typeof history)[number] | null>(null);
 
   return (
@@ -18,7 +19,7 @@ export default function HistoryTab() {
           <h2>Analysis history</h2>
           <p className="tab-header-subtext">Review past photo analyses and reopen the source imagery when needed.</p>
         </div>
-        <BaseButton variant="ghost" onClick={() => loadHistory(true)} disabled={historyLoading}>
+        <BaseButton variant="ghost" onClick={() => void refreshHistory()} disabled={historyLoading}>
           {historyLoading ? "Loading..." : "Refresh"}
         </BaseButton>
       </div>
@@ -40,7 +41,7 @@ export default function HistoryTab() {
           <tbody>
             {history.map((entry) => (
               <tr key={entry.job_id}>
-                <td>
+                <td data-label="Photo">
                   <div className="history-photo-cell">
                     {entry.image_url ? (
                       <BaseButton
@@ -51,18 +52,24 @@ export default function HistoryTab() {
                         aria-label="Open photo preview"
                         title="Open photo preview"
                       >
-                        <img className="history-thumb" src={entry.image_url} alt="Analyzed outfit" />
+                        <AppImage
+                          className="history-thumb"
+                          src={entry.image_url}
+                          alt="Analyzed outfit"
+                          width={64}
+                          height={64}
+                        />
                       </BaseButton>
                     ) : (
                       <span className="subtext">No preview</span>
                     )}
                   </div>
                 </td>
-                <td>{entry.analysis_model || "Unknown"}</td>
-                <td>{entry.status || "Unknown"}</td>
-                <td>{entry.outfit_count ?? 0}</td>
-                <td>{entry.created_at ? new Date(entry.created_at).toLocaleString() : "-"}</td>
-                <td>{entry.completed_at ? new Date(entry.completed_at).toLocaleString() : "-"}</td>
+                <td data-label="Model">{entry.analysis_model || "Unknown"}</td>
+                <td data-label="Status">{entry.status || "Unknown"}</td>
+                <td data-label="Outfits">{entry.outfit_count ?? 0}</td>
+                <td data-label="Created">{entry.created_at ? new Date(entry.created_at).toLocaleString() : "-"}</td>
+                <td data-label="Completed">{entry.completed_at ? new Date(entry.completed_at).toLocaleString() : "-"}</td>
               </tr>
             ))}
           </tbody>
@@ -78,7 +85,13 @@ export default function HistoryTab() {
       >
         <div className="history-preview-body">
           {previewEntry?.image_url ? (
-            <img src={previewEntry.image_url} alt="Analyzed outfit preview" className="modal-image history-preview-image" />
+            <AppImage
+              src={previewEntry.image_url}
+              alt="Analyzed outfit preview"
+              className="modal-image history-preview-image"
+              width={1600}
+              height={2000}
+            />
           ) : (
             <p className="subtext">Preview unavailable for this photo.</p>
           )}

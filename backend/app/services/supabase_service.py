@@ -6,6 +6,7 @@ import json
 import mimetypes
 import re
 from datetime import datetime, timedelta, timezone
+from time import monotonic
 from uuid import uuid4
 
 from supabase import Client, create_client
@@ -72,6 +73,9 @@ ACCESSORY_ITEM_TYPES = {
 OUTFIT_SOURCE_PHOTO_ANALYSIS = "photo_analysis"
 OUTFIT_SOURCE_CUSTOM = "custom_outfit"
 OUTFIT_SOURCE_OUTFITSME = "outfitsme_generated"
+
+_SUPABASE_CLIENT: Client | None = None
+_SIGNED_URL_CACHE: dict[tuple[str, int], tuple[str | None, float]] = {}
 
 
 def _title_case_label(value: str) -> str:
@@ -361,7 +365,231 @@ def _classify_item_type(category: str, name: str) -> str:
 def get_supabase_client() -> Client:
     if not settings.SUPABASE_URL or not settings.SUPABASE_SECRET_KEY:
         raise SupabaseNotConfiguredError("SUPABASE_URL and SUPABASE_SECRET_KEY are required.")
-    return create_client(settings.SUPABASE_URL, settings.SUPABASE_SECRET_KEY)
+    global _SUPABASE_CLIENT
+    if _SUPABASE_CLIENT is None:
+        _SUPABASE_CLIENT = create_client(settings.SUPABASE_URL, settings.SUPABASE_SECRET_KEY)
+    return _SUPABASE_CLIENT
+
+
+def _fetchone_dict(cursor, query: str, params: tuple) -> dict | None:
+    cursor.execute(query, params)
+    row = cursor.fetchone()
+    if row is None:
+        return None
+    columns = [description[0] for description in cursor.description or []]
+    return {columns[index]: value for index, value in enumerate(row)}
+
+
+def _to_int(value) -> int:
+    try:
+        return int(value or 0)
+    except (TypeError, ValueError):
+        return 0
+
+
+def _query_dashboard_snapshot(user_id: str, week_start_iso: str) -> tuple[dict, list[dict]] | None:
+    try:
+        with get_database_connection() as conn:
+            with conn.cursor() as cur:
+                snapshot = _fetchone_dict(
+                    cur,
+                    """
+                    select
+                      (
+                        select count(*)
+                        from public.photos p
+                        where p.user_id = %s
+                          and p.storage_path not like 'virtual/%%'
+                      ) as photos_count,
+                      (
+                        select count(*)
+                        from public.analysis_jobs aj
+                        where aj.user_id = %s
+                          and aj.status = 'completed'
+                      ) as analyses_count,
+                      (
+                        select count(*)
+                        from public.outfits o
+                        where o.user_id = %s
+                          and o.source_type = %s
+                      ) as outfits_count,
+                      (
+                        select count(*)
+                        from public.items i
+                        where i.user_id = %s
+                      ) as items_count,
+                      (
+                        select count(*)
+                        from public.analysis_jobs aj
+                        where aj.user_id = %s
+                          and aj.status = 'completed'
+                          and aj.completed_at >= %s::timestamptz
+                      ) as weekly_analyses_count,
+                      (
+                        select count(*)
+                        from public.outfits o
+                        where o.user_id = %s
+                          and o.source_type = %s
+                          and o.created_at >= %s::timestamptz
+                      ) as weekly_outfits_count,
+                      (
+                        select count(*)
+                        from public.items i
+                        where i.user_id = %s
+                          and i.created_at >= %s::timestamptz
+                      ) as weekly_items_count,
+                      (
+                        select p.id
+                        from public.photos p
+                        where p.user_id = %s
+                        order by p.created_at desc
+                        limit 1
+                      ) as latest_photo_id,
+                      (
+                        select p.storage_path
+                        from public.photos p
+                        where p.user_id = %s
+                        order by p.created_at desc
+                        limit 1
+                      ) as latest_photo_storage_path,
+                      (
+                        select p.created_at
+                        from public.photos p
+                        where p.user_id = %s
+                        order by p.created_at desc
+                        limit 1
+                      ) as latest_photo_created_at
+                    """,
+                    (
+                        user_id,
+                        user_id,
+                        user_id,
+                        OUTFIT_SOURCE_OUTFITSME,
+                        user_id,
+                        user_id,
+                        week_start_iso,
+                        user_id,
+                        OUTFIT_SOURCE_OUTFITSME,
+                        week_start_iso,
+                        user_id,
+                        week_start_iso,
+                        user_id,
+                        user_id,
+                        user_id,
+                    )
+                )
+                cur.execute(
+                    """
+                    select
+                      coalesce(nullif(btrim(category), ''), 'Item') as label,
+                      count(*)::integer as count
+                    from public.items
+                    where user_id = %s
+                    group by 1
+                    order by 2 desc, 1 asc
+                    limit 10
+                    """,
+                    (user_id,)
+                )
+                item_rows = [
+                    {"label": row[0], "count": row[1]}
+                    for row in (cur.fetchall() or [])
+                ]
+        return snapshot or {}, item_rows
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def _query_trial_usage_snapshot(user_id: str, since_iso: str) -> dict | None:
+    try:
+        with get_database_connection() as conn:
+            with conn.cursor() as cur:
+                return _fetchone_dict(
+                    cur,
+                    """
+                    select
+                      coalesce(us.user_role, 'trial') as user_role,
+                      u.created_at as user_created_at,
+                      (
+                        select count(*)
+                        from public.analysis_jobs aj
+                        where aj.user_id = %s
+                          and aj.status = 'completed'
+                          and coalesce(aj.completed_at, aj.created_at) >= %s::timestamptz
+                      ) as analysis_actions_today,
+                      0 as outfit_generations_today
+                    from public.users u
+                    left join public.user_settings us
+                      on us.user_id = u.id
+                    where u.id = %s
+                    limit 1
+                    """,
+                    (
+                        user_id,
+                        since_iso,
+                        user_id,
+                    )
+                )
+    except Exception:  # noqa: BLE001
+        return None
+
+
+def get_trial_usage_snapshot(user_id: str, since_iso: str) -> dict | None:
+    return _query_trial_usage_snapshot(user_id, since_iso)
+
+
+def _query_cost_snapshot(user_id: str, month_start_iso: str) -> dict | None:
+    try:
+        with get_database_connection() as conn:
+            with conn.cursor() as cur:
+                return _fetchone_dict(
+                    cur,
+                    """
+                    select
+                      (
+                        select count(*)
+                        from public.analysis_jobs aj
+                        where aj.user_id = %s
+                          and aj.status = 'completed'
+                          and aj.completed_at >= %s::timestamptz
+                      ) as analysis_count,
+                      (
+                        select count(*)
+                        from public.photos p
+                        where p.user_id = %s
+                          and p.created_at >= %s::timestamptz
+                          and p.storage_path like 'virtual/composed/%%'
+                      ) as composed_outfit_count,
+                      (
+                        select count(*)
+                        from public.items i
+                        where i.user_id = %s
+                          and i.created_at >= %s::timestamptz
+                          and nullif(i.attributes_json ->> 'generated_item_image_path', '') is not null
+                      ) as generated_item_image_count,
+                      (
+                        select count(*)
+                        from public.outfits o
+                        where o.user_id = %s
+                          and o.source_type = %s
+                          and o.created_at >= %s::timestamptz
+                      ) as generated_outfit_image_count,
+                      0 as reserved
+                    """,
+                    (
+                        user_id,
+                        month_start_iso,
+                        user_id,
+                        month_start_iso,
+                        user_id,
+                        month_start_iso,
+                        user_id,
+                        OUTFIT_SOURCE_OUTFITSME,
+                        month_start_iso,
+                    )
+                )
+    except Exception:  # noqa: BLE001
+        return None
 
 
 def _is_better_auth_jwt_candidate(access_token: str) -> bool:
@@ -619,14 +847,26 @@ def _get_signed_image_url_with_client(
     *,
     expires_in_seconds: int = 3600
 ) -> str | None:
+    path = str(storage_path or "").strip()
+    if not path or path.startswith("virtual/"):
+        return None
+    cache_key = (path, max(int(expires_in_seconds or 0), 1))
+    cached = _SIGNED_URL_CACHE.get(cache_key)
+    now = monotonic()
+    if cached and now < cached[1]:
+        return cached[0]
+
     try:
         response = client.storage.from_(settings.SUPABASE_BUCKET).create_signed_url(
-            storage_path,
+            path,
             expires_in_seconds
         )
         data = getattr(response, "data", None) or response
         if isinstance(data, dict):
-            return _normalize_signed_url(data)
+            signed_url = _normalize_signed_url(data)
+            ttl_seconds = max(int(expires_in_seconds or 0) - 60, 30)
+            _SIGNED_URL_CACHE[cache_key] = (signed_url, now + ttl_seconds)
+            return signed_url
     except Exception:  # noqa: BLE001
         return None
     return None
@@ -654,6 +894,55 @@ def _build_signed_url_resolver(
         return signed
 
     return _resolve
+
+
+def _resolve_signed_urls_for_paths(
+    client: Client,
+    paths: list[str],
+    *,
+    expires_in_seconds: int = 3600
+) -> dict[str, str | None]:
+    unique_paths = []
+    seen: set[str] = set()
+    for raw_path in paths:
+        path = str(raw_path or "").strip()
+        if not path or path.startswith("virtual/") or path in seen:
+            continue
+        seen.add(path)
+        unique_paths.append(path)
+
+    if not unique_paths:
+        return {}
+
+    signed_by_path: dict[str, str | None] = {}
+    bucket = client.storage.from_(settings.SUPABASE_BUCKET)
+    try:
+        response = bucket.create_signed_urls(unique_paths, expires_in_seconds)
+        data = getattr(response, "data", None) or response
+        if isinstance(data, dict):
+            data = data.get("data") or data.get("signedUrls") or data.get("signed_urls") or []
+        if isinstance(data, list):
+            for index, entry in enumerate(data):
+                if not isinstance(entry, dict):
+                    continue
+                entry_path = str(entry.get("path") or entry.get("name") or "").strip()
+                if not entry_path and index < len(unique_paths):
+                    entry_path = unique_paths[index]
+                if not entry_path:
+                    continue
+                signed_by_path[entry_path] = _normalize_signed_url(entry)
+    except Exception:  # noqa: BLE001
+        signed_by_path = {}
+
+    for path in unique_paths:
+        if path not in signed_by_path:
+            signed_by_path[path] = _get_signed_image_url_with_client(
+                client,
+                path,
+                expires_in_seconds=expires_in_seconds
+            )
+
+    return signed_by_path
 
 
 def _build_generated_item_image_lookup(
@@ -739,16 +1028,20 @@ def _normalize_items_with_images(
     return normalized_items
 
 
-def list_wardrobe(user_id: str, limit: int = 20) -> list[dict]:
+def list_wardrobe(user_id: str, limit: int = 20, offset: int = 0) -> list[dict]:
     client = get_supabase_client()
-    resolve_signed_url = _build_signed_url_resolver(client, expires_in_seconds=3600)
     wardrobe = []
     try:
         rpc_response = client.rpc(
             "get_wardrobe_rows",
-            {"p_user_id": user_id, "p_limit": max(1, int(limit))}
+            {"p_user_id": user_id, "p_limit": max(1, int(limit)), "p_offset": max(0, int(offset))}
         ).execute()
         rpc_rows = rpc_response.data or []
+        signed_urls = _resolve_signed_urls_for_paths(
+            client,
+            [str(row.get("storage_path") or "") for row in rpc_rows],
+            expires_in_seconds=3600
+        )
         for row in rpc_rows:
             storage_path = str(row.get("storage_path") or "")
             outfit_id = row.get("outfit_id")
@@ -759,7 +1052,7 @@ def list_wardrobe(user_id: str, limit: int = 20) -> list[dict]:
                     "outfit_id": outfit_id,
                     "photo_id": row.get("photo_id"),
                     "storage_path": storage_path,
-                    "image_url": resolve_signed_url(storage_path),
+                    "image_url": signed_urls.get(storage_path),
                     "created_at": row.get("created_at") or row.get("photo_created_at"),
                     "analysis_id": row.get("analysis_id"),
                     "analysis_created_at": None,
@@ -782,7 +1075,7 @@ def list_wardrobe(user_id: str, limit: int = 20) -> list[dict]:
         .select("id,photo_id,analysis_id,outfit_index,style_label,created_at,source_type,source_outfit_id,generated_image_path")
         .eq("user_id", user_id)
         .order("created_at", desc=True)
-        .limit(limit)
+        .range(max(0, int(offset)), max(0, int(offset)) + max(1, int(limit)) - 1)
         .execute()
     )
     outfits = outfits_response.data or []
@@ -833,6 +1126,19 @@ def list_wardrobe(user_id: str, limit: int = 20) -> list[dict]:
                 continue
             item_counts_by_outfit[outfit_id] = item_counts_by_outfit.get(outfit_id, 0) + 1
 
+    signed_urls = _resolve_signed_urls_for_paths(
+        client,
+        [
+            (
+                outfit.get("generated_image_path") or ""
+                if _normalize_outfit_source_type(outfit.get("source_type")) == OUTFIT_SOURCE_CUSTOM and outfit.get("generated_image_path")
+                else (photos_by_id.get(outfit.get("photo_id")) or {}).get("storage_path") or ""
+            )
+            for outfit in outfits
+        ],
+        expires_in_seconds=3600
+    )
+
     for outfit in outfits:
         photo = photos_by_id.get(outfit.get("photo_id")) or {}
         outfit_id = outfit.get("id")
@@ -848,7 +1154,7 @@ def list_wardrobe(user_id: str, limit: int = 20) -> list[dict]:
                 "outfit_id": outfit_id,
                 "photo_id": outfit.get("photo_id"),
                 "storage_path": storage_path,
-                "image_url": resolve_signed_url(storage_path),
+                "image_url": signed_urls.get(storage_path),
                 "created_at": outfit.get("created_at") or photo.get("created_at"),
                 "analysis_id": outfit.get("analysis_id"),
                 "analysis_created_at": None,
@@ -964,15 +1270,22 @@ def list_analysis_history(user_id: str, limit: int = 50) -> list[dict]:
     return history
 
 
-def list_user_items(user_id: str, limit: int = 200) -> list[dict]:
+def list_user_items(user_id: str, limit: int = 20, offset: int = 0) -> list[dict]:
     client = get_supabase_client()
-    resolve_signed_url = _build_signed_url_resolver(client, expires_in_seconds=3600)
     try:
         rpc_response = client.rpc(
             "get_item_catalog_rows",
-            {"p_user_id": user_id, "p_limit": max(1, int(limit))}
+            {"p_user_id": user_id, "p_limit": max(1, int(limit)), "p_offset": max(0, int(offset))}
         ).execute()
         rpc_rows = rpc_response.data or []
+        signed_urls = _resolve_signed_urls_for_paths(
+            client,
+            [
+                str(_coerce_dict(row.get("attributes_json") or {}).get("generated_item_image_path") or "")
+                for row in rpc_rows
+            ],
+            expires_in_seconds=3600
+        )
         normalized_items = []
         for row in rpc_rows:
             attributes = _coerce_dict(row.get("attributes_json") or {})
@@ -984,7 +1297,7 @@ def list_user_items(user_id: str, limit: int = 200) -> list[dict]:
                     "name": _normalize_label(row.get("name"), "Unknown Item"),
                     "color": _normalize_label(row.get("color"), "Unknown"),
                     "style_label": _normalize_label(row.get("style_label"), "Unknown"),
-                    "image_url": resolve_signed_url(image_path)
+                    "image_url": signed_urls.get(str(image_path or ""))
                 }
             )
         return normalized_items
@@ -997,7 +1310,7 @@ def list_user_items(user_id: str, limit: int = 200) -> list[dict]:
         .select("id,analysis_id,category,name,color,attributes_json,created_at")
         .eq("user_id", user_id)
         .order("created_at", desc=True)
-        .limit(limit)
+        .range(max(0, int(offset)), max(0, int(offset)) + max(1, int(limit)) - 1)
         .execute()
     )
     items = items_response.data or []
@@ -1017,6 +1330,15 @@ def list_user_items(user_id: str, limit: int = 200) -> list[dict]:
                 "raw_json": _coerce_dict(analysis.get("raw_json") if isinstance(analysis, dict) else {})
             }
 
+    signed_urls = _resolve_signed_urls_for_paths(
+        client,
+        [
+            str(_coerce_dict(item.get("attributes_json") or {}).get("generated_item_image_path") or "")
+            for item in items
+        ],
+        expires_in_seconds=3600
+    )
+
     normalized_items = []
     for item in items:
         attributes = _coerce_dict(item.get("attributes_json") or {})
@@ -1028,7 +1350,7 @@ def list_user_items(user_id: str, limit: int = 200) -> list[dict]:
                 "name": _normalize_label(item.get("name"), "Unknown Item"),
                 "color": _normalize_label(item.get("color"), "Unknown"),
                 "style_label": _resolve_item_style_label(item, analysis_by_id),
-                "image_url": resolve_signed_url(image_path)
+                "image_url": signed_urls.get(str(image_path or ""))
             }
         )
     return normalized_items
@@ -1253,6 +1575,9 @@ def attach_generated_image_to_outfit(user_id: str, outfit_id: str, generated_sto
 
 
 def get_user_monthly_analysis_count(user_id: str, month_start_iso: str) -> int:
+    snapshot = _query_cost_snapshot(user_id, month_start_iso)
+    if snapshot:
+        return _to_int(snapshot.get("analysis_count"))
     client = get_supabase_client()
     response = (
         client.table("analysis_jobs")
@@ -1271,6 +1596,10 @@ def get_user_analysis_job_count_since(
     *,
     statuses: list[str] | None = None
 ) -> int:
+    if statuses == ["completed"]:
+        snapshot = _query_trial_usage_snapshot(user_id, since_iso)
+        if snapshot:
+            return _to_int(snapshot.get("analysis_actions_today"))
     client = get_supabase_client()
     query = (
         client.table("analysis_jobs")
@@ -1285,6 +1614,9 @@ def get_user_analysis_job_count_since(
 
 
 def get_user_monthly_composed_outfit_count(user_id: str, month_start_iso: str) -> int:
+    snapshot = _query_cost_snapshot(user_id, month_start_iso)
+    if snapshot:
+        return _to_int(snapshot.get("composed_outfit_count"))
     client = get_supabase_client()
     response = (
         client.table("photos")
@@ -1298,17 +1630,36 @@ def get_user_monthly_composed_outfit_count(user_id: str, month_start_iso: str) -
 
 
 def get_user_monthly_generated_image_count(user_id: str, month_start_iso: str, kind: str) -> int:
+    snapshot = _query_cost_snapshot(user_id, month_start_iso)
+    if snapshot:
+        if str(kind or "").strip().lower() == "items":
+            return _to_int(snapshot.get("generated_item_image_count"))
+        if str(kind or "").strip().lower() == "outfits":
+            return _to_int(snapshot.get("generated_outfit_image_count"))
     client = get_supabase_client()
     safe_kind = str(kind or "").strip().lower()
     if safe_kind not in {"items", "outfits"}:
         return 0
-    prefix = f"{user_id}/generated/{safe_kind}/%"
     try:
+        if safe_kind == "items":
+            response = (
+                client.table("items")
+                .select("id,attributes_json")
+                .eq("user_id", user_id)
+                .gte("created_at", month_start_iso)
+                .execute()
+            )
+            return sum(
+                1
+                for row in (response.data or [])
+                if _coerce_dict((row or {}).get("attributes_json") or {}).get("generated_item_image_path")
+            )
+
         response = (
-            client.table("storage.objects")
+            client.table("outfits")
             .select("id")
-            .eq("bucket_id", settings.SUPABASE_BUCKET)
-            .like("name", prefix)
+            .eq("user_id", user_id)
+            .eq("source_type", OUTFIT_SOURCE_OUTFITSME)
             .gte("created_at", month_start_iso)
             .execute()
         )
@@ -1319,20 +1670,37 @@ def get_user_monthly_generated_image_count(user_id: str, month_start_iso: str, k
 
 
 def get_user_generated_image_count_since(user_id: str, since_iso: str, kind: str) -> int:
+    if str(kind or "").strip().lower() == "outfits":
+        snapshot = _query_trial_usage_snapshot(user_id, since_iso)
+        if snapshot:
+            return _to_int(snapshot.get("outfit_generations_today"))
     client = get_supabase_client()
     safe_kind = str(kind or "").strip().lower()
     if safe_kind not in {"items", "outfits"}:
         return 0
-    prefix = f"{user_id}/generated/{safe_kind}/%"
     try:
-        response = (
-            client.table("storage.objects")
-            .select("id")
-            .eq("bucket_id", settings.SUPABASE_BUCKET)
-            .like("name", prefix)
-            .gte("created_at", since_iso)
-            .execute()
-        )
+        if safe_kind == "items":
+            response = (
+                client.table("items")
+                .select("id,attributes_json")
+                .eq("user_id", user_id)
+                .gte("created_at", since_iso)
+                .execute()
+            )
+            return sum(
+                1
+                for row in (response.data or [])
+                if _coerce_dict((row or {}).get("attributes_json") or {}).get("generated_item_image_path")
+            )
+        else:
+            response = (
+                client.table("outfits")
+                .select("id")
+                .eq("user_id", user_id)
+                .eq("source_type", OUTFIT_SOURCE_OUTFITSME)
+                .gte("created_at", since_iso)
+                .execute()
+            )
         return len(response.data or [])
     except Exception:  # noqa: BLE001
         return 0
@@ -1749,153 +2117,103 @@ def get_wardrobe_photo_details(user_id: str, photo_id: str, outfit_index: int | 
 
 
 def get_dashboard_stats(user_id: str) -> dict:
-    client = get_supabase_client()
     now_utc = datetime.now(timezone.utc)
     week_start_iso = (now_utc - timedelta(days=7)).isoformat()
-
-    photos = (
-        client.table("photos")
-        .select("id,storage_path")
-        .eq("user_id", user_id)
-        .execute()
-    ).data or []
-
-    analyses = (
-        client.table("outfit_analyses")
-        .select("id,raw_json")
-        .eq("user_id", user_id)
-        .execute()
-    ).data or []
-
-    outfits = (
-        client.table("outfits")
-        .select("id")
-        .eq("user_id", user_id)
-        .execute()
-    ).data or []
-
-    items = (
-        client.table("items")
-        .select("id,category,name,color")
-        .eq("user_id", user_id)
-        .execute()
-    ).data or []
-
-    latest_photo_row = (
-        client.table("photos")
-        .select("id,storage_path,created_at")
-        .eq("user_id", user_id)
-        .order("created_at", desc=True)
-        .limit(1)
-        .execute()
-    ).data
-    latest_photo = (latest_photo_row or [None])[0]
-
-    weekly_analyses_count = len(
-        (
-            client.table("outfit_analyses")
-            .select("id")
+    snapshot_result = _query_dashboard_snapshot(user_id, week_start_iso)
+    if snapshot_result:
+        snapshot, item_type_counts = snapshot_result
+        photos_count = _to_int(snapshot.get("photos_count"))
+        analyses_count = _to_int(snapshot.get("analyses_count"))
+        outfits_count = _to_int(snapshot.get("outfits_count"))
+        items_count = _to_int(snapshot.get("items_count"))
+        weekly_analyses_count = _to_int(snapshot.get("weekly_analyses_count"))
+        weekly_outfits_count = _to_int(snapshot.get("weekly_outfits_count"))
+        weekly_items_count = _to_int(snapshot.get("weekly_items_count"))
+    else:
+        client = get_supabase_client()
+        photos = (
+            client.table("photos")
+            .select("id,storage_path")
             .eq("user_id", user_id)
-            .gte("created_at", week_start_iso)
             .execute()
         ).data or []
-    )
-    weekly_outfits_count = len(
-        (
+        analyses = (
+            client.table("analysis_jobs")
+            .select("id")
+            .eq("user_id", user_id)
+            .eq("status", "completed")
+            .execute()
+        ).data or []
+        outfits = (
             client.table("outfits")
             .select("id")
             .eq("user_id", user_id)
-            .gte("created_at", week_start_iso)
+            .eq("source_type", OUTFIT_SOURCE_OUTFITSME)
             .execute()
         ).data or []
-    )
-    weekly_items_count = len(
-        (
+        items = (
             client.table("items")
-            .select("id")
+            .select("id,category")
             .eq("user_id", user_id)
-            .gte("created_at", week_start_iso)
             .execute()
         ).data or []
-    )
-
-    detailed_type_counts = {}
-    clothing_type_counts = {}
-    accessory_type_counts = {}
-    color_counts = {}
-    accessories_items_count = 0
-    clothing_items_count = 0
-    for item in items:
-        item_type = _classify_item_type(item.get("category") or "", item.get("name") or "")
-        color = _normalize_label(item.get("color"), "Unknown")
-        detailed_type_counts[item_type] = detailed_type_counts.get(item_type, 0) + 1
-        color_counts[color] = color_counts.get(color, 0) + 1
-        if item_type in ACCESSORY_ITEM_TYPES:
-            accessories_items_count += 1
-            accessory_type_counts[item_type] = accessory_type_counts.get(item_type, 0) + 1
-        else:
-            clothing_items_count += 1
-            clothing_type_counts[item_type] = clothing_type_counts.get(item_type, 0) + 1
-
-    detailed_item_types = [
-        {"label": label, "count": count}
-        for label, count in sorted(detailed_type_counts.items(), key=lambda pair: pair[1], reverse=True)
-    ]
-    clothing_item_types = [
-        {"label": label, "count": count}
-        for label, count in sorted(clothing_type_counts.items(), key=lambda pair: pair[1], reverse=True)
-    ]
-    accessory_item_types = [
-        {"label": label, "count": count}
-        for label, count in sorted(accessory_type_counts.items(), key=lambda pair: pair[1], reverse=True)
-    ]
-    top_item_types = detailed_item_types[:10]
-    top_colors = [
-        {"label": label, "count": count}
-        for label, count in sorted(color_counts.items(), key=lambda pair: pair[1], reverse=True)[:5]
-    ]
-
-    latest_outfit = {
-        "photo_id": latest_photo["id"],
-        "created_at": latest_photo.get("created_at"),
-        "image_url": get_signed_image_url(latest_photo.get("storage_path") or "", expires_in_seconds=3600)
-        if latest_photo and latest_photo.get("storage_path")
-        else None
-    } if latest_photo else None
-
-    photos_count = len(
-        [photo for photo in photos if not str(photo.get("storage_path") or "").startswith("virtual/")]
-    )
-    analyses_count = len(analyses)
-    items_count = len(items)
-    outfits_count = len(outfits)
+        weekly_analyses_count = len(
+            (
+                client.table("analysis_jobs")
+                .select("id")
+                .eq("user_id", user_id)
+                .eq("status", "completed")
+                .gte("completed_at", week_start_iso)
+                .execute()
+            ).data or []
+        )
+        weekly_outfits_count = len(
+            (
+                client.table("outfits")
+                .select("id")
+                .eq("user_id", user_id)
+                .eq("source_type", OUTFIT_SOURCE_OUTFITSME)
+                .gte("created_at", week_start_iso)
+                .execute()
+            ).data or []
+        )
+        weekly_items_count = len(
+            (
+                client.table("items")
+                .select("id")
+                .eq("user_id", user_id)
+                .gte("created_at", week_start_iso)
+                .execute()
+            ).data or []
+        )
+        photos_count = len(
+            [photo for photo in photos if not str(photo.get("storage_path") or "").startswith("virtual/")]
+        )
+        analyses_count = len(analyses)
+        items_count = len(items)
+        outfits_count = len(outfits)
+        type_counts: dict[str, int] = {}
+        for item in items:
+            label = _normalize_label(item.get("category"), "Item")
+            type_counts[label] = type_counts.get(label, 0) + 1
+        item_type_counts = [
+            {"label": label, "count": count}
+            for label, count in sorted(type_counts.items(), key=lambda pair: (-pair[1], pair[0]))
+        ][:10]
 
     return {
         "photos_count": photos_count,
         "outfits_count": outfits_count,
         "analyses_count": analyses_count,
         "items_count": items_count,
+        "generated_outfit_images_count": outfits_count,
         "weekly_activity": {
             "analyses_count": weekly_analyses_count,
             "outfits_count": weekly_outfits_count,
             "items_count": weekly_items_count,
             "window_start_utc": week_start_iso
         },
-        "category_split": {
-            "clothing_items_count": clothing_items_count,
-            "accessories_items_count": accessories_items_count
-        },
-        "top_item_types": top_item_types,
-        "detailed_item_types": detailed_item_types,
-        "clothing_item_types": clothing_item_types,
-        "accessory_item_types": accessory_item_types,
-        "top_colors": top_colors,
-        "latest_outfit": latest_outfit,
-        "highlights": {
-            "most_common_item_type": top_item_types[0]["label"] if top_item_types else "N/A",
-            "most_common_color": top_colors[0]["label"] if top_colors else "N/A",
-            "most_common_accessory_type": accessory_item_types[0]["label"] if accessory_item_types else "N/A"
-        }
+        "top_item_types": item_type_counts,
     }
 
 
@@ -2189,11 +2507,11 @@ def save_user_profile_photo(user_id: str, file_storage) -> dict:
 
 
 def get_user_cost_summary(user_id: str, month_start_iso: str) -> dict:
-    client = get_supabase_client()
-    analysis_count = get_user_monthly_analysis_count(user_id, month_start_iso)
-    composed_outfit_count = get_user_monthly_composed_outfit_count(user_id, month_start_iso)
-    generated_item_image_count = get_user_monthly_generated_image_count(user_id, month_start_iso, "items")
-    generated_outfit_image_count = get_user_monthly_generated_image_count(user_id, month_start_iso, "outfits")
+    snapshot = _query_cost_snapshot(user_id, month_start_iso)
+    analysis_count = _to_int((snapshot or {}).get("analysis_count"))
+    composed_outfit_count = _to_int((snapshot or {}).get("composed_outfit_count"))
+    generated_item_image_count = _to_int((snapshot or {}).get("generated_item_image_count"))
+    generated_outfit_image_count = _to_int((snapshot or {}).get("generated_outfit_image_count"))
     analysis_unit_cost = round(
         settings.ANALYSIS_INPUT_COST_USD + settings.ANALYSIS_OUTPUT_IMAGE_COST_USD,
         4
@@ -2206,7 +2524,7 @@ def get_user_cost_summary(user_id: str, month_start_iso: str) -> dict:
     outfit_image_cost = round(generated_outfit_image_count * outfit_image_unit_cost, 4)
     item_image_cost = round(generated_item_image_count * settings.ITEM_IMAGE_COST_USD, 4)
     total_cost = round(analysis_cost + outfit_image_cost + item_image_cost, 4)
-
+    client = get_supabase_client()
     analysis_usage_rows = (
         client.table("analysis_jobs")
         .select("result_json")

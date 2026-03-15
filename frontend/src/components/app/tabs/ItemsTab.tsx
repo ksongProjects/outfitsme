@@ -4,18 +4,43 @@ import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
 import { useItemsContext } from "@/components/app/DashboardContext";
+import AppImage from "@/components/app/ui/AppImage";
 import BaseButton from "@/components/app/ui/BaseButton";
 import BaseCheckbox from "@/components/app/ui/BaseCheckbox";
 import BaseDialog from "@/components/app/ui/BaseDialog";
 import BaseSelect from "@/components/app/ui/BaseSelect";
 import { formatItemLabel, getItemIcon } from "@/lib/formatters";
 
+const normalizeFilterValue = (value: string | undefined) =>
+  (value || "Unknown").trim().replace(/\s+/g, " ").toLowerCase();
+
+const buildUniqueOptions = (values: Array<string | undefined>) => {
+  const map = new Map<string, string>();
+  for (const rawValue of values) {
+    const label = (rawValue || "Unknown").trim().replace(/\s+/g, " ") || "Unknown";
+    const normalized = normalizeFilterValue(label);
+    if (!map.has(normalized)) {
+      map.set(normalized, label);
+    }
+  }
+  return [...map.entries()]
+    .sort((a, b) => a[1].localeCompare(b[1]))
+    .map(([value, label]) => ({ value, label }));
+};
+
+const getOptionLabel = (options: Array<{ value: string; label: string }>, selectedValue: string) =>
+  options.find((option) => option.value === selectedValue)?.label || selectedValue;
+
 export default function ItemsTab() {
   const {
     items,
     itemsLoading,
     itemsMessage,
-    loadItems,
+    refreshItems,
+    itemsPage,
+    itemsHasMore,
+    nextItemsPage,
+    prevItemsPage,
     composeOutfitFromSelected,
     composeOutfitLoading,
     selectedItemIds,
@@ -28,26 +53,6 @@ export default function ItemsTab() {
   const [styleFilter, setStyleFilter] = useState("all");
   const [confirmModalOpen, setConfirmModalOpen] = useState(false);
   const [activeItem, setActiveItem] = useState<(typeof items)[number] | null>(null);
-
-  const normalizeFilterValue = (value: string | undefined) =>
-    (value || "Unknown").trim().replace(/\s+/g, " ").toLowerCase();
-
-  const buildUniqueOptions = (values: Array<string | undefined>) => {
-    const map = new Map<string, string>();
-    for (const rawValue of values) {
-      const label = (rawValue || "Unknown").trim().replace(/\s+/g, " ") || "Unknown";
-      const normalized = normalizeFilterValue(label);
-      if (!map.has(normalized)) {
-        map.set(normalized, label);
-      }
-    }
-    return [...map.entries()]
-      .sort((a, b) => a[1].localeCompare(b[1]))
-      .map(([value, label]) => ({ value, label }));
-  };
-
-  const getOptionLabel = (options: Array<{ value: string; label: string }>, selectedValue: string) =>
-    options.find((option) => option.value === selectedValue)?.label || selectedValue;
 
   const categoryOptions = useMemo(() => buildUniqueOptions(items.map((item) => item.category)), [items]);
   const colorOptions = useMemo(() => buildUniqueOptions(items.map((item) => item.color)), [items]);
@@ -87,7 +92,7 @@ export default function ItemsTab() {
           <h2>Item catalog</h2>
           <p className="tab-header-subtext">Filter detected items, select the pieces you like, and build new outfits from them.</p>
         </div>
-        <BaseButton variant="ghost" onClick={loadItems} disabled={itemsLoading}>
+        <BaseButton variant="ghost" onClick={() => void refreshItems()} disabled={itemsLoading}>
           {itemsLoading ? "Loading..." : "Refresh"}
         </BaseButton>
       </div>
@@ -152,25 +157,45 @@ export default function ItemsTab() {
                 className={selectedItemIds.includes(item.id) ? "table-row-selected" : ""}
                 onClick={() => setActiveItem(item)}
               >
-                <td>
+                <td data-label="Select">
                   <span onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>
                     <BaseCheckbox checked={selectedItemIds.includes(item.id)} onCheckedChange={() => toggleSelectItem(item.id)} />
                   </span>
                 </td>
-                <td>{item.category || "Item"}</td>
-                <td>
+                <td data-label="Category">{item.category || "Item"}</td>
+                <td data-label="Name">
                   <span className="wardrobe-item-row">
-                    {item.image_url ? <img src={item.image_url} alt={item.name || "Item"} className="item-thumb" /> : null}
+                    {item.image_url ? (
+                      <AppImage
+                        src={item.image_url}
+                        alt={item.name || "Item"}
+                        className="item-thumb"
+                        width={48}
+                        height={48}
+                      />
+                    ) : null}
                     <span className="item-icon" aria-hidden="true">{getItemIcon(item)}</span>
                     <span>{item.name || "Unknown"}</span>
                   </span>
                 </td>
-                <td>{item.color || "Unknown"}</td>
-                <td>{item.style_label || "Unknown"}</td>
+                <td data-label="Color">{item.color || "Unknown"}</td>
+                <td data-label="Style">{item.style_label || "Unknown"}</td>
               </tr>
             ))}
           </tbody>
         </table>
+      </div>
+
+      <div className="pagination-row">
+        <p className="subtext">Page {itemsPage}</p>
+        <div className="button-row">
+          <BaseButton type="button" variant="ghost" onClick={prevItemsPage} disabled={itemsLoading || itemsPage <= 1}>
+            Previous
+          </BaseButton>
+          <BaseButton type="button" variant="ghost" onClick={nextItemsPage} disabled={itemsLoading || !itemsHasMore}>
+            Next
+          </BaseButton>
+        </div>
       </div>
 
       <div className="pagination-row">
@@ -234,7 +259,13 @@ export default function ItemsTab() {
         {activeItem ? (
           <>
             {activeItem.image_url ? (
-              <img src={activeItem.image_url} alt={activeItem.name || "Item"} className="modal-image" />
+              <AppImage
+                src={activeItem.image_url}
+                alt={activeItem.name || "Item"}
+                className="modal-image"
+                width={1600}
+                height={2000}
+              />
             ) : (
               <p className="subtext">Image generation disabled.</p>
             )}

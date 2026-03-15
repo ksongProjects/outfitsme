@@ -30,6 +30,7 @@ from app.services.supabase_service import (
     list_analysis_history,
     get_wardrobe_photo_details,
     get_user_model_settings,
+    get_trial_usage_snapshot,
     list_user_items,
     SupabaseNotConfiguredError,
     get_user_created_at_from_token,
@@ -98,9 +99,28 @@ def _current_day_window_utc() -> tuple[str, str, datetime]:
     return day_start_dt.isoformat(), next_day_start_dt.isoformat(), now
 
 
+def _parse_pagination_params(default_page_size: int = 20, max_page_size: int = 25) -> tuple[int, int]:
+    page_raw = request.args.get("page", "1")
+    page_size_raw = request.args.get("page_size", str(default_page_size))
+    try:
+        page = max(int(page_raw), 1)
+    except (TypeError, ValueError):
+        page = 1
+    try:
+        page_size = int(page_size_raw)
+    except (TypeError, ValueError):
+        page_size = default_page_size
+    page_size = max(1, min(page_size, max_page_size))
+    return page, page_size
+
+
 def _build_trial_usage(user_id: str, access_token: str) -> dict:
-    user_settings = get_user_model_settings(user_id)
-    user_role = normalize_user_role(user_settings.get("user_role"))
+    day_start_iso, next_day_start_iso, _ = _current_day_window_utc()
+    usage_snapshot = get_trial_usage_snapshot(user_id, day_start_iso) or {}
+    user_role = normalize_user_role(usage_snapshot.get("user_role"))
+    if not user_role:
+        user_settings = get_user_model_settings(user_id)
+        user_role = normalize_user_role(user_settings.get("user_role"))
     if has_unlimited_ai_access(user_role):
         return {
             "user_role": user_role,
@@ -119,20 +139,24 @@ def _build_trial_usage(user_id: str, access_token: str) -> dict:
             "access_mode": "unlimited"
         }
 
-    created_at = _parse_iso_datetime(get_user_created_at_from_token(access_token))
+    created_at = _parse_iso_datetime(str(usage_snapshot.get("user_created_at") or ""))
+    if created_at is None:
+        created_at = _parse_iso_datetime(get_user_created_at_from_token(access_token))
     if created_at is None:
         created_at = datetime.now(timezone.utc)
 
     now = datetime.now(timezone.utc)
     trial_ends_at = created_at + timedelta(days=max(settings.TRIAL_DAYS, 0))
     trial_active = now < trial_ends_at if settings.TRIAL_DAYS > 0 else False
-    day_start_iso, next_day_start_iso, _ = _current_day_window_utc()
-    analysis_actions = get_user_analysis_job_count_since(
-        user_id,
-        day_start_iso,
-        statuses=["completed"]
-    )
-    outfit_generation_actions = get_user_generated_image_count_since(user_id, day_start_iso, "outfits")
+    analysis_actions = int(usage_snapshot.get("analysis_actions_today") or 0)
+    outfit_generation_actions = int(usage_snapshot.get("outfit_generations_today") or 0)
+    if not usage_snapshot:
+        analysis_actions = get_user_analysis_job_count_since(
+            user_id,
+            day_start_iso,
+            statuses=["completed"]
+        )
+        outfit_generation_actions = get_user_generated_image_count_since(user_id, day_start_iso, "outfits")
     used_today = analysis_actions + outfit_generation_actions
     daily_limit = max(settings.TRIAL_DAILY_AI_ACTION_LIMIT, 0)
     remaining_today = None if daily_limit <= 0 else max(daily_limit - used_today, 0)
@@ -410,8 +434,18 @@ def get_wardrobe():
         if not user_id:
             return jsonify({"error": "Invalid or expired token."}), 401
 
-        wardrobe = list_wardrobe(user_id)
-        return jsonify({"user_id": user_id, "wardrobe": wardrobe}), 200
+        page, page_size = _parse_pagination_params()
+        wardrobe = list_wardrobe(user_id, limit=page_size + 1, offset=(page - 1) * page_size)
+        has_more = len(wardrobe) > page_size
+        return jsonify(
+            {
+                "user_id": user_id,
+                "wardrobe": wardrobe[:page_size],
+                "page": page,
+                "page_size": page_size,
+                "has_more": has_more
+            }
+        ), 200
     except SupabaseNotConfiguredError as exc:
         return jsonify({"error": str(exc)}), 500
     except AuthApiError:
@@ -684,8 +718,18 @@ def get_items():
         if not user_id:
             return jsonify({"error": "Invalid or expired token."}), 401
 
-        items = list_user_items(user_id)
-        return jsonify({"user_id": user_id, "items": items}), 200
+        page, page_size = _parse_pagination_params()
+        items = list_user_items(user_id, limit=page_size + 1, offset=(page - 1) * page_size)
+        has_more = len(items) > page_size
+        return jsonify(
+            {
+                "user_id": user_id,
+                "items": items[:page_size],
+                "page": page,
+                "page_size": page_size,
+                "has_more": has_more
+            }
+        ), 200
     except SupabaseNotConfiguredError as exc:
         return jsonify({"error": str(exc)}), 500
     except AuthApiError:

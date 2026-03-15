@@ -1,10 +1,11 @@
 ﻿"use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { Trash2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { useSettingsContext, useWardrobeContext } from "@/components/app/DashboardContext";
+import AppImage from "@/components/app/ui/AppImage";
 import BaseButton from "@/components/app/ui/BaseButton";
 import BaseDialog from "@/components/app/ui/BaseDialog";
 import BaseInput from "@/components/app/ui/BaseInput";
@@ -21,9 +22,13 @@ export default function OutfitsTab() {
   const { profilePhotoUrl, settingsForm } = useSettingsContext();
   const {
     wardrobe,
+    wardrobePage,
+    wardrobeHasMore,
     wardrobeLoading,
     wardrobeMessage,
-    loadWardrobe,
+    refreshWardrobe,
+    nextWardrobePage,
+    prevWardrobePage,
     deleteWardrobeEntry,
     deletingOutfitId,
     renameOutfit,
@@ -41,12 +46,6 @@ export default function OutfitsTab() {
   const [itemPreview, setItemPreview] = useState<{ image_url: string; name: string } | null>(null);
   const [sourceFilter, setSourceFilter] = useState("all");
   const imageGenerationEnabled = Boolean(settingsForm?.enable_outfit_image_generation);
-
-  useEffect(() => {
-    const selectedStyle = outfitDetails?.selected_outfit?.style || "";
-    setEditedName(selectedStyle);
-    setIsEditingName(false);
-  }, [outfitDetails?.selected_outfit?.outfit_id, outfitDetails?.selected_outfit?.style]);
 
   const filteredWardrobe = useMemo(
     () => wardrobe.filter((entry) => sourceFilter === "all" || (entry.source_type || "photo_analysis") === sourceFilter),
@@ -108,7 +107,7 @@ export default function OutfitsTab() {
           <h2>My outfits</h2>
           <p className="tab-header-subtext">Browse saved looks, rename strong combinations, and generate try-on previews.</p>
         </div>
-        <BaseButton variant="ghost" onClick={() => loadWardrobe(true)} disabled={wardrobeLoading}>
+        <BaseButton variant="ghost" onClick={() => void refreshWardrobe()} disabled={wardrobeLoading}>
           {wardrobeLoading ? "Loading..." : "Refresh"}
         </BaseButton>
       </div>
@@ -150,17 +149,23 @@ export default function OutfitsTab() {
           <tbody>
             {filteredWardrobe.map((entry) => (
               <tr key={entry.outfit_id} onClick={() => openOutfitDetails(entry.photo_id, entry.outfit_index ?? null)}>
-                <td>
+                <td data-label="Photo">
                   {entry.image_url ? (
-                    <img src={entry.image_url} alt={getOutfitDisplayName(entry)} className="history-thumb" />
+                    <AppImage
+                      src={entry.image_url}
+                      alt={getOutfitDisplayName(entry)}
+                      className="history-thumb"
+                      width={64}
+                      height={64}
+                    />
                   ) : (
                     <span className="subtext">-</span>
                   )}
                 </td>
-                <td>{getOutfitDisplayName(entry)}</td>
-                <td>{entry.created_at ? new Date(entry.created_at).toLocaleString() : "-"}</td>
-                <td>{OUTFIT_SOURCE_LABELS[entry.source_type || "photo_analysis"] || "Photo analysis"}</td>
-                <td>
+                <td data-label="Name">{getOutfitDisplayName(entry)}</td>
+                <td data-label="Created">{entry.created_at ? new Date(entry.created_at).toLocaleString() : "-"}</td>
+                <td data-label="Type">{OUTFIT_SOURCE_LABELS[entry.source_type || "photo_analysis"] || "Photo analysis"}</td>
+                <td data-label="Action">
                   <BaseButton
                     type="button"
                     variant="icon"
@@ -180,6 +185,18 @@ export default function OutfitsTab() {
             ))}
           </tbody>
         </table>
+      </div>
+
+      <div className="pagination-row">
+        <p className="subtext">Page {wardrobePage}</p>
+        <div className="button-row">
+          <BaseButton type="button" variant="ghost" onClick={prevWardrobePage} disabled={wardrobeLoading || wardrobePage <= 1}>
+            Previous
+          </BaseButton>
+          <BaseButton type="button" variant="ghost" onClick={nextWardrobePage} disabled={wardrobeLoading || !wardrobeHasMore}>
+            Next
+          </BaseButton>
+        </div>
       </div>
 
       <BaseDialog
@@ -211,7 +228,14 @@ export default function OutfitsTab() {
                 {outfitMeLoading ? "OutfitsMe..." : "OutfitsMe"}
               </BaseButton>
               {!isEditingName ? (
-                <BaseButton type="button" variant="ghost" onClick={() => setIsEditingName(true)}>
+                <BaseButton
+                  type="button"
+                  variant="ghost"
+                  onClick={() => {
+                    setEditedName(outfitDetails?.selected_outfit?.style || "");
+                    setIsEditingName(true);
+                  }}
+                >
                   Edit
                 </BaseButton>
               ) : null}
@@ -224,15 +248,33 @@ export default function OutfitsTab() {
         ) : (
           <div className="outfit-details-layout">
             {outfitDetails?.source_outfit_image_url ? (
-              <img src={outfitDetails.source_outfit_image_url} alt="Source outfit" className="modal-image outfit-detail-image" />
+              <AppImage
+                src={outfitDetails.source_outfit_image_url}
+                alt="Source outfit"
+                className="modal-image outfit-detail-image"
+                width={1600}
+                height={2000}
+              />
             ) : null}
             {outfitDetails?.image_url ? (
-              <img src={outfitDetails.image_url} alt="Original outfit" className="modal-image outfit-detail-image" />
+              <AppImage
+                src={outfitDetails.image_url}
+                alt="Original outfit"
+                className="modal-image outfit-detail-image"
+                width={1600}
+                height={2000}
+              />
             ) : (
               <p className="subtext">Original image is unavailable for this outfit.</p>
             )}
             {outfitDetails?.outfitsme_image_url ? (
-              <img src={outfitDetails.outfitsme_image_url} alt="OutfitsMe preview" className="modal-image outfit-detail-image" />
+              <AppImage
+                src={outfitDetails.outfitsme_image_url}
+                alt="OutfitsMe preview"
+                className="modal-image outfit-detail-image"
+                width={1600}
+                height={2000}
+              />
             ) : null}
             <div>
               {outfitDetails?.selected_outfit ? (
@@ -295,7 +337,13 @@ export default function OutfitsTab() {
                                 aria-label="Open item image preview"
                                 title="Open item image preview"
                               >
-                                <img src={item.image_url} alt={item.name || "Outfit item"} className="item-thumb" />
+                                <AppImage
+                                  src={item.image_url}
+                                  alt={item.name || "Outfit item"}
+                                  className="item-thumb"
+                                  width={48}
+                                  height={48}
+                                />
                               </BaseButton>
                             ) : null}
                             <span className="item-icon" aria-hidden="true">{getItemIcon(item)}</span>
@@ -346,7 +394,13 @@ export default function OutfitsTab() {
         scrollable={false}
       >
         {itemPreview?.image_url ? (
-          <img src={itemPreview.image_url} alt={itemPreview.name || "Item preview"} className="modal-image item-preview-image" />
+          <AppImage
+            src={itemPreview.image_url}
+            alt={itemPreview.name || "Item preview"}
+            className="modal-image item-preview-image"
+            width={1600}
+            height={2000}
+          />
         ) : (
           <p className="subtext">Preview unavailable for this item.</p>
         )}

@@ -1,6 +1,7 @@
 """Better Auth backend session validation for Flask API."""
-from datetime import datetime, timezone
 import base64
+from contextlib import contextmanager
+from datetime import datetime, timezone
 import json
 import time
 from urllib.parse import urlparse
@@ -8,6 +9,7 @@ from urllib.parse import urlparse
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 import psycopg2
 from psycopg2 import sql
+from psycopg2.pool import SimpleConnectionPool
 import requests
 from app.config import settings
 
@@ -17,6 +19,7 @@ class BetterAuthSessionError(RuntimeError):
 
 
 _JWKS_CACHE: dict[str, object] = {"keys": {}, "expires_at": 0.0}
+_DB_POOL: SimpleConnectionPool | None = None
 
 
 def _base64url_decode(value: str) -> bytes:
@@ -115,15 +118,33 @@ def get_user_id_from_better_auth_jwt(token: str) -> str | None:
         return None
 
 
-def get_database_connection():
-    """Create a direct PostgreSQL connection to Supabase."""
+def _get_database_pool() -> SimpleConnectionPool:
     if not settings.DATABASE_URL:
         raise BetterAuthSessionError("DATABASE_URL environment variable is required.")
+    global _DB_POOL
+    if _DB_POOL is None:
+        try:
+            _DB_POOL = SimpleConnectionPool(1, 5, settings.DATABASE_URL)
+        except psycopg2.Error as e:
+            raise BetterAuthSessionError(f"Failed to connect to database: {e}")
+    return _DB_POOL
+
+
+@contextmanager
+def get_database_connection():
+    """Borrow a PostgreSQL connection from a small shared pool."""
+    pool = _get_database_pool()
+    conn = None
     try:
-        conn = psycopg2.connect(settings.DATABASE_URL)
-        return conn
-    except psycopg2.Error as e:
-        raise BetterAuthSessionError(f"Failed to connect to database: {e}")
+        conn = pool.getconn()
+        yield conn
+    finally:
+        if conn is not None:
+            try:
+                conn.rollback()
+            except psycopg2.Error:
+                pass
+            pool.putconn(conn)
 
 
 def get_user_id_from_session_token(session_token: str) -> str | None:

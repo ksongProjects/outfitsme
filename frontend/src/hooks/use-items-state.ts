@@ -7,17 +7,18 @@ import { toast } from "sonner";
 import { API_BASE } from "@/lib/api-base";
 import type { ItemRecord } from "@/lib/types";
 
+const EMPTY_ITEMS: ItemRecord[] = [];
+const ITEMS_STALE_MS = 60 * 1000;
+
 export function useItemsState({ accessToken }: { accessToken: string }) {
-  const CACHE_STALE_MS = 5 * 60 * 1000;
+  const PAGE_SIZE = 20;
   const queryClient = useQueryClient();
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
+  type ItemsPagePayload = { items: ItemRecord[]; has_more: boolean };
 
-  const fetchItems = async () => {
-    if (!accessToken) {
-      return [] as ItemRecord[];
-    }
-
-    const itemsRes = await fetch(`${API_BASE}/api/items`, {
+  const fetchItemsPage = async (page: number) => {
+    const itemsRes = await fetch(`${API_BASE}/api/items?page=${page}&page_size=${PAGE_SIZE}`, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -30,47 +31,28 @@ export function useItemsState({ accessToken }: { accessToken: string }) {
     }
 
     const itemsJson = await itemsRes.json();
-    return (itemsJson.items || []) as ItemRecord[];
+    return {
+      items: (itemsJson.items || []) as ItemRecord[],
+      has_more: Boolean(itemsJson.has_more),
+    } satisfies ItemsPagePayload;
   };
 
   const itemsQuery = useQuery({
-    queryKey: ["items", accessToken],
-    queryFn: fetchItems,
+    queryKey: ["items", accessToken, currentPage],
+    queryFn: () => fetchItemsPage(currentPage),
     enabled: Boolean(accessToken),
-    staleTime: 20_000,
+    staleTime: ITEMS_STALE_MS,
+    placeholderData: (previousData) => previousData,
   });
 
-  const items = itemsQuery.data || [];
-  const itemsLoading = itemsQuery.isFetching;
+  const items = itemsQuery.data?.items ?? EMPTY_ITEMS;
+  const itemsHasMore = Boolean(itemsQuery.data?.has_more);
+  const itemsLoading = itemsQuery.isLoading || itemsQuery.isFetching;
   const itemsMessage = itemsQuery.isError
     ? "Couldn't load item catalog right now."
     : items.length === 0
       ? "No items yet. Analyze an outfit to populate your item catalog."
       : "";
-
-  const loadItems = async () => {
-    if (!accessToken) {
-      return;
-    }
-
-    const queryKey = ["items", accessToken];
-    const cachedItems = queryClient.getQueryData(queryKey);
-    const queryState = queryClient.getQueryState(queryKey);
-
-    if (
-      Array.isArray(cachedItems) &&
-      typeof queryState?.dataUpdatedAt === "number" &&
-      !queryState?.isInvalidated &&
-      Date.now() - queryState.dataUpdatedAt < CACHE_STALE_MS
-    ) {
-      return;
-    }
-
-    const result = await itemsQuery.refetch();
-    if (result.isError) {
-      toast.error("Couldn't load item catalog.");
-    }
-  };
 
   const composeOutfitMutation = useMutation({
     mutationFn: async ({ itemIds, styleLabel }: { itemIds: string[]; styleLabel: string }) => {
@@ -94,9 +76,11 @@ export function useItemsState({ accessToken }: { accessToken: string }) {
       return response.json();
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["items", accessToken] });
-      await queryClient.invalidateQueries({ queryKey: ["wardrobe", accessToken] });
-      await queryClient.invalidateQueries({ queryKey: ["stats", accessToken] });
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["items", accessToken] }),
+        queryClient.invalidateQueries({ queryKey: ["wardrobe", accessToken] }),
+        queryClient.invalidateQueries({ queryKey: ["stats", accessToken] }),
+      ]);
     },
   });
 
@@ -116,7 +100,9 @@ export function useItemsState({ accessToken }: { accessToken: string }) {
     const styleCounts: Record<string, number> = {};
     for (const item of selectedItems) {
       const style = (item.style_label || "").trim();
-      if (!style) continue;
+      if (!style) {
+        continue;
+      }
       styleCounts[style] = (styleCounts[style] || 0) + 1;
     }
 
@@ -133,11 +119,22 @@ export function useItemsState({ accessToken }: { accessToken: string }) {
     return result;
   };
 
+  const refreshItems = async () => {
+    if (!accessToken) {
+      return;
+    }
+
+    const result = await itemsQuery.refetch();
+    if (result.isError) {
+      toast.error("Couldn't load item catalog.");
+    }
+  };
+
   return {
     items,
     itemsLoading,
     itemsMessage,
-    loadItems,
+    refreshItems,
     composeOutfitFromSelected,
     composeOutfitLoading: composeOutfitMutation.isPending,
     selectedItemIds,
@@ -147,6 +144,19 @@ export function useItemsState({ accessToken }: { accessToken: string }) {
       );
     },
     selectedItems,
-    resetItemsState: () => setSelectedItemIds([]),
+    itemsPage: currentPage,
+    itemsHasMore,
+    nextItemsPage: () => {
+      setSelectedItemIds([]);
+      setCurrentPage((page) => page + 1);
+    },
+    prevItemsPage: () => {
+      setSelectedItemIds([]);
+      setCurrentPage((page) => Math.max(1, page - 1));
+    },
+    resetItemsState: () => {
+      setSelectedItemIds([]);
+      setCurrentPage(1);
+    },
   };
 }

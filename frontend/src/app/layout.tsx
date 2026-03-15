@@ -1,4 +1,4 @@
-﻿import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 
 import { AppProviders } from "@/components/providers/app-providers";
 import "./globals.css";
@@ -9,6 +9,12 @@ export const metadata: Metadata = {
   metadataBase: new URL(
     process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
   ),
+};
+
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
 };
 
 export default function RootLayout({

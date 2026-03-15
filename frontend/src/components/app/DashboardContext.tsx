@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useRef } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 import { useStore } from "zustand";
 import { createStore, type StoreApi } from "zustand/vanilla";
 
@@ -56,25 +56,29 @@ export function DashboardProviders({
   settingsValue,
   children,
 }: ProvidersProps) {
-  const storeRef = useRef<DashboardStore | null>(null);
-  const nextState = {
-    auth: authValue,
-    analysis: analysisValue,
-    wardrobe: wardrobeValue,
-    items: itemsValue,
-    history: historyValue,
-    settings: settingsValue,
-  };
-
-  if (!storeRef.current) {
-    storeRef.current = createDashboardStore(nextState);
-  }
+  const [store] = useState<DashboardStore>(() =>
+    createDashboardStore({
+      auth: authValue,
+      analysis: analysisValue,
+      wardrobe: wardrobeValue,
+      items: itemsValue,
+      history: historyValue,
+      settings: settingsValue,
+    })
+  );
 
   useEffect(() => {
-    storeRef.current?.setState(nextState);
-  }, [authValue, analysisValue, wardrobeValue, itemsValue, historyValue, settingsValue]);
+    store.setState({
+      auth: authValue,
+      analysis: analysisValue,
+      wardrobe: wardrobeValue,
+      items: itemsValue,
+      history: historyValue,
+      settings: settingsValue,
+    });
+  }, [store, authValue, analysisValue, wardrobeValue, itemsValue, historyValue, settingsValue]);
 
-  return <DashboardStoreContext.Provider value={storeRef.current}>{children}</DashboardStoreContext.Provider>;
+  return <DashboardStoreContext.Provider value={store}>{children}</DashboardStoreContext.Provider>;
 }
 
 function useDashboardSelector<T>(selector: (state: DashboardStoreState) => T, name: string) {

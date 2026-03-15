@@ -1,11 +1,12 @@
 ﻿"use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Search, Wand2 } from "lucide-react";
 import { toast } from "sonner";
 
 import HistoryTab from "@/components/app/tabs/HistoryTab";
 import { useAnalysisContext, useSettingsContext, useWardrobeContext } from "@/components/app/DashboardContext";
+import AppImage from "@/components/app/ui/AppImage";
 import BaseButton from "@/components/app/ui/BaseButton";
 import BaseSelect from "@/components/app/ui/BaseSelect";
 import ImageUploadField from "@/components/app/ui/ImageUploadField";
@@ -19,7 +20,13 @@ export default function AnalyzeTab() {
     startCrop: { x: number; y: number; width: number; height: number } | null;
     handle: "nw" | "ne" | "sw" | "se" | null;
   } | null>(null);
-  const [outfitMePreviewByIndex, setOutfitsMePreviewByIndex] = useState<Record<number, string>>({});
+  const [outfitMePreviewState, setOutfitsMePreviewState] = useState<{
+    photoId: string | null;
+    previews: Record<number, string>;
+  }>({
+    photoId: null,
+    previews: {},
+  });
   const {
     previewUrl,
     onFileDrop,
@@ -45,6 +52,9 @@ export default function AnalyzeTab() {
   } = useAnalysisContext();
   const { profilePhotoUrl, settingsForm } = useSettingsContext();
   const { generateOutfitsMe, outfitMeLoading } = useWardrobeContext();
+  const activePhotoId = analysis?.photo_id || null;
+  const outfitMePreviewByIndex =
+    outfitMePreviewState.photoId === activePhotoId ? outfitMePreviewState.previews : {};
   const detectedOutfits = analysis?.outfits || [];
   const dailyLimit = analysisLimits?.daily_limit ?? 0;
   const usedToday = analysisLimits?.used_today ?? 0;
@@ -237,12 +247,8 @@ export default function AnalyzeTab() {
     }
   };
 
-  useEffect(() => {
-    setOutfitsMePreviewByIndex({});
-  }, [analysis?.photo_id]);
-
   const handleGenerateOutfitsMe = async (outfitIndex: number) => {
-    if (!analysis?.photo_id) {
+    if (!activePhotoId) {
       toast.error("Analyze a photo first before using OutfitsMe.");
       return;
     }
@@ -254,11 +260,14 @@ export default function AnalyzeTab() {
       toast.error("Profile photo is required for OutfitsMe. Upload one in Settings > Profile.");
       return;
     }
-    const result = await generateOutfitsMe(analysis.photo_id, outfitIndex);
+    const result = await generateOutfitsMe(activePhotoId, outfitIndex);
     if (result && typeof result === "object" && "outfitsme_image_url" in result) {
-      setOutfitsMePreviewByIndex((current) => ({
-        ...current,
-        [outfitIndex]: String(result.outfitsme_image_url || ""),
+      setOutfitsMePreviewState((current) => ({
+        photoId: activePhotoId,
+        previews: {
+          ...(current.photoId === activePhotoId ? current.previews : {}),
+          [outfitIndex]: String(result.outfitsme_image_url || ""),
+        },
       }));
     }
   };
@@ -361,7 +370,14 @@ export default function AnalyzeTab() {
           {previewUrl ? (
             <>
               <div className="crop-preview-wrap">
-                <img className="preview" src={previewUrl} alt="Selected outfit" draggable={false} />
+                <AppImage
+                  className="preview"
+                  src={previewUrl}
+                  alt="Selected outfit"
+                  width={1600}
+                  height={2000}
+                  draggable={false}
+                />
                 <div
                   className="crop-overlay"
                   onPointerDown={handleCropPointerDown}
@@ -459,7 +475,13 @@ export default function AnalyzeTab() {
                     {(outfit.items || []).map((item, itemIndex) => (
                       <li key={`analysis-item-${index}-${itemIndex}`} className="analysis-item">
                         {item.image_url ? (
-                          <img src={item.image_url} alt={item.name || "Detected item"} className="analysis-item-thumb" />
+                          <AppImage
+                            src={item.image_url}
+                            alt={item.name || "Detected item"}
+                            className="analysis-item-thumb"
+                            width={64}
+                            height={64}
+                          />
                         ) : null}
                         <span className="item-icon" aria-hidden="true">{getItemIcon(item)}</span>
                         <span>{formatItemLabel(item)}</span>
@@ -468,10 +490,12 @@ export default function AnalyzeTab() {
                   </ul>
 
                   {outfitMePreviewByIndex[index] ? (
-                    <img
+                    <AppImage
                       src={outfitMePreviewByIndex[index]}
                       alt={`OutfitsMe preview for outfit ${index + 1}`}
                       className="analysis-outfitsme-preview"
+                      width={1600}
+                      height={2000}
                     />
                   ) : null}
                 </article>

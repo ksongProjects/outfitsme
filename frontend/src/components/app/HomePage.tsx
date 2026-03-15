@@ -49,18 +49,8 @@ export default function HomePage() {
   const accessToken = auth.accessToken;
 
   const statsState = useStatsState({ accessToken });
-  const analysisState = useAnalysisState({
-    accessToken,
-    onAnalysisSaved: () => {
-      void statsState.loadStats();
-    },
-  });
-  const wardrobeState = useWardrobeState({
-    accessToken,
-    onWardrobeChanged: () => {
-      void statsState.loadStats();
-    },
-  });
+  const analysisState = useAnalysisState({ accessToken });
+  const wardrobeState = useWardrobeState({ accessToken });
   const itemsState = useItemsState({ accessToken });
   const historyState = useHistoryState({ accessToken });
   const settingsState = useSettingsState({
@@ -70,26 +60,6 @@ export default function HomePage() {
 
   const retrySession = useEffectEvent(() => {
     void auth.refetchSession();
-  });
-
-  const loadAuthenticatedData = useEffectEvent(() => {
-    void statsState.loadStats();
-    void analysisState.loadModels();
-    void analysisState.loadAnalysisLimits();
-    void settingsState.loadPreferences();
-    void settingsState.loadCosts();
-  });
-
-  const loadDashboardTabData = useEffectEvent((tab: DashboardTabId) => {
-    if (tab === "wardrobe") {
-      void wardrobeState.loadWardrobe();
-    }
-    if (tab === "items") {
-      void itemsState.loadItems();
-    }
-    if (tab === "dashboard" || tab === "analyze") {
-      void historyState.loadHistory();
-    }
   });
 
   useEffect(() => {
@@ -117,22 +87,6 @@ export default function HomePage() {
 
     router.replace("/");
   }, [auth.isLoading, auth.isSessionRefetching, auth.session, auth.sessionError, router]);
-
-  useEffect(() => {
-    if (!accessToken) {
-      return;
-    }
-
-    loadAuthenticatedData();
-  }, [accessToken]);
-
-  useEffect(() => {
-    if (!accessToken) {
-      return;
-    }
-
-    loadDashboardTabData(dashboardTab);
-  }, [dashboardTab, accessToken]);
 
   const handleTabChange = (nextTab: DashboardTabId) => {
     setDashboardTab(nextTab);
@@ -267,9 +221,11 @@ export default function HomePage() {
               <DashboardTab
                 stats={statsState.stats}
                 refreshStats={async () => {
-                  await statsState.loadStats();
-                  await analysisState.loadAnalysisLimits();
-                  await historyState.loadHistory(true);
+                  await Promise.all([
+                    statsState.refreshStats(),
+                    analysisState.refreshAnalysisLimits(),
+                    historyState.refreshHistory(),
+                  ]);
                 }}
                 loading={statsState.statsLoading || analysisState.limitsLoading || historyState.historyLoading}
                 analysisLimits={analysisState.analysisLimits}
@@ -290,3 +246,4 @@ export default function HomePage() {
     </DashboardProviders>
   );
 }
+

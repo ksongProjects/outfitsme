@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 
 import { useSettingsContext } from "@/components/app/DashboardContext";
+import AppImage from "@/components/app/ui/AppImage";
 import BaseButton from "@/components/app/ui/BaseButton";
 import BaseCheckbox from "@/components/app/ui/BaseCheckbox";
 import BaseInput from "@/components/app/ui/BaseInput";
@@ -29,7 +30,7 @@ export default function SettingsTab() {
     saveFeatureSettings,
     costSummary,
     costSummaryLoading,
-    loadCosts,
+    refreshCosts,
     uploadProfilePhoto,
   } = useSettingsContext();
 
@@ -78,7 +79,13 @@ export default function SettingsTab() {
           <h2>Profile</h2>
           {!profilePhotoUrl ? <label>Reference photo</label> : null}
           {profilePhotoUrl ? (
-            <img src={profilePhotoUrl} alt="Profile reference" className="profile-photo-preview" />
+            <AppImage
+              src={profilePhotoUrl}
+              alt="Profile reference"
+              className="profile-photo-preview"
+              width={1200}
+              height={1600}
+            />
           ) : (
             <p className="subtext">No reference photo uploaded yet.</p>
           )}
@@ -213,7 +220,7 @@ export default function SettingsTab() {
             <p className="subtext">Cost usage unavailable.</p>
           )}
           <div className="button-row">
-            <BaseButton variant="ghost" onClick={loadCosts}>Refresh costs</BaseButton>
+            <BaseButton variant="ghost" onClick={() => void refreshCosts()}>Refresh costs</BaseButton>
           </div>
         </article>
 

@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 
 import { API_BASE } from "@/lib/api-base";
@@ -9,12 +9,44 @@ import type {
   AnalysisLimits,
   AnalysisResult,
   CropArea,
-  HistoryEntry,
-  ItemRecord,
   JobStatus,
   ModelOption,
-  WardrobeEntry,
 } from "@/lib/types";
+
+const DEFAULT_MODEL_ID = "gemini-2.5-flash";
+const MODELS_STALE_MS = 5 * 60 * 1000;
+const LIMITS_STALE_MS = 30 * 1000;
+const ANALYSIS_JOB_POLL_MS = 2_000;
+
+type SimilarResultsPayload = {
+  results?: Array<{
+    item: string;
+    store: string;
+    price: string;
+    availability: string;
+    delivery_timeline: string;
+  }>;
+};
+
+type AnalyzeSubmitPayload = {
+  job_id?: string;
+  status?: string;
+  created_at?: string | null;
+  updated_at?: string | null;
+  result?: {
+    progress?: JobStatus["progress"];
+  } | null;
+  items?: AnalysisResult["items"];
+};
+
+type AnalyzeJobPayload = {
+  job_id?: string | null;
+  status?: string;
+  error_message?: string | null;
+  result?: (AnalysisResult & { progress?: JobStatus["progress"] }) | null;
+  created_at?: string | null;
+  updated_at?: string | null;
+};
 
 export function useAnalysisState({
   accessToken,
@@ -40,101 +72,272 @@ export function useAnalysisState({
   >([]);
   const [error, setError] = useState("");
   const [info, setInfo] = useState("");
-  const [modelOptions, setModelOptions] = useState<ModelOption[]>([]);
-  const [selectedModel, setSelectedModel] = useState("gemini-2.5-flash");
-  const [analysisLimits, setAnalysisLimits] = useState<AnalysisLimits | null>(null);
+  const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL_ID);
   const [jobStatus, setJobStatus] = useState<JobStatus | null>(null);
   const [activeAnalysisCount, setActiveAnalysisCount] = useState(0);
+  const [pendingJobs, setPendingJobs] = useState<Array<{ jobId: string }>>([]);
   const queryClient = useQueryClient();
+  const handledJobIdsRef = useRef<Set<string>>(new Set());
+  const processingJobIdsRef = useRef<Set<string>>(new Set());
 
-  const refreshHistoryCache = async () => {
-    if (!accessToken) return;
-    try {
-      const response = await fetch(`${API_BASE}/api/history`, {
+  const modelsQuery = useQuery({
+    queryKey: ["models", accessToken],
+    queryFn: async () => {
+      const response = await fetch(`${API_BASE}/api/models`, {
         method: "GET",
         headers: {
           Authorization: `Bearer ${accessToken}`,
         },
       });
-      if (!response.ok) return;
-      const payload = await response.json();
-      queryClient.setQueryData(["history", accessToken], (payload.history || []) as HistoryEntry[]);
-    } catch {
-      // Best effort only.
-    }
-  };
 
-  const refreshWardrobeCache = async () => {
-    if (!accessToken) return;
-    try {
-      const response = await fetch(`${API_BASE}/api/wardrobe`, {
+      if (!response.ok) {
+        throw new Error("Unable to load models.");
+      }
+
+      return response.json() as Promise<{ models?: ModelOption[]; preferred_model?: string }>;
+    },
+    enabled: Boolean(accessToken),
+    staleTime: MODELS_STALE_MS,
+  });
+
+  const limitsQuery = useQuery({
+    queryKey: ["limits", accessToken],
+    queryFn: async () => {
+      const response = await fetch(`${API_BASE}/api/limits`, {
         method: "GET",
         headers: {
           Authorization: `Bearer ${accessToken}`,
         },
       });
-      if (!response.ok) return;
-      const payload = await response.json();
-      queryClient.setQueryData(["wardrobe", accessToken], (payload.wardrobe || []) as WardrobeEntry[]);
-    } catch {
-      // Best effort only.
+
+      if (!response.ok) {
+        throw new Error("Unable to load usage limits.");
+      }
+
+      return response.json() as Promise<{ analysis?: AnalysisLimits | null }>;
+    },
+    enabled: Boolean(accessToken),
+    staleTime: LIMITS_STALE_MS,
+  });
+
+  const modelOptions = useMemo(
+    () => (modelsQuery.data?.models ?? []) as ModelOption[],
+    [modelsQuery.data?.models]
+  );
+  const analysisLimits = (limitsQuery.data?.analysis || null) as AnalysisLimits | null;
+  const loading = activeAnalysisCount > 0;
+  const disabled = useMemo(
+    () => !file || !accessToken || activeAnalysisCount >= MAX_CONCURRENT_ANALYSIS_JOBS,
+    [file, accessToken, activeAnalysisCount]
+  );
+
+  useEffect(() => {
+    if (!accessToken) {
+      setSelectedModel(DEFAULT_MODEL_ID);
+      return;
     }
+
+    setSelectedModel((currentModel) => {
+      const currentEntry = modelOptions.find(
+        (model) => model.id === currentModel && model.supports_image && model.available
+      );
+      if (currentEntry) {
+        return currentModel;
+      }
+
+      const preferredModelId = modelsQuery.data?.preferred_model || DEFAULT_MODEL_ID;
+      const preferredEntry = modelOptions.find(
+        (model) => model.id === preferredModelId && model.supports_image && model.available
+      );
+      if (preferredEntry) {
+        return preferredEntry.id;
+      }
+
+      const fallbackEntry = modelOptions.find((model) => model.supports_image && model.available);
+      return fallbackEntry?.id || DEFAULT_MODEL_ID;
+    });
+  }, [accessToken, modelOptions, modelsQuery.data?.preferred_model]);
+
+  useEffect(() => {
+    return () => {
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+      }
+    };
+  }, [previewUrl]);
+
+  const mapJobPayloadToStatus = (payload: AnalyzeSubmitPayload | AnalyzeJobPayload): JobStatus => ({
+    jobId: payload.job_id || null,
+    status: payload.status || "queued",
+    updatedAt: payload.updated_at || payload.created_at || null,
+    progress: payload.result?.progress || null,
+  });
+
+  const fetchSimilarResults = async (analyzeJson: AnalysisResult) => {
+    const similarRes = await fetch(`${API_BASE}/api/similar`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ items: analyzeJson.items || [] }),
+    });
+
+    if (!similarRes.ok) {
+      const errorBody = await similarRes.json().catch(() => ({}));
+      throw new Error(errorBody.error || "Failed to search similar items.");
+    }
+
+    return (await similarRes.json()) as SimilarResultsPayload;
   };
 
-  const refreshItemsCache = async () => {
-    if (!accessToken) return;
-    try {
-      const response = await fetch(`${API_BASE}/api/items`, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
-      if (!response.ok) return;
-      const payload = await response.json();
-      queryClient.setQueryData(["items", accessToken], (payload.items || []) as ItemRecord[]);
-    } catch {
-      // Best effort only.
+  const finalizeSuccessfulAnalysis = async (payload: AnalyzeJobPayload | AnalyzeSubmitPayload) => {
+    const analyzeJson = (payload.result || payload) as AnalysisResult;
+    if (!Array.isArray(analyzeJson?.items)) {
+      throw new Error("Analyze request did not return a valid result payload.");
     }
+
+    const similarJson = await fetchSimilarResults(analyzeJson);
+
+    setJobStatus({
+      ...mapJobPayloadToStatus(payload),
+      status: "completed",
+    });
+    setAnalysis(analyzeJson);
+    setSimilarResults(similarJson.results || []);
+    setError("");
+    setInfo("Analysis complete and saved to your wardrobe.");
+    toast.success("Photo analyzed and saved.");
+
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ["history", accessToken] }),
+      queryClient.invalidateQueries({ queryKey: ["wardrobe", accessToken] }),
+      queryClient.invalidateQueries({ queryKey: ["items", accessToken] }),
+      queryClient.invalidateQueries({ queryKey: ["limits", accessToken] }),
+      queryClient.invalidateQueries({ queryKey: ["stats", accessToken] }),
+    ]);
+
+    onAnalysisSaved?.();
   };
+
+  const handleFailedAnalysis = (payload: AnalyzeJobPayload | null, fallbackMessage?: string) => {
+    const message = fallbackMessage || payload?.error_message || "Analysis job failed.";
+    const friendly = toUserFriendlyAnalyzeError(message);
+    if (payload) {
+      setJobStatus({
+        ...mapJobPayloadToStatus(payload),
+        status: "failed",
+      });
+    } else {
+      setJobStatus((current) => (current ? { ...current, status: "failed" } : current));
+    }
+    setError(friendly);
+    setInfo("");
+    toast.error(friendly);
+  };
+
+  const analysisJobQueries = useQueries({
+    queries: pendingJobs.map((job) => ({
+      queryKey: ["analysis-job", accessToken, job.jobId],
+      queryFn: async () => {
+        const pollRes = await fetch(`${API_BASE}/api/analyze/jobs/${job.jobId}?wait_seconds=0`, {
+          method: "GET",
+          headers: {
+            Authorization: `Bearer ${accessToken}`,
+          },
+        });
+
+        if (!pollRes.ok) {
+          const errorBody = await pollRes.json().catch(() => ({}));
+          throw new Error(errorBody.error || "Failed to fetch analysis job status.");
+        }
+
+        return (await pollRes.json()) as AnalyzeJobPayload;
+      },
+      enabled: Boolean(accessToken),
+      staleTime: 0,
+      retry: 3,
+      refetchInterval: (query: { state: { data?: AnalyzeJobPayload } }) => {
+        const status = query.state.data?.status;
+        return status === "completed" || status === "failed" ? false : ANALYSIS_JOB_POLL_MS;
+      },
+      refetchIntervalInBackground: true,
+    })),
+  });
+
+  const latestPendingJobQuery =
+    pendingJobs.length > 0 ? analysisJobQueries[pendingJobs.length - 1] : null;
+  const latestPendingJobPayload = latestPendingJobQuery?.data as AnalyzeJobPayload | undefined;
+
+  const syncLatestJobStatus = useEffectEvent((payload: AnalyzeJobPayload) => {
+    setJobStatus((current) => {
+      const nextStatus = mapJobPayloadToStatus(payload);
+      if (
+        current?.jobId === nextStatus.jobId &&
+        current?.status === nextStatus.status &&
+        current?.updatedAt === nextStatus.updatedAt &&
+        JSON.stringify(current?.progress || null) === JSON.stringify(nextStatus.progress || null)
+      ) {
+        return current;
+      }
+      return nextStatus;
+    });
+  });
+
+  const processTerminalJob = useEffectEvent(async (jobId: string, payload: AnalyzeJobPayload) => {
+    try {
+      if (payload.status === "completed") {
+        await finalizeSuccessfulAnalysis(payload);
+      } else {
+        handleFailedAnalysis(payload);
+      }
+    } catch (err) {
+      handleFailedAnalysis(payload, (err as Error).message);
+    } finally {
+      handledJobIdsRef.current.add(jobId);
+      processingJobIdsRef.current.delete(jobId);
+      setPendingJobs((current) => current.filter((job) => job.jobId !== jobId));
+      setActiveAnalysisCount((current) => Math.max(0, current - 1));
+      queryClient.removeQueries({ queryKey: ["analysis-job", accessToken, jobId] });
+    }
+  });
+
+  useEffect(() => {
+    if (!latestPendingJobPayload) {
+      return;
+    }
+
+    syncLatestJobStatus(latestPendingJobPayload);
+  }, [latestPendingJobPayload, latestPendingJobQuery?.dataUpdatedAt]);
+
+  useEffect(() => {
+    const nextTerminalJob = pendingJobs.find((job, index) => {
+      const payload = analysisJobQueries[index]?.data as AnalyzeJobPayload | undefined;
+      const status = payload?.status || "";
+      return (
+        (status === "completed" || status === "failed") &&
+        !handledJobIdsRef.current.has(job.jobId) &&
+        !processingJobIdsRef.current.has(job.jobId)
+      );
+    });
+
+    if (!nextTerminalJob) {
+      return;
+    }
+
+    const nextTerminalIndex = pendingJobs.findIndex((job) => job.jobId === nextTerminalJob.jobId);
+    const terminalPayload = analysisJobQueries[nextTerminalIndex]?.data as AnalyzeJobPayload | undefined;
+    if (!terminalPayload) {
+      return;
+    }
+
+    processingJobIdsRef.current.add(nextTerminalJob.jobId);
+
+    void processTerminalJob(nextTerminalJob.jobId, terminalPayload);
+  }, [analysisJobQueries, pendingJobs]);
 
   const analyzeMutation = useMutation({
     mutationFn: async ({ fileToAnalyze, modelId }: { fileToAnalyze: File; modelId: string }) => {
-      const pollAnalyzeJob = async (jobId: string) => {
-        for (let attempt = 0; attempt < 180; attempt += 1) {
-          const pollRes = await fetch(`${API_BASE}/api/analyze/jobs/${jobId}?wait_seconds=2`, {
-            method: "GET",
-            headers: {
-              Authorization: `Bearer ${accessToken}`,
-            },
-          });
-
-          if (!pollRes.ok) {
-            const errorBody = await pollRes.json().catch(() => ({}));
-            throw new Error(errorBody.error || "Failed to fetch analysis job status.");
-          }
-
-          const pollJson = await pollRes.json();
-          const status = pollJson.status || "queued";
-          const progress = pollJson?.result?.progress || null;
-          setJobStatus({
-            jobId,
-            status,
-            updatedAt: pollJson.updated_at || null,
-            progress,
-          });
-
-          if (status === "completed") {
-            return pollJson.result || {};
-          }
-          if (status === "failed") {
-            throw new Error(pollJson.error_message || "Analysis job failed.");
-          }
-        }
-
-        throw new Error("Analysis timed out while waiting for job completion.");
-      };
-
       const formData = new FormData();
       formData.append("image", fileToAnalyze);
       formData.append("analysis_model", modelId);
@@ -159,70 +362,9 @@ export function useAnalysisState({
         throw new Error(errorBody.error || "Failed to analyze photo.");
       }
 
-      const analyzePayload = await analyzeRes.json();
-      await refreshHistoryCache();
-
-      let analyzeJson = analyzePayload;
-      if (!Array.isArray(analyzePayload?.items) && analyzePayload?.job_id) {
-        setJobStatus({
-          jobId: analyzePayload.job_id,
-          status: analyzePayload.status || "queued",
-          updatedAt: analyzePayload.created_at || null,
-          progress: analyzePayload?.result?.progress || null,
-        });
-        analyzeJson = await pollAnalyzeJob(analyzePayload.job_id);
-      } else if (!Array.isArray(analyzePayload?.items)) {
-        throw new Error("Analyze request did not return a valid result payload.");
-      }
-
-      const similarRes = await fetch(`${API_BASE}/api/similar`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${accessToken}`,
-        },
-        body: JSON.stringify({ items: analyzeJson.items || [] }),
-      });
-
-      if (!similarRes.ok) {
-        const errorBody = await similarRes.json().catch(() => ({}));
-        throw new Error(errorBody.error || "Failed to search similar items.");
-      }
-
-      const similarJson = await similarRes.json();
-      return {
-        analyzeJson: analyzeJson as AnalysisResult,
-        similarJson,
-      };
-    },
-    onSuccess: async ({ analyzeJson, similarJson }) => {
-      setJobStatus((current) => (current ? { ...current, status: "completed" } : current));
-      setAnalysis(analyzeJson);
-      setSimilarResults(similarJson.results || []);
-      setInfo("Analysis complete and saved to your wardrobe.");
-      toast.success("Photo analyzed and saved.");
-      await queryClient.invalidateQueries({ queryKey: ["stats", accessToken] });
-      await queryClient.invalidateQueries({ queryKey: ["wardrobe", accessToken] });
-      await queryClient.invalidateQueries({ queryKey: ["items", accessToken] });
-      await Promise.all([refreshHistoryCache(), refreshWardrobeCache(), refreshItemsCache()]);
-      onAnalysisSaved?.();
-      await loadAnalysisLimits();
+      return (await analyzeRes.json()) as AnalyzeSubmitPayload;
     },
   });
-
-  const loading = activeAnalysisCount > 0;
-  const disabled = useMemo(
-    () => !file || !accessToken || activeAnalysisCount >= MAX_CONCURRENT_ANALYSIS_JOBS,
-    [file, accessToken, activeAnalysisCount]
-  );
-
-  useEffect(() => {
-    return () => {
-      if (previewUrl) {
-        URL.revokeObjectURL(previewUrl);
-      }
-    };
-  }, [previewUrl]);
 
   const toUserFriendlyAnalyzeError = (message: string) => {
     const raw = String(message || "").toLowerCase();
@@ -271,7 +413,7 @@ export function useAnalysisState({
         return "";
       }
     } catch {
-      return "This image appears corrupted or unreadable. Please choose another file.";
+      // Fall back to the browser's standard image decoder for mobile-captured files.
     }
 
     return new Promise<string>((resolve) => {
@@ -403,84 +545,15 @@ export function useAnalysisState({
     setPreviewUrl(URL.createObjectURL(selected));
   };
 
-  const modelsQuery = useQuery({
-    queryKey: ["models", accessToken],
-    queryFn: async () => {
-      if (!accessToken) {
-        return { models: [], preferred_model: "gemini-2.5-flash" };
-      }
-
-      const response = await fetch(`${API_BASE}/api/models`, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error("Unable to load models.");
-      }
-
-      return response.json();
-    },
-    enabled: false,
-    staleTime: 20_000,
-  });
-
-  const limitsQuery = useQuery({
-    queryKey: ["limits", accessToken],
-    queryFn: async () => {
-      if (!accessToken) {
-        return null;
-      }
-
-      const response = await fetch(`${API_BASE}/api/limits`, {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error("Unable to load usage limits.");
-      }
-
-      return response.json();
-    },
-    enabled: false,
-    staleTime: 20_000,
-  });
-
-  const loadModels = async () => {
-    if (!accessToken) return;
-    const result = await modelsQuery.refetch();
-    if (result.isError) return;
-
-    const payload = result.data || {};
-    const models = (payload.models || []) as ModelOption[];
-    setModelOptions(models);
-    const preferred = payload.preferred_model || "gemini-2.5-flash";
-    const preferredEntry = models.find(
-      (model) => model.id === preferred && model.supports_image && model.available
-    );
-    if (preferredEntry) {
-      setSelectedModel(preferredEntry.id);
-      return;
-    }
-    const fallback = models.find((model) => model.supports_image && model.available);
-    if (fallback) {
-      setSelectedModel(fallback.id);
-    }
-  };
-
-  const loadAnalysisLimits = async () => {
+  const refreshAnalysisLimits = async () => {
     if (!accessToken) {
-      setAnalysisLimits(null);
       return;
     }
+
     const result = await limitsQuery.refetch();
-    if (result.isError) return;
-    setAnalysisLimits((result.data?.analysis || null) as AnalysisLimits | null);
+    if (result.isError) {
+      toast.error("Couldn't load usage limits.");
+    }
   };
 
   return {
@@ -494,7 +567,9 @@ export function useAnalysisState({
     },
     fileName: file?.name || "",
     clearSelectedFile: () => {
-      if (previewUrl) URL.revokeObjectURL(previewUrl);
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+      }
       setFile(null);
       setPreviewUrl("");
       setAnalysis(null);
@@ -536,20 +611,39 @@ export function useAnalysisState({
       setInfo("Analysis request submitted. Waiting for queue processing...");
       setJobStatus({ jobId: null, status: "submitting", updatedAt: null });
       setActiveAnalysisCount((current) => current + 1);
+      let shouldReleaseSlot = true;
 
       try {
         const fileToAnalyze = await buildCroppedFile(file, cropArea);
         if (fileToAnalyze !== file) {
           setInfo("Using selected crop area for analysis.");
         }
-        await analyzeMutation.mutateAsync({ fileToAnalyze, modelId: selectedModel });
+        const analyzePayload = await analyzeMutation.mutateAsync({ fileToAnalyze, modelId: selectedModel });
+
+        if (Array.isArray(analyzePayload.items)) {
+          await finalizeSuccessfulAnalysis(analyzePayload);
+          return;
+        }
+
+        if (!analyzePayload.job_id) {
+          throw new Error("Analyze request did not return a valid job payload.");
+        }
+
+        shouldReleaseSlot = false;
+        setJobStatus(mapJobPayloadToStatus(analyzePayload));
+        setPendingJobs((current) => [
+          ...current.filter((job) => job.jobId !== analyzePayload.job_id),
+          {
+            jobId: analyzePayload.job_id!,
+          },
+        ]);
+        await queryClient.invalidateQueries({ queryKey: ["history", accessToken] });
       } catch (err) {
-        setJobStatus((current) => (current ? { ...current, status: "failed" } : current));
-        const friendly = toUserFriendlyAnalyzeError((err as Error).message);
-        setError(friendly);
-        toast.error(friendly);
+        handleFailedAnalysis(null, (err as Error).message);
       } finally {
-        setActiveAnalysisCount((current) => Math.max(0, current - 1));
+        if (shouldReleaseSlot) {
+          setActiveAnalysisCount((current) => Math.max(0, current - 1));
+        }
       }
     },
     disabled,
@@ -559,29 +653,32 @@ export function useAnalysisState({
     selectedModel,
     setSelectedModel,
     modelOptions,
-    loadModels,
     jobStatus,
     activeAnalysisCount,
     maxConcurrentAnalysisJobs: MAX_CONCURRENT_ANALYSIS_JOBS,
     analysisLimits,
-    limitsLoading: limitsQuery.isFetching,
-    loadAnalysisLimits,
+    limitsLoading: limitsQuery.isLoading || limitsQuery.isFetching,
+    refreshAnalysisLimits,
     resetAnalysisState: () => {
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+      }
       setAnalysis(null);
       setSimilarResults([]);
       setFile(null);
       setPreviewUrl("");
-      setModelOptions([]);
-      setSelectedModel("gemini-2.5-flash");
-      setAnalysisLimits(null);
+      setSelectedModel(DEFAULT_MODEL_ID);
       setJobStatus(null);
+      setPendingJobs([]);
       setActiveAnalysisCount(0);
       setCropArea(null);
       setError("");
       setInfo("");
+      handledJobIdsRef.current.clear();
+      processingJobIdsRef.current.clear();
+      queryClient.removeQueries({ queryKey: ["analysis-job", accessToken] });
     },
     error,
     info,
   };
 }
-

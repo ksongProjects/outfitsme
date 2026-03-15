@@ -83,6 +83,7 @@ export type StatsPayload = {
   outfits_count: number;
   analyses_count: number;
   items_count: number;
+  generated_outfit_images_count?: number;
   weekly_activity: {
     analyses_count: number;
     outfits_count: number;
@@ -90,23 +91,6 @@ export type StatsPayload = {
     window_start_utc: string | null;
   };
   top_item_types: Array<{ label: string; count: number }>;
-  detailed_item_types: Array<{ label: string; count: number }>;
-  clothing_item_types: Array<{ label: string; count: number }>;
-  accessory_item_types: Array<{ label: string; count: number }>;
-  top_colors: Array<{ label: string; count: number }>;
-  category_split: {
-    clothing_items_count: number;
-    accessories_items_count: number;
-  };
-  latest_outfit: {
-    created_at?: string | null;
-    image_url?: string | null;
-  } | null;
-  highlights: {
-    most_common_item_type: string;
-    most_common_color: string;
-    most_common_accessory_type: string;
-  };
 };
 
 export type AnalysisLimits = {

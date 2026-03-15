@@ -37,6 +37,25 @@ export default function ImageUploadField({
   const browseInputRef = useRef<HTMLInputElement | null>(null);
   const cameraInputRef = useRef<HTMLInputElement | null>(null);
 
+  const openPicker = (input: HTMLInputElement | null) => {
+    if (!input || disabled) {
+      return;
+    }
+
+    if (typeof input.showPicker === "function") {
+      input.showPicker();
+      return;
+    }
+
+    input.click();
+  };
+
+  const resetInputValue = (input: HTMLInputElement) => {
+    window.setTimeout(() => {
+      input.value = "";
+    }, 0);
+  };
+
   const handleDragOver = (event: React.DragEvent<HTMLDivElement>) => {
     if (disabled) return;
     event.preventDefault();
@@ -59,11 +78,19 @@ export default function ImageUploadField({
   };
 
   const handleChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
-    if (disabled) return;
-    const selectedFile = event.target.files?.[0];
-    event.target.value = "";
-    if (!selectedFile) return;
-    await onFileSelect(selectedFile);
+    const input = event.currentTarget;
+    const selectedFile = input.files?.[0];
+
+    if (!selectedFile || disabled) {
+      resetInputValue(input);
+      return;
+    }
+
+    try {
+      await onFileSelect(selectedFile);
+    } finally {
+      resetInputValue(input);
+    }
   };
 
   return (
@@ -86,11 +113,11 @@ export default function ImageUploadField({
         <p className="dropzone-file">{fileName || emptyText}</p>
       </div>
       <div className="image-upload-actions">
-        <BaseButton type="button" variant="ghost" onClick={() => browseInputRef.current?.click()} disabled={disabled}>
+        <BaseButton type="button" variant="ghost" onClick={() => openPicker(browseInputRef.current)} disabled={disabled}>
           {browseLabel}
         </BaseButton>
         {enableCamera ? (
-          <BaseButton type="button" variant="ghost" onClick={() => cameraInputRef.current?.click()} disabled={disabled}>
+          <BaseButton type="button" variant="ghost" onClick={() => openPicker(cameraInputRef.current)} disabled={disabled}>
             {cameraLabel}
           </BaseButton>
         ) : null}

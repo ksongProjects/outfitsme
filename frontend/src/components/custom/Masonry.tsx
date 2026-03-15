@@ -82,36 +82,6 @@ const Masonry: React.FC<MasonryProps> = ({
     return 1;
   }, [width]);
 
-  const getInitialPosition = (item: GridItem) => {
-    const containerRect = containerRef.current?.getBoundingClientRect();
-    if (!containerRect) return { x: item.x, y: item.y };
-
-    let direction = animateFrom;
-    if (animateFrom === 'random') {
-      const dirs = ['top', 'bottom', 'left', 'right'];
-      direction = dirs[Math.floor(Math.random() * dirs.length)] as typeof animateFrom;
-    }
-
-    // Modified to use container height and width to prevent overflow and scroll bars
-    switch (direction) {
-      case 'top':
-        return { x: item.x, y: -200 };
-      case 'bottom':
-        return { x: item.x, y: height};
-      case 'left':
-        return { x: -200, y: item.y };
-      case 'right':
-        return { x: width, y: item.y };
-      case 'center':
-        return {
-          x: containerRect.width / 2 - item.w / 2,
-          y: containerRect.height / 2 - item.h / 2
-        };
-      default:
-        return { x: item.x, y: item.y + 100 };
-    }
-  };
-
   useEffect(() => {
     preloadImages(items.map(i => i.img)).then(() => setImagesReady(true));
   }, [items]);
@@ -139,6 +109,35 @@ const Masonry: React.FC<MasonryProps> = ({
   useLayoutEffect(() => {
     // Modified for consistent behaviour on initial load
     if (!imagesReady || grid.length === 0 || width === 0) return;
+
+    const getInitialPosition = (item: GridItem) => {
+      const containerRect = containerRef.current?.getBoundingClientRect();
+      if (!containerRect) return { x: item.x, y: item.y };
+
+      let direction = animateFrom;
+      if (animateFrom === 'random') {
+        const dirs = ['top', 'bottom', 'left', 'right'];
+        direction = dirs[Math.floor(Math.random() * dirs.length)] as typeof animateFrom;
+      }
+
+      switch (direction) {
+        case 'top':
+          return { x: item.x, y: -200 };
+        case 'bottom':
+          return { x: item.x, y: height };
+        case 'left':
+          return { x: -200, y: item.y };
+        case 'right':
+          return { x: width, y: item.y };
+        case 'center':
+          return {
+            x: containerRect.width / 2 - item.w / 2,
+            y: containerRect.height / 2 - item.h / 2
+          };
+        default:
+          return { x: item.x, y: item.y + 100 };
+      }
+    };
 
     grid.forEach((item, index) => {
       const selector = `[data-key="${item.id}"]`;
@@ -176,7 +175,7 @@ const Masonry: React.FC<MasonryProps> = ({
     });
 
     hasMounted.current = true;
-  }, [grid, width, imagesReady, stagger, animateFrom, blurToFocus, duration, ease]);
+  }, [grid, width, height, imagesReady, stagger, animateFrom, blurToFocus, duration, ease, containerRef]);
 
   const handleMouseEnter = (id: string, element: HTMLElement) => {
     if (scaleOnHover) {
