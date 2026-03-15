@@ -76,7 +76,7 @@ export default function HomePage() {
       return;
     }
 
-    if (auth.isLoading || auth.isSessionRefetching || hasRetriedSession || isRecoveringSession) {
+    if (auth.isLoading || (auth.isSessionRefetching && !auth.sessionError) || hasRetriedSession || isRecoveringSession) {
       return;
     }
 
@@ -93,10 +93,10 @@ export default function HomePage() {
     return () => {
       cancelled = true;
     };
-  }, [auth.isLoading, auth.isSessionRefetching, auth.refetchSession, auth.session, hasRetriedSession, isRecoveringSession]);
+  }, [auth.isLoading, auth.isSessionRefetching, auth.refetchSession, auth.session, auth.sessionError, hasRetriedSession, isRecoveringSession]);
 
   useEffect(() => {
-    if (auth.isLoading || auth.isSessionRefetching || isRecoveringSession || auth.session) {
+    if (auth.isLoading || (auth.isSessionRefetching && !auth.sessionError) || isRecoveringSession || auth.session) {
       return;
     }
 
@@ -105,7 +105,7 @@ export default function HomePage() {
     }
 
     router.replace("/");
-  }, [auth.isLoading, auth.isSessionRefetching, auth.session, hasRetriedSession, isRecoveringSession, router]);
+  }, [auth.isLoading, auth.isSessionRefetching, auth.session, auth.sessionError, hasRetriedSession, isRecoveringSession, router]);
 
   useEffect(() => {
     if (!accessToken) {
@@ -156,7 +156,7 @@ export default function HomePage() {
   const userEmail = auth.session?.user?.email || "";
   const userLabel = userFullName || userEmail || "your account";
 
-  if (auth.isLoading || auth.isSessionRefetching || isRecoveringSession) {
+  if (auth.isLoading || (auth.isSessionRefetching && !auth.sessionError) || isRecoveringSession) {
     return (
       <AppLoadingScreen
         title="Preparing OutfitsMe"
