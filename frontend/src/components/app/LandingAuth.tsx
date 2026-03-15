@@ -4,14 +4,14 @@ import dynamic from "next/dynamic";
 import Image from "next/image";
 import Link from "next/link";
 import { ArrowRight, SearchIcon, ShirtIcon, Wand2 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { toast } from "sonner";
 
 import AppFooter from "@/components/app/AppFooter";
 import BaseButton from "@/components/app/ui/BaseButton";
 import BaseCheckbox from "@/components/app/ui/BaseCheckbox";
 import { items } from "@/components/custom/items";
-import { signIn, signOut } from "@/lib/auth-client";
+import { signIn } from "@/lib/auth-client";
 
 const Masonry = dynamic(() => import("@/components/custom/Masonry"), {
   ssr: false,
@@ -22,15 +22,6 @@ export default function LandingAuth() {
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [isSigningIn, setIsSigningIn] = useState(false);
 
-  useEffect(() => {
-    void (async () => {
-      try {
-        await signOut();
-      } catch {
-        // Landing is always public; stale auth should not block the page.
-      }
-    })();
-  }, []);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();

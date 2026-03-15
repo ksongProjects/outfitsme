@@ -43,6 +43,8 @@ type DashboardTabId = (typeof TAB_OPTIONS)[number]["id"];
 export default function HomePage() {
   const router = useRouter();
   const [dashboardTab, setDashboardTab] = useState<DashboardTabId>("dashboard");
+  const [hasRetriedSession, setHasRetriedSession] = useState(false);
+  const [isRecoveringSession, setIsRecoveringSession] = useState(false);
 
   const auth = useAuthState();
   const accessToken = auth.accessToken;
@@ -68,10 +70,42 @@ export default function HomePage() {
   });
 
   useEffect(() => {
-    if (!auth.isLoading && !auth.session) {
-      router.replace("/");
+    if (auth.session) {
+      setHasRetriedSession(false);
+      setIsRecoveringSession(false);
+      return;
     }
-  }, [auth.isLoading, auth.session, router]);
+
+    if (auth.isLoading || auth.isSessionRefetching || hasRetriedSession || isRecoveringSession) {
+      return;
+    }
+
+    let cancelled = false;
+    setHasRetriedSession(true);
+    setIsRecoveringSession(true);
+
+    void auth.refetchSession().finally(() => {
+      if (!cancelled) {
+        setIsRecoveringSession(false);
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [auth.isLoading, auth.isSessionRefetching, auth.refetchSession, auth.session, hasRetriedSession, isRecoveringSession]);
+
+  useEffect(() => {
+    if (auth.isLoading || auth.isSessionRefetching || isRecoveringSession || auth.session) {
+      return;
+    }
+
+    if (!hasRetriedSession) {
+      return;
+    }
+
+    router.replace("/");
+  }, [auth.isLoading, auth.isSessionRefetching, auth.session, hasRetriedSession, isRecoveringSession, router]);
 
   useEffect(() => {
     if (!accessToken) {
@@ -122,7 +156,7 @@ export default function HomePage() {
   const userEmail = auth.session?.user?.email || "";
   const userLabel = userFullName || userEmail || "your account";
 
-  if (auth.isLoading) {
+  if (auth.isLoading || auth.isSessionRefetching || isRecoveringSession) {
     return (
       <AppLoadingScreen
         title="Preparing OutfitsMe"

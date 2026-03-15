@@ -22,7 +22,13 @@ function decodeJwtExp(token: string): number | null {
 }
 
 export function useAuthState() {
-  const { data: session, isPending: isLoading } = useSession();
+  const {
+    data: session,
+    error: sessionError,
+    isPending: isLoading,
+    isRefetching: isSessionRefetching,
+    refetch: refetchSession,
+  } = useSession();
   const [isSigningIn, setIsSigningIn] = useState(false);
   const [accessToken, setAccessToken] = useState("");
   const [tokenExpiresAt, setTokenExpiresAt] = useState<number | null>(null);
@@ -152,8 +158,11 @@ export function useAuthState() {
     session,
     accessToken,
     isLoading,
+    isSessionRefetching,
+    sessionError,
     isSigningIn,
     handleGoogleSignIn,
+    refetchSession,
     signOut: handleSignOut,
   };
 }
