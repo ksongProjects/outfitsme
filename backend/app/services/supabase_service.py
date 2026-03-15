@@ -13,6 +13,7 @@ from supabase import Client, create_client
 from app.config import settings
 from app.services.access_control import normalize_user_role
 from app.services.better_auth_service import (
+    get_user_created_at_from_better_auth_token,
     get_user_id_from_better_auth_jwt,
     get_user_id_from_session_token,
 )
@@ -390,6 +391,10 @@ def get_user_from_token(access_token: str):
 
 
 def get_user_created_at_from_token(access_token: str) -> str | None:
+    created_at = get_user_created_at_from_better_auth_token(access_token)
+    if created_at:
+        return created_at
+
     user = get_user_from_token(access_token)
     return getattr(user, "created_at", None)
 
@@ -2208,3 +2213,5 @@ def get_user_cost_summary(user_id: str, month_start_iso: str) -> dict:
             "monthly_custom_outfit_generation_limit": settings.MONTHLY_CUSTOM_OUTFIT_LIMIT
         }
     }
+
+

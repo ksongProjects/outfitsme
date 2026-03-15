@@ -75,7 +75,7 @@ class Settings:
     ITEM_IMAGE_MAX_SIDE = int(_clean_env(os.getenv("ITEM_IMAGE_MAX_SIDE", "250"), "250") or "250")
     MONTHLY_CUSTOM_OUTFIT_LIMIT = int(_clean_env(os.getenv("MONTHLY_CUSTOM_OUTFIT_LIMIT", "5"), "5") or "5")
     TRIAL_DAYS = int(_clean_env(os.getenv("TRIAL_DAYS", "14"), "14") or "14")
-    TRIAL_DAILY_AI_ACTION_LIMIT = int(_clean_env(os.getenv("TRIAL_DAILY_AI_ACTION_LIMIT", "5"), "5") or "5")
+    TRIAL_DAILY_AI_ACTION_LIMIT = int(_clean_env(os.getenv("TRIAL_DAILY_AI_ACTION_LIMIT", "10"), "10") or "10")
     ANALYSIS_INPUT_COST_USD = float(
         _clean_env(
             os.getenv("ANALYSIS_INPUT_COST_USD", os.getenv("ANALYSIS_COST_USD", "0.02")),

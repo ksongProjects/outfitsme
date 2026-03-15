@@ -130,7 +130,7 @@ def _build_trial_usage(user_id: str, access_token: str) -> dict:
     analysis_actions = get_user_analysis_job_count_since(
         user_id,
         day_start_iso,
-        statuses=["queued", "processing", "completed", "failed"]
+        statuses=["completed"]
     )
     outfit_generation_actions = get_user_generated_image_count_since(user_id, day_start_iso, "outfits")
     used_today = analysis_actions + outfit_generation_actions

@@ -158,3 +158,38 @@ def get_user_id_from_session_token(session_token: str) -> str | None:
         return None
     except Exception:
         return None
+
+def get_user_created_at_from_better_auth_token(token: str) -> str | None:
+    """Return the Better Auth user created_at timestamp for a JWT or session token."""
+    if not token:
+        return None
+
+    user_id = get_user_id_from_better_auth_jwt(token)
+    if not user_id:
+        user_id = get_user_id_from_session_token(token)
+    if not user_id:
+        return None
+
+    try:
+        with get_database_connection() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    sql.SQL("""
+                        SELECT created_at FROM "users"
+                        WHERE id = %s
+                        LIMIT 1
+                    """),
+                    (user_id,)
+                )
+                result = cur.fetchone()
+
+        created_at = result[0] if result else None
+        if isinstance(created_at, datetime):
+            if created_at.tzinfo is None:
+                created_at = created_at.replace(tzinfo=timezone.utc)
+            return created_at.astimezone(timezone.utc).isoformat()
+        return str(created_at) if created_at else None
+    except psycopg2.Error:
+        return None
+    except Exception:
+        return None
