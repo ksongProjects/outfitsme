@@ -86,6 +86,20 @@ jobs:
         run: |
           set -euo pipefail
 
+          python3 - <<'PY'
+          from pathlib import Path
+
+          for relative_path in (
+              "compose.yaml",
+              "deploy/remote-deploy.sh",
+              "proxy/nginx.http.conf",
+              "proxy/nginx.ssl.conf",
+          ):
+              path = Path(relative_path)
+              text = path.read_text(encoding="utf-8-sig")
+              path.write_text(text.replace("\r\n", "\n"), encoding="utf-8")
+          PY
+
           REMOTE_BOOTSTRAP="$RUNNER_TEMP/remote-bootstrap.sh"
           {
             echo '#!/usr/bin/env bash'
