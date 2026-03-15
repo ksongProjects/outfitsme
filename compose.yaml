@@ -39,6 +39,9 @@
       - "3000"
     env_file:
       - /etc/outfitsme/app.env
+    environment:
+      PORT: "3000"
+      HOSTNAME: "0.0.0.0"
     pull_policy: always
     restart: unless-stopped
     networks:
@@ -50,6 +53,8 @@
       - "5000"
     env_file:
       - /etc/outfitsme/app.env
+    environment:
+      PORT: "5000"
     pull_policy: always
     restart: unless-stopped
     networks:
