@@ -93,3 +93,6 @@ export const jwks = pgTable(
     createdAtIdx: index("jwks_created_at_idx").on(table.createdAt),
   }),
 );
+
+// Better Auth's pluralized Drizzle model lookup expects `jwkss` when `usePlural` is enabled.
+export const jwkss = jwks;
