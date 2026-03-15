@@ -1,6 +1,5 @@
-﻿import HomePage from "@/components/app/HomePage";
+import LandingAuth from "@/components/app/LandingAuth";
 
 export default function LandingPage() {
-  return <HomePage />;
+  return <LandingAuth />;
 }
-

@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState } from "react";
 import { toast } from "sonner";
@@ -22,7 +22,7 @@ export function useAuthState() {
       const result = await signIn.social(
         {
           provider: "google",
-          callbackURL: "/",
+          callbackURL: "/dashboard",
         },
         {
           onSuccess: () => {

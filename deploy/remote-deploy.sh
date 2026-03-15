@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env bash
+#!/usr/bin/env bash
 set -euo pipefail
 
 APP_DIR="${APP_DIR:-/home/ubuntu/app}"
@@ -9,6 +9,7 @@ NEXT_PUBLIC_APP_URL="${NEXT_PUBLIC_APP_URL:-${APP_URL}}"
 NEXT_PUBLIC_API_BASE_URL="${NEXT_PUBLIC_API_BASE_URL:-}"
 CERTBOT_EMAIL="${CERTBOT_EMAIL:?CERTBOT_EMAIL is required}"
 
+mkdir -p "${APP_DIR}"
 cd "${APP_DIR}"
 
 mkdir -p proxy letsencrypt certbot-www

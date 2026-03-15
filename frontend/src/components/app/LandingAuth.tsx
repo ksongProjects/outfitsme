@@ -3,15 +3,15 @@
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowRight, Check, Search, SearchIcon, Shirt, ShirtIcon, Wand2 } from "lucide-react";
-import { useState } from "react";
+import { ArrowRight, SearchIcon, ShirtIcon, Wand2 } from "lucide-react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 import AppFooter from "@/components/app/AppFooter";
-import { useAuthContext } from "@/components/app/DashboardContext";
 import BaseButton from "@/components/app/ui/BaseButton";
 import BaseCheckbox from "@/components/app/ui/BaseCheckbox";
 import { items } from "@/components/custom/items";
+import { signIn, signOut } from "@/lib/auth-client";
 
 const Masonry = dynamic(() => import("@/components/custom/Masonry"), {
   ssr: false,
@@ -19,8 +19,18 @@ const Masonry = dynamic(() => import("@/components/custom/Masonry"), {
 
 export default function LandingAuth() {
   const termsVersion = "2026-03-05";
-  const { handleGoogleSignIn, isSigningIn } = useAuthContext();
   const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [isSigningIn, setIsSigningIn] = useState(false);
+
+  useEffect(() => {
+    void (async () => {
+      try {
+        await signOut();
+      } catch {
+        // Landing is always public; stale auth should not block the page.
+      }
+    })();
+  }, []);
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -28,7 +38,30 @@ export default function LandingAuth() {
       toast.error("You must accept the Terms of Service to create an account.");
       return;
     }
-    await handleGoogleSignIn(acceptedTerms, termsVersion);
+
+    try {
+      setIsSigningIn(true);
+      await signIn.social(
+        {
+          provider: "google",
+          callbackURL: "/dashboard",
+        },
+        {
+          onSuccess: () => {
+            toast.success("Signed in successfully with Google.");
+          },
+          onError: (ctx) => {
+            toast.error(ctx.error?.message || "Sign in failed. Please try again.");
+            setIsSigningIn(false);
+          },
+        }
+      );
+    } catch {
+      toast.error("Sign in failed. Please try again.");
+      setIsSigningIn(false);
+    }
+
+    void termsVersion;
   };
 
   return (

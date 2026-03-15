@@ -193,9 +193,17 @@ resource "aws_instance" "app_server" {
               #!/bin/bash
               set -euxo pipefail
               apt-get update
-              apt-get install -y docker.io docker-compose-v2
+              apt-get install -y docker.io docker-compose-v2 snapd
+              systemctl enable --now snapd.socket
+              snap wait system seed.loaded
+              if ! snap list amazon-ssm-agent >/dev/null 2>&1; then
+                snap install amazon-ssm-agent --classic
+              fi
+              systemctl enable --now snap.amazon-ssm-agent.amazon-ssm-agent.service
               systemctl enable --now docker
               usermod -aG docker ubuntu
+              mkdir -p /home/ubuntu/app
+              chown -R ubuntu:ubuntu /home/ubuntu/app
               EOF
 
   tags = {

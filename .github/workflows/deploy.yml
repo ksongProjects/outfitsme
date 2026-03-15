@@ -121,6 +121,13 @@ jobs:
           cp proxy/nginx.ssl.conf "$BUNDLE_DIR/proxy/nginx.ssl.conf"
           cp deploy/remote-deploy.sh "$BUNDLE_DIR/deploy/remote-deploy.sh"
           chmod +x "$BUNDLE_DIR/deploy/remote-deploy.sh"
+          python3 - "$BUNDLE_DIR/deploy/remote-deploy.sh" <<'PY'
+import sys
+from pathlib import Path
+path = Path(sys.argv[1])
+text = path.read_text(encoding="utf-8-sig")
+path.write_text(text.replace("\r\n", "\n"), encoding="utf-8")
+PY
 
           {
             printf 'export APP_DIR=%q\n' "$APP_DIR"
@@ -168,6 +175,52 @@ jobs:
           set -euo pipefail
           BUNDLE_URL="$(aws s3 presign "s3://${{ steps.bundle.outputs.s3_bucket }}/${{ steps.bundle.outputs.s3_key }}" --expires-in 1800)"
           echo "deploy_bundle_url=${BUNDLE_URL}" >> "$GITHUB_OUTPUT"
+
+      - name: Verify target EC2 instance is online in Systems Manager
+        env:
+          EC2_INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
+        run: |
+          set -euo pipefail
+          : "${EC2_INSTANCE_ID:?EC2_INSTANCE_ID GitHub secret is required}"
+
+          INSTANCE_STATE="$(aws ec2 describe-instances \
+            --instance-ids "$EC2_INSTANCE_ID" \
+            --query "Reservations[0].Instances[0].State.Name" \
+            --output text)"
+
+          echo "EC2 instance state: $INSTANCE_STATE"
+          if [ "$INSTANCE_STATE" != "running" ]; then
+            echo "EC2 instance $EC2_INSTANCE_ID is not running in ${AWS_REGION}."
+            exit 1
+          fi
+
+          for attempt in {1..12}; do
+            SSM_INFO="$(aws ssm describe-instance-information \
+              --filters "Key=InstanceIds,Values=$EC2_INSTANCE_ID" \
+              --output json)"
+
+            if [ "$(jq '.InstanceInformationList | length' <<<"$SSM_INFO")" -gt 0 ]; then
+              SSM_PING_STATUS="$(jq -r '.InstanceInformationList[0].PingStatus' <<<"$SSM_INFO")"
+              SSM_AGENT_VERSION="$(jq -r '.InstanceInformationList[0].AgentVersion' <<<"$SSM_INFO")"
+              echo "SSM ping status: $SSM_PING_STATUS"
+              echo "SSM agent version: $SSM_AGENT_VERSION"
+
+              if [ "$SSM_PING_STATUS" = "Online" ]; then
+                break
+              fi
+            else
+              echo "Instance is not registered with Systems Manager yet (attempt $attempt/12)."
+            fi
+
+            if [ "$attempt" -eq 12 ]; then
+              echo "EC2 instance $EC2_INSTANCE_ID is not online in Systems Manager."
+              echo "Check that the instance ID secret is current, the instance role includes AmazonSSMManagedInstanceCore,"
+              echo "the SSM agent is installed/running, and the instance can reach SSM endpoints in ${AWS_REGION}."
+              exit 1
+            fi
+
+            sleep 10
+          done
 
       - name: Deploy via SSM and verify command status
         env:

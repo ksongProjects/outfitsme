@@ -34,26 +34,21 @@ def get_user_id_from_session_token(session_token: str) -> str | None:
         return None
     
     try:
-        conn = get_database_connection()
-        cur = conn.cursor()
-        
-        # Query the session table for a valid session
-        cur.execute(
-            sql.SQL("""
-                SELECT user_id FROM "session" 
-                WHERE token = %s AND expires_at > %s
-                LIMIT 1
-            """),
-            (session_token, datetime.now(timezone.utc).isoformat())
-        )
-        
-        result = cur.fetchone()
-        cur.close()
-        conn.close()
-        
+        with get_database_connection() as conn:
+            with conn.cursor() as cur:
+                # Better Auth is configured with plural table names in this repo.
+                cur.execute(
+                    sql.SQL("""
+                        SELECT user_id FROM "sessions"
+                        WHERE token = %s AND expires_at > %s
+                        LIMIT 1
+                    """),
+                    (session_token, datetime.now(timezone.utc))
+                )
+                result = cur.fetchone()
+
         return result[0] if result else None
-    except psycopg2.Error as e:
-        # If we can't query the database, return None (invalid session)
+    except psycopg2.Error:
         return None
     except Exception:
         return None

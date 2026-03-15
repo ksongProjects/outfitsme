@@ -594,6 +594,20 @@
   cursor: pointer;
 }
 
+.dashboard-brand-button {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  margin-bottom: 1rem;
+  text-align: left;
+}
+
+.dashboard-brand-button .brand-lockup > span:last-child {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
 .dashboard-user-actions {
   align-items:  flex-end;
   justify-self: end;
@@ -706,6 +720,7 @@
   min-height: 3rem;
   padding: 0.8rem 1.2rem !important;
   font-size: 0.97rem;
+  cursor: pointer;
 }
 
 .tab-btn.active,
@@ -720,6 +735,165 @@
   padding: clamp(1.3rem, 2vw, 1.75rem);
   overflow: visible;
   z-index: 1;
+}
+
+.app-loading-shell {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.app-loading-stage {
+  flex: 1;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  min-height: calc(100vh - 2.7rem);
+}
+
+.app-loading-card {
+  position: relative;
+  display: grid;
+  gap: 1.35rem;
+  width: min(56rem, 100%);
+  margin: 0 auto;
+  padding: clamp(1.4rem, 3vw, 2rem);
+  overflow: hidden;
+  justify-items: center;
+  text-align: center;
+}
+
+.app-loading-head {
+  display: grid;
+  justify-items: center;
+  gap: 1rem;
+  width: min(100%, 38rem);
+  margin: 0 auto;
+  text-align: center;
+}
+
+.app-loading-mark {
+  display: grid;
+  place-items: center;
+  width: 4rem;
+  height: 4rem;
+  border-radius: 1.3rem;
+  background: linear-gradient(135deg, rgba(201, 119, 71, 0.18), rgba(255, 245, 234, 0.96));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.55), 0 20px 40px rgba(92, 66, 41, 0.08);
+}
+
+.app-loading-mark-image {
+  width: 2.3rem;
+  height: 2.3rem;
+}
+
+.app-loading-copy {
+  display: grid;
+  gap: 0.4rem;
+  justify-items: center;
+  width: 100%;
+}
+
+.app-loading-copy h2 {
+  font-size: clamp(2rem, 4vw, 2.75rem);
+  line-height: 1.02;
+  letter-spacing: -0.05em;
+}
+
+.app-loading-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.35fr) minmax(16rem, 0.9fr);
+  gap: 1rem;
+  width: 100%;
+}
+
+.app-loading-panel,
+.app-loading-strip,
+.app-loading-metric {
+  position: relative;
+  overflow: hidden;
+  border-radius: 1.25rem;
+  border: 1px solid rgba(179, 151, 126, 0.14);
+  background: rgba(255, 250, 244, 0.72);
+}
+
+.app-loading-panel {
+  display: grid;
+  gap: 0.85rem;
+  padding: 1rem;
+  min-height: 10rem;
+  align-content: center;
+}
+
+.app-loading-panel-accent {
+  background: linear-gradient(180deg, rgba(255, 243, 229, 0.92), rgba(255, 250, 244, 0.72));
+}
+
+.app-loading-strip {
+  height: 1.1rem;
+  grid-column: 1 / -1;
+}
+
+.app-loading-cards {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1rem;
+}
+
+.app-loading-metric {
+  min-height: 7rem;
+}
+
+.app-loading-line,
+.app-loading-pill,
+.app-loading-panel::before,
+.app-loading-strip::before,
+.app-loading-metric::before {
+  background: linear-gradient(90deg, rgba(255, 255, 255, 0.14) 0%, rgba(255, 255, 255, 0.75) 48%, rgba(255, 255, 255, 0.14) 100%);
+  background-size: 200% 100%;
+  animation: loading-shimmer 1.8s ease-in-out infinite;
+}
+
+.app-loading-line,
+.app-loading-pill {
+  display: block;
+  border-radius: 999px;
+}
+
+.app-loading-line {
+  height: 0.9rem;
+  margin-inline: auto;
+  background-color: rgba(232, 216, 198, 0.9);
+}
+
+.app-loading-line-lg {
+  width: 78%;
+}
+
+.app-loading-line-md {
+  width: 56%;
+}
+
+.app-loading-line-sm {
+  width: 38%;
+}
+
+.app-loading-pill {
+  width: 6.5rem;
+  height: 1.8rem;
+  margin-inline: auto;
+  background-color: rgba(232, 216, 198, 0.9);
+}
+
+.app-loading-panel::before,
+.app-loading-strip::before,
+.app-loading-metric::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0.42;
 }
 
 .tab-stack,
@@ -1147,6 +1321,15 @@ pre {
   }
 }
 
+@keyframes loading-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
 @media (max-width: 1100px) {
   .landing-columns,
   .settings-layout {
@@ -1215,6 +1398,15 @@ pre {
     min-height: 28rem;
   }
 
+  .app-loading-head {
+    width: 100%;
+  }
+
+  .app-loading-grid,
+  .app-loading-cards {
+    grid-template-columns: 1fr;
+  }
+
   .tab-row {
     flex-wrap: nowrap;
     overflow-x: auto;
@@ -1247,6 +1439,10 @@ pre {
     justify-self: end;
   }
 }
+
+
+
+
 
 
 
