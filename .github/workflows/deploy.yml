@@ -57,6 +57,8 @@ jobs:
     env:
       AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
     steps:
+      - uses: actions/checkout@v4
+
       - name: Configure AWS credentials (OIDC)
         if: ${{ env.AWS_ROLE_TO_ASSUME != '' }}
         uses: aws-actions/configure-aws-credentials@v4
@@ -128,30 +130,47 @@ jobs:
           : "${DOCKERHUB_USERNAME:?DOCKERHUB_USERNAME GitHub secret is required}"
           : "${IMAGE_TAG:?IMAGE_TAG output is required}"
 
-          cat > "$RUNNER_TEMP/remote-bootstrap.sh" <<EOF
-          #!/usr/bin/env bash
-          set -euo pipefail
+          REMOTE_BOOTSTRAP="$RUNNER_TEMP/remote-bootstrap.sh"
+          {
+            echo '#!/usr/bin/env bash'
+            echo 'set -euo pipefail'
+            echo "APP_DIR='${APP_DIR}'"
+            echo 'DEPLOY_ENV_FILE="/etc/outfitsme/deploy.env"'
+            echo 'install -d -m 755 /etc/outfitsme "${APP_DIR}" "${APP_DIR}/proxy" "${APP_DIR}/deploy"'
+          } > "$REMOTE_BOOTSTRAP"
 
-          APP_DIR='${APP_DIR}'
-          DEPLOY_ENV_FILE="/etc/outfitsme/deploy.env"
+          append_file() {
+            local source_path="$1"
+            local destination_path="$2"
+            local mode="$3"
+            local destination_dir
+            local payload
 
-          install -d -m 755 /etc/outfitsme
-          cat > "\${DEPLOY_ENV_FILE}" <<'ENVFILE'
-          DOCKERHUB_USERNAME=${DOCKERHUB_USERNAME}
-          IMAGE_TAG=${IMAGE_TAG}
-          ENVFILE
-          chmod 600 "\${DEPLOY_ENV_FILE}"
+            destination_dir="$(dirname "$destination_path")"
+            payload="$(base64 -w0 "$source_path")"
 
-          if [ ! -x "\${APP_DIR}/deploy/remote-deploy.sh" ]; then
-            echo "Missing \${APP_DIR}/deploy/remote-deploy.sh on the instance."
-            echo "Sync the checked-in deploy assets to the server before using this streamlined workflow."
-            exit 1
-          fi
+            {
+              printf 'install -d -m 755 %q\n' "$destination_dir"
+              printf "printf '%%s' '%s' | base64 -d > %q\n" "$payload" "$destination_path"
+              printf 'chmod %s %q\n' "$mode" "$destination_path"
+            } >> "$REMOTE_BOOTSTRAP"
+          }
 
-          bash "\${APP_DIR}/deploy/remote-deploy.sh"
-          EOF
+          append_file compose.yaml "${APP_DIR}/compose.yaml" 644
+          append_file proxy/nginx.http.conf "${APP_DIR}/proxy/nginx.http.conf" 644
+          append_file proxy/nginx.ssl.conf "${APP_DIR}/proxy/nginx.ssl.conf" 644
+          append_file deploy/remote-deploy.sh "${APP_DIR}/deploy/remote-deploy.sh" 755
 
-          REMOTE_B64="$(base64 -w0 "$RUNNER_TEMP/remote-bootstrap.sh")"
+          {
+            echo 'cat > "${DEPLOY_ENV_FILE}" <<'"'"'ENVFILE'"'"''
+            printf 'DOCKERHUB_USERNAME=%s\n' "$DOCKERHUB_USERNAME"
+            printf 'IMAGE_TAG=%s\n' "$IMAGE_TAG"
+            echo 'ENVFILE'
+            echo 'chmod 600 "${DEPLOY_ENV_FILE}"'
+            echo 'bash "${APP_DIR}/deploy/remote-deploy.sh"'
+          } >> "$REMOTE_BOOTSTRAP"
+
+          REMOTE_B64="$(base64 -w0 "$REMOTE_BOOTSTRAP")"
           SSM_PARAMS="$(jq -cn \
             --arg cmd1 "printf '%s' '$REMOTE_B64' | base64 -d > /tmp/remote-deploy.sh" \
             --arg cmd2 "chmod +x /tmp/remote-deploy.sh" \
