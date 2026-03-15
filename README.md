@@ -148,6 +148,7 @@ The production deploy workflow now builds and pushes the frontend and backend im
 
 Deploy workflow requirements:
 - Create `/etc/outfitsme/app.env` on the server from `.env.example` and lock it down with `chmod 600`.
+- Or run the manual `Bootstrap Production Runtime Env` workflow once to write `/etc/outfitsme/app.env` from GitHub Secrets over SSM.
 - Run the manual `Sync Production Deploy Assets` workflow whenever `compose.yaml`, nginx configs, or `deploy/remote-deploy.sh` change.
 - The regular `Production Deployment (SSM)` workflow only updates the image tag metadata and restarts services.
 

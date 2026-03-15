@@ -1,0 +1,214 @@
+name: Bootstrap Production Runtime Env
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: us-west-2
+
+jobs:
+  bootstrap-runtime-env:
+    runs-on: ubuntu-latest
+    env:
+      AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+    steps:
+      - name: Configure AWS credentials (OIDC)
+        if: ${{ env.AWS_ROLE_TO_ASSUME != '' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Configure AWS credentials (access keys fallback)
+        if: ${{ env.AWS_ROLE_TO_ASSUME == '' }}
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Verify target EC2 instance is online in Systems Manager
+        env:
+          EC2_INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
+        run: |
+          set -euo pipefail
+          : "${EC2_INSTANCE_ID:?EC2_INSTANCE_ID GitHub secret is required}"
+
+          INSTANCE_STATE="$(aws ec2 describe-instances \
+            --instance-ids "$EC2_INSTANCE_ID" \
+            --query "Reservations[0].Instances[0].State.Name" \
+            --output text)"
+
+          echo "EC2 instance state: $INSTANCE_STATE"
+          if [ "$INSTANCE_STATE" != "running" ]; then
+            echo "EC2 instance $EC2_INSTANCE_ID is not running in ${AWS_REGION}."
+            exit 1
+          fi
+
+          for attempt in {1..12}; do
+            SSM_INFO="$(aws ssm describe-instance-information \
+              --filters "Key=InstanceIds,Values=$EC2_INSTANCE_ID" \
+              --output json)"
+
+            if [ "$(jq '.InstanceInformationList | length' <<<"$SSM_INFO")" -gt 0 ]; then
+              SSM_PING_STATUS="$(jq -r '.InstanceInformationList[0].PingStatus' <<<"$SSM_INFO")"
+              SSM_AGENT_VERSION="$(jq -r '.InstanceInformationList[0].AgentVersion' <<<"$SSM_INFO")"
+              echo "SSM ping status: $SSM_PING_STATUS"
+              echo "SSM agent version: $SSM_AGENT_VERSION"
+
+              if [ "$SSM_PING_STATUS" = "Online" ]; then
+                break
+              fi
+            else
+              echo "Instance is not registered with Systems Manager yet (attempt $attempt/12)."
+            fi
+
+            if [ "$attempt" -eq 12 ]; then
+              echo "EC2 instance $EC2_INSTANCE_ID is not online in Systems Manager."
+              echo "Check that the instance ID secret is current, the instance role includes AmazonSSMManagedInstanceCore,"
+              echo "the SSM agent is installed/running, and the instance can reach SSM endpoints in ${AWS_REGION}."
+              exit 1
+            fi
+
+            sleep 10
+          done
+
+      - name: Write /etc/outfitsme/app.env over SSM
+        env:
+          EC2_INSTANCE_ID: ${{ secrets.EC2_INSTANCE_ID }}
+          FLASK_ENV: production
+          DEBUG: "false"
+          PORT: "5000"
+          DIAGNOSTICS_ENABLED: "false"
+          RATE_LIMIT_STORAGE_URI: memory://
+          MONTHLY_ANALYSIS_LIMIT: "5"
+          ENABLE_BEDROCK_ANALYSIS: "false"
+          ITEM_IMAGE_MAX: "3"
+          DOMAIN: ${{ secrets.DOMAIN }}
+          WWW_DOMAIN: ${{ secrets.WWW_DOMAIN }}
+          APP_URL: ${{ secrets.APP_URL }}
+          NEXT_PUBLIC_APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
+          NEXT_PUBLIC_API_BASE_URL: ${{ secrets.NEXT_PUBLIC_API_BASE_URL }}
+          BETTER_AUTH_URL: ${{ secrets.BETTER_AUTH_URL }}
+          CORS_ALLOWED_ORIGINS: ${{ secrets.CORS_ALLOWED_ORIGINS }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
+          SUPABASE_BUCKET: ${{ secrets.SUPABASE_BUCKET }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GEMINI_MODEL: ${{ secrets.GEMINI_MODEL }}
+          GEMINI_IMAGE_MODEL: ${{ secrets.GEMINI_IMAGE_MODEL }}
+          SETTINGS_ENCRYPTION_KEY: ${{ secrets.SETTINGS_ENCRYPTION_KEY }}
+          DEFAULT_ANALYSIS_MODEL: ${{ secrets.DEFAULT_ANALYSIS_MODEL }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
+          GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
+          GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
+          CERTBOT_EMAIL: ${{ secrets.CERTBOT_EMAIL }}
+        run: |
+          set -euo pipefail
+
+          : "${DOMAIN:?DOMAIN GitHub secret is required}"
+          : "${WWW_DOMAIN:?WWW_DOMAIN GitHub secret is required}"
+          : "${APP_URL:?APP_URL GitHub secret is required}"
+          : "${NEXT_PUBLIC_APP_URL:?NEXT_PUBLIC_APP_URL GitHub secret is required}"
+          : "${CORS_ALLOWED_ORIGINS:?CORS_ALLOWED_ORIGINS GitHub secret is required}"
+          : "${SUPABASE_URL:?SUPABASE_URL GitHub secret is required}"
+          : "${SUPABASE_SECRET_KEY:?SUPABASE_SECRET_KEY GitHub secret is required}"
+          : "${SUPABASE_BUCKET:?SUPABASE_BUCKET GitHub secret is required}"
+          : "${GEMINI_API_KEY:?GEMINI_API_KEY GitHub secret is required}"
+          : "${GEMINI_MODEL:?GEMINI_MODEL GitHub secret is required}"
+          : "${GEMINI_IMAGE_MODEL:?GEMINI_IMAGE_MODEL GitHub secret is required}"
+          : "${SETTINGS_ENCRYPTION_KEY:?SETTINGS_ENCRYPTION_KEY GitHub secret is required}"
+          : "${DEFAULT_ANALYSIS_MODEL:?DEFAULT_ANALYSIS_MODEL GitHub secret is required}"
+          : "${DATABASE_URL:?DATABASE_URL GitHub secret is required}"
+          : "${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET GitHub secret is required}"
+          : "${GOOGLE_CLIENT_ID:?GOOGLE_CLIENT_ID GitHub secret is required}"
+          : "${GOOGLE_CLIENT_SECRET:?GOOGLE_CLIENT_SECRET GitHub secret is required}"
+          : "${CERTBOT_EMAIL:?CERTBOT_EMAIL GitHub secret is required}"
+
+          if [ -z "${BETTER_AUTH_URL:-}" ]; then
+            BETTER_AUTH_URL="$APP_URL"
+          fi
+
+          REMOTE_BOOTSTRAP="$RUNNER_TEMP/remote-bootstrap-runtime-env.sh"
+          {
+            echo '#!/usr/bin/env bash'
+            echo 'set -euo pipefail'
+            echo 'install -d -m 755 /etc/outfitsme'
+            echo "cat > /etc/outfitsme/app.env <<'ENVFILE'"
+            printf 'FLASK_ENV=%s\n' "$FLASK_ENV"
+            printf 'DEBUG=%s\n' "$DEBUG"
+            printf 'PORT=%s\n' "$PORT"
+            printf 'DIAGNOSTICS_ENABLED=%s\n' "$DIAGNOSTICS_ENABLED"
+            printf 'RATE_LIMIT_STORAGE_URI=%s\n' "$RATE_LIMIT_STORAGE_URI"
+            printf 'MONTHLY_ANALYSIS_LIMIT=%s\n' "$MONTHLY_ANALYSIS_LIMIT"
+            printf 'ENABLE_BEDROCK_ANALYSIS=%s\n' "$ENABLE_BEDROCK_ANALYSIS"
+            printf 'ITEM_IMAGE_MAX=%s\n' "$ITEM_IMAGE_MAX"
+            printf 'DOMAIN=%s\n' "$DOMAIN"
+            printf 'WWW_DOMAIN=%s\n' "$WWW_DOMAIN"
+            printf 'APP_URL=%s\n' "$APP_URL"
+            printf 'NEXT_PUBLIC_APP_URL=%s\n' "$NEXT_PUBLIC_APP_URL"
+            printf 'NEXT_PUBLIC_API_BASE_URL=%s\n' "$NEXT_PUBLIC_API_BASE_URL"
+            printf 'BETTER_AUTH_URL=%s\n' "$BETTER_AUTH_URL"
+            printf 'CORS_ALLOWED_ORIGINS=%s\n' "$CORS_ALLOWED_ORIGINS"
+            printf 'SUPABASE_URL=%s\n' "$SUPABASE_URL"
+            printf 'SUPABASE_SECRET_KEY=%s\n' "$SUPABASE_SECRET_KEY"
+            printf 'SUPABASE_BUCKET=%s\n' "$SUPABASE_BUCKET"
+            printf 'GEMINI_API_KEY=%s\n' "$GEMINI_API_KEY"
+            printf 'GEMINI_MODEL=%s\n' "$GEMINI_MODEL"
+            printf 'GEMINI_IMAGE_MODEL=%s\n' "$GEMINI_IMAGE_MODEL"
+            printf 'SETTINGS_ENCRYPTION_KEY=%s\n' "$SETTINGS_ENCRYPTION_KEY"
+            printf 'DEFAULT_ANALYSIS_MODEL=%s\n' "$DEFAULT_ANALYSIS_MODEL"
+            printf 'DATABASE_URL=%s\n' "$DATABASE_URL"
+            printf 'BETTER_AUTH_SECRET=%s\n' "$BETTER_AUTH_SECRET"
+            printf 'GOOGLE_CLIENT_ID=%s\n' "$GOOGLE_CLIENT_ID"
+            printf 'GOOGLE_CLIENT_SECRET=%s\n' "$GOOGLE_CLIENT_SECRET"
+            printf 'CERTBOT_EMAIL=%s\n' "$CERTBOT_EMAIL"
+            echo 'ENVFILE'
+            echo 'chmod 600 /etc/outfitsme/app.env'
+          } > "$REMOTE_BOOTSTRAP"
+
+          REMOTE_B64="$(base64 -w0 "$REMOTE_BOOTSTRAP")"
+          SSM_PARAMS="$(jq -cn \
+            --arg cmd1 "printf '%s' '$REMOTE_B64' | base64 -d > /tmp/bootstrap-runtime-env.sh" \
+            --arg cmd2 "chmod +x /tmp/bootstrap-runtime-env.sh" \
+            --arg cmd3 "bash /tmp/bootstrap-runtime-env.sh" \
+            '{commands: [$cmd1, $cmd2, $cmd3]}')"
+
+          COMMAND_ID="$(aws ssm send-command \
+            --instance-ids "$EC2_INSTANCE_ID" \
+            --document-name "AWS-RunShellScript" \
+            --comment "Bootstrap runtime env ${GITHUB_SHA}" \
+            --parameters "$SSM_PARAMS" \
+            --query "Command.CommandId" \
+            --output text)"
+
+          if ! aws ssm wait command-executed --command-id "$COMMAND_ID" --instance-id "$EC2_INSTANCE_ID"; then
+            echo "SSM waiter reported a terminal failure state."
+          fi
+
+          STATUS="$(aws ssm list-command-invocations \
+            --command-id "$COMMAND_ID" \
+            --details \
+            --query "CommandInvocations[0].Status" \
+            --output text)"
+
+          echo "SSM command status: $STATUS"
+          if [ "$STATUS" != "Success" ]; then
+            echo "SSM plugin output:"
+            aws ssm list-command-invocations \
+              --command-id "$COMMAND_ID" \
+              --details \
+              --query "CommandInvocations[0].CommandPlugins[0].Output" \
+              --output text || true
+            echo "SSM full invocation:"
+            aws ssm list-command-invocations \
+              --command-id "$COMMAND_ID" \
+              --details \
+              --output json || true
+            exit 1
+          fi
