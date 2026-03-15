@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { BarChart3, Clock3, Palette, Shirt, Sparkles } from "lucide-react";
+import { BarChart3, Clock3, Palette, Shirt, ShirtIcon, Sparkles, SparklesIcon } from "lucide-react";
 
 import BaseButton from "@/components/app/ui/BaseButton";
 import type { AnalysisLimits, HistoryEntry, StatsPayload } from "@/lib/types";
@@ -55,17 +55,17 @@ export default function DashboardTab({
 
       <div className="stats-grid">
         <article className="stats-card stats-card-accent">
-          <span className="stats-icon"><Sparkles size={18} /></span>
+          <SparklesIcon size={18} className="stats-icon"/>
           <p className="stats-label">Photos analyzed</p>
           <p className="stats-value">{stats.photos_count ?? stats.analyses_count}</p>
         </article>
-        <article className="stats-card">
-          <span className="stats-icon"><Shirt size={18} /></span>
+        <article className="stats-card stats-card-accent">
+          <ShirtIcon size={18} className="stats-icon"/>
           <p className="stats-label">Outfits saved</p>
           <p className="stats-value">{stats.outfits_count}</p>
         </article>
-        <article className="stats-card">
-          <span className="stats-icon"><Palette size={18} /></span>
+        <article className="stats-card stats-card-accent">
+          <Palette size={18} className="stats-icon"/>
           <p className="stats-label">Items cataloged</p>
           <p className="stats-value">{stats.items_count}</p>
         </article>

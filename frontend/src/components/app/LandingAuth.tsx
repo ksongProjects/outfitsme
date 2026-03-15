@@ -3,7 +3,7 @@
 import dynamic from "next/dynamic";
 import Image from "next/image";
 import Link from "next/link";
-import { ArrowRight, Check, Search, Shirt, Wand2 } from "lucide-react";
+import { ArrowRight, Check, Search, SearchIcon, Shirt, ShirtIcon, Wand2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -68,27 +68,21 @@ export default function LandingAuth() {
             <div className="hero-value-grid">
               <article className="feature-card">
                 <div className="feature-card-title-row">
-                  <span className="feature-icon">
-                    <Search size={18} />
-                  </span>
+                  <SearchIcon size={18} className="feature-icon" />
                   <h3>Analyze</h3>
                 </div>
                 <p>Detect style, clothing items, and accessories from a single photo.</p>
               </article>
               <article className="feature-card">
                 <div className="feature-card-title-row">
-                  <span className="feature-icon">
-                    <Wand2 size={18} />
-                  </span>
+                  <Wand2 size={18} className="feature-icon" />
                   <h3>Preview</h3>
                 </div>
                 <p>Generate a personalized try-on style reference.</p>
               </article>
               <article className="feature-card">
                 <div className="feature-card-title-row">
-                  <span className="feature-icon">
-                    <Shirt size={18} />
-                  </span>
+                  <ShirtIcon size={18} className="feature-icon" />
                   <h3>Organize</h3>
                 </div>
                 <p>Build a wardrobe memory you can filter, remix, and revisit.</p>

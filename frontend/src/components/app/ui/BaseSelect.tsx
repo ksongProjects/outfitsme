@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import {
   Select,
@@ -27,6 +27,8 @@ export default function BaseSelect({
   placeholder = "Select...",
   className = "",
 }: BaseSelectProps) {
+  const selectedOption = options.find((option) => option.value === value);
+
   return (
     <Select
       value={value}
@@ -37,7 +39,9 @@ export default function BaseSelect({
       }}
     >
       <SelectTrigger id={id} className={cn("text-input base-select-trigger w-full", className)}>
-        <SelectValue placeholder={placeholder} />
+        <SelectValue className="base-select-value" placeholder={placeholder}>
+          {selectedOption?.label}
+        </SelectValue>
       </SelectTrigger>
       <SelectContent className="base-select-popup">
         {options.map((option) => (

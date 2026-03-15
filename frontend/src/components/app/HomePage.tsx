@@ -133,7 +133,7 @@ export default function HomePage() {
               <button type="button" className="brand brand-button" onClick={() => handleTabChange("dashboard")}>
                 OutfitsMe
               </button>
-              <h3>{userFullName ? `Welcome back, ${userFullName}` : "Welcome back"}</h3>
+              <h2>{userFullName ? `Welcome back, ${userFullName}` : "Welcome back"}</h2>
               <p className="subtext">
                 {userFullName
                   ? "Your style workspace is synced and ready for the next outfit."
