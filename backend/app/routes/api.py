@@ -925,6 +925,8 @@ def upload_profile_photo():
 
         result = save_user_profile_photo(user_id, image)
         return jsonify(result), 200
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
     except SupabaseNotConfiguredError as exc:
         return jsonify({"error": str(exc)}), 500
     except SettingsEncryptionError as exc:

@@ -5,10 +5,12 @@ import binascii
 import json
 import mimetypes
 import re
+from io import BytesIO
 from datetime import datetime, timezone
 from time import monotonic
 from uuid import uuid4
 
+from PIL import Image, ImageOps
 from supabase import Client, create_client
 
 from app.config import settings
@@ -76,6 +78,7 @@ OUTFIT_SOURCE_OUTFITSME = "outfitsme_generated"
 
 _SUPABASE_CLIENT: Client | None = None
 _SIGNED_URL_CACHE: dict[tuple[str, int], tuple[str | None, float]] = {}
+_PROFILE_PHOTO_MAX_SIDE = 768
 
 
 def _title_case_label(value: str) -> str:
@@ -110,6 +113,66 @@ def _coerce_dict(value) -> dict:
         except ValueError:
             return {}
     return {}
+
+
+def _normalize_upload_image_target(mime_type: str | None) -> tuple[str, str]:
+    normalized = str(mime_type or "").strip().lower()
+    if normalized == "image/png":
+        return "image/png", ".png"
+    if normalized == "image/webp":
+        return "image/webp", ".webp"
+    return "image/jpeg", ".jpg"
+
+
+def _resize_profile_photo_content(
+    image_bytes: bytes,
+    mime_type: str | None
+) -> tuple[bytes, str, str]:
+    if not image_bytes:
+        raise ValueError("Image file is empty.")
+
+    target_mime_type, extension = _normalize_upload_image_target(mime_type)
+
+    try:
+        with Image.open(BytesIO(image_bytes)) as img:
+            source = ImageOps.exif_transpose(img)
+            width, height = source.size
+            if width <= 0 or height <= 0:
+                raise ValueError("Invalid image dimensions.")
+
+            if max(width, height) > _PROFILE_PHOTO_MAX_SIDE:
+                scale = min(_PROFILE_PHOTO_MAX_SIDE / float(width), _PROFILE_PHOTO_MAX_SIDE / float(height))
+                next_size = (
+                    max(1, int(round(width * scale))),
+                    max(1, int(round(height * scale))),
+                )
+                resample = getattr(Image, "Resampling", Image).LANCZOS
+                source = source.resize(next_size, resample=resample)
+
+            output = BytesIO()
+            if target_mime_type == "image/png":
+                if source.mode not in {"RGB", "RGBA", "L", "LA"}:
+                    source = source.convert("RGBA" if "A" in source.getbands() else "RGB")
+                source.save(output, format="PNG", optimize=True)
+            elif target_mime_type == "image/webp":
+                if source.mode not in {"RGB", "RGBA", "L", "LA"}:
+                    source = source.convert("RGBA" if "A" in source.getbands() else "RGB")
+                source.save(output, format="WEBP", quality=90, method=6)
+            else:
+                if source.mode not in {"RGB", "L"}:
+                    if "A" in source.getbands():
+                        flattened = Image.new("RGB", source.size, (255, 255, 255))
+                        flattened.paste(source, mask=source.getchannel("A"))
+                        source = flattened
+                    else:
+                        source = source.convert("RGB")
+                source.save(output, format="JPEG", quality=90, optimize=True, progressive=True)
+
+            return output.getvalue(), target_mime_type, extension
+    except ValueError:
+        raise
+    except Exception as exc:  # noqa: BLE001
+        raise ValueError("Invalid profile photo. Please upload a JPG, PNG, or WEBP image.") from exc
 
 
 def _normalize_ai_usage(value) -> dict:
@@ -2251,15 +2314,10 @@ def save_user_profile_photo(user_id: str, file_storage) -> dict:
     current = ensure_user_model_settings(user_id, client)
     previous_path = current.get("profile_photo_path", "")
 
-    ext = ".jpg"
-    if file_storage.filename and "." in file_storage.filename:
-        ext = "." + file_storage.filename.rsplit(".", 1)[-1].lower()
-    if ext not in {".jpg", ".jpeg", ".png", ".webp"}:
-        ext = ".jpg"
-
+    raw_content = file_storage.read()
+    original_content_type = file_storage.mimetype or mimetypes.guess_type(file_storage.filename or "")[0] or "image/jpeg"
+    content, content_type, ext = _resize_profile_photo_content(raw_content, original_content_type)
     storage_path = f"{user_id}/profile/reference-{uuid4().hex}{ext}"
-    content = file_storage.read()
-    content_type = file_storage.mimetype or mimetypes.guess_type(file_storage.filename or "")[0] or "application/octet-stream"
     client.storage.from_(settings.SUPABASE_BUCKET).upload(
         path=storage_path,
         file=content,

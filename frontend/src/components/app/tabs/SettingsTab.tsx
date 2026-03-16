@@ -9,6 +9,7 @@ import ImageUploadField from "@/components/app/ui/ImageUploadField";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import {
   Select,
@@ -43,6 +44,7 @@ export default function SettingsTab() {
 
   const [activeSection, setActiveSection] = useState("profile");
   const [profilePhotoFile, setProfilePhotoFile] = useState<File | null>(null);
+  const [profilePreviewOpen, setProfilePreviewOpen] = useState(false);
 
   const scrollToSection = (sectionId: string) => {
     const target = document.getElementById(`settings-${sectionId}`);
@@ -86,13 +88,21 @@ export default function SettingsTab() {
           <h2>Profile</h2>
           {!profilePhotoUrl ? <label>Reference photo</label> : null}
           {profilePhotoUrl ? (
-            <AppImage
-              src={profilePhotoUrl}
-              alt="Profile reference"
-              className="profile-photo-preview"
-              width={1200}
-              height={1600}
-            />
+            <button
+              type="button"
+              className="settings-profile-preview-button"
+              onClick={() => setProfilePreviewOpen(true)}
+              aria-label="Open full-size profile photo"
+              title="View full-size photo"
+            >
+              <AppImage
+                src={profilePhotoUrl}
+                alt="Profile reference"
+                className="profile-photo-preview"
+                width={1200}
+                height={1600}
+              />
+            </button>
           ) : (
             <p className="subtext">No reference photo uploaded yet.</p>
           )}
@@ -158,6 +168,27 @@ export default function SettingsTab() {
           <div className="o-cluster o-cluster--wrap o-cluster--stack-sm">
             <Button onClick={saveProfile}>Save profile</Button>
           </div>
+
+          <Dialog open={profilePreviewOpen} onOpenChange={setProfilePreviewOpen}>
+            <DialogContent className="modal-panel modal-panel-image modal-panel-no-scroll">
+              <DialogHeader className="modal-header o-split o-split--start">
+                <DialogTitle className="modal-title">Profile photo preview</DialogTitle>
+              </DialogHeader>
+              <div className="modal-body">
+                {profilePhotoUrl ? (
+                  <AppImage
+                    src={profilePhotoUrl}
+                    alt="Full-size profile reference"
+                    className="modal-image profile-photo-dialog-image"
+                    width={1200}
+                    height={1600}
+                  />
+                ) : (
+                  <p className="subtext">Preview unavailable.</p>
+                )}
+              </div>
+            </DialogContent>
+          </Dialog>
         </Card>
 
         <Card as="article" id="settings-features" className="c-surface c-surface--stack settings-section-card">

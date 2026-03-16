@@ -184,60 +184,8 @@ export function useSettingsState({
 
     setProfilePhotoUploading(true);
     try {
-      const resizedFile = await new Promise<File>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = (event) => {
-          const img = new Image();
-          img.onload = () => {
-            const targetSize = 768;
-            let width = img.width;
-            let height = img.height;
-
-            if (width > targetSize || height > targetSize) {
-              if (width > height) {
-                height = Math.round((height * targetSize) / width);
-                width = targetSize;
-              } else {
-                width = Math.round((width * targetSize) / height);
-                height = targetSize;
-              }
-            }
-
-            const canvas = document.createElement("canvas");
-            canvas.width = width;
-            canvas.height = height;
-            const ctx = canvas.getContext("2d");
-            if (!ctx) {
-              reject(new Error("Image processing failed"));
-              return;
-            }
-            ctx.drawImage(img, 0, 0, width, height);
-            canvas.toBlob(
-              (blob) => {
-                if (!blob) {
-                  reject(new Error("Image processing failed"));
-                  return;
-                }
-                resolve(
-                  new File([blob], file.name, {
-                    type: file.type || "image/jpeg",
-                    lastModified: Date.now(),
-                  })
-                );
-              },
-              file.type || "image/jpeg",
-              0.9
-            );
-          };
-          img.onerror = () => reject(new Error("Invalid image format"));
-          img.src = String(event.target?.result || "");
-        };
-        reader.onerror = () => reject(new Error("Could not read file"));
-        reader.readAsDataURL(file);
-      });
-
       const formData = new FormData();
-      formData.append("image", resizedFile);
+      formData.append("image", file);
       const response = await fetch(`${API_BASE}/api/settings/profile-photo`, {
         method: "POST",
         headers: {

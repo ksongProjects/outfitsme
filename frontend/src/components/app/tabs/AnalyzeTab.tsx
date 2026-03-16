@@ -196,6 +196,7 @@ export default function AnalyzeTab() {
     if (!interaction || interaction.pointerId !== event.pointerId) {
       return;
     }
+    event.preventDefault();
     const point = getRelativePoint(event);
     if (!point) {
       return;
@@ -250,6 +251,7 @@ export default function AnalyzeTab() {
     if (!interaction || interaction.pointerId !== event.pointerId) {
       return;
     }
+    event.preventDefault();
     if (typeof event.currentTarget.releasePointerCapture === "function") {
       event.currentTarget.releasePointerCapture(event.pointerId);
     }
@@ -561,5 +563,4 @@ export default function AnalyzeTab() {
     </section>
   );
 }
-
 

@@ -83,6 +83,7 @@
     font-size: clamp(14px, 0.22vw + 13.5px, 16px);
     -webkit-text-size-adjust: 100%;
     scrollbar-gutter: auto;
+    overflow-x: clip;
     background:
       radial-gradient(
         circle at 12% 10%,
@@ -106,6 +107,7 @@
   body {
     margin: 0;
     min-height: 100vh;
+    overflow-x: clip;
     background: transparent;
     color: #342a24;
     font-family: var(--font-heading), sans-serif;
@@ -117,7 +119,6 @@
     content: "";
     position: fixed;
     inset: 0;
-    width: 100vw;
     background:
       radial-gradient(
         circle at 12% 10%,
@@ -1230,6 +1231,10 @@ button:not(:disabled),
   overflow: hidden;
   border-radius: 1.3rem;
   background: rgba(243, 234, 224, 0.8);
+  touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
 }
 
 .preview,
@@ -1238,6 +1243,12 @@ button:not(:disabled),
   width: 100%;
   border-radius: 1.2rem;
   object-fit: cover;
+}
+
+.preview {
+  -webkit-user-drag: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .modal-image {
@@ -1252,13 +1263,39 @@ button:not(:disabled),
 }
 
 .profile-photo-preview {
+  display: block;
+  width: 100%;
   max-height: 18rem;
+  object-fit: contain;
+  background: rgba(247, 240, 232, 0.78);
+}
+
+.settings-profile-preview-button {
+  display: block;
+  width: 35%;
+  min-width: min(100%, 14rem);
+  max-width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: zoom-in;
+}
+
+.settings-profile-preview-button:focus-visible {
+  outline: 3px solid rgba(201, 119, 71, 0.25);
+  outline-offset: 4px;
+  border-radius: 1.35rem;
+}
+
+.profile-photo-dialog-image {
+  max-height: min(80vh, 46rem);
 }
 
 .crop-overlay {
   position: absolute;
   inset: 0;
   cursor: crosshair;
+  touch-action: none;
 }
 
 .crop-selection {
@@ -1267,6 +1304,7 @@ button:not(:disabled),
   border-radius: 1rem;
   background: rgba(214, 127, 82, 0.12);
   box-shadow: 0 0 0 9999px rgba(60, 45, 35, 0.24);
+  touch-action: none;
 }
 
 .crop-handle {
@@ -1276,6 +1314,7 @@ button:not(:disabled),
   border-radius: 999px;
   background: #fff8f2;
   border: 2px solid #d67f52;
+  touch-action: none;
 }
 
 .crop-handle.nw {
@@ -1600,6 +1639,11 @@ pre {
     min-width: 0;
   }
 
+  .settings-profile-preview-button {
+    width: 100%;
+    min-width: 0;
+  }
+
   .dashboard-header .app-header {
     align-items: start;
   }
@@ -1805,4 +1849,3 @@ pre {
     width: 100%;
   }
 }
-

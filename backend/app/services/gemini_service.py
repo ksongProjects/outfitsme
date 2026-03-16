@@ -301,6 +301,8 @@ def generate_item_sprite_with_gemini(
         f"Grid: {grid_cols} columns x {grid_rows} rows. "
         "Use plain light background. Put exactly one item per cell, centered, no overlap, no cropping off edges, "
         "consistent scale, and show each garment fully visible in an unfolded, natural full silhouette (not folded, crumpled, or stacked), "
+        "Render the garments as realistic, photorealistic product photography with true-to-life fabric texture, lighting, and material detail. "
+        "Do not use cartoon, illustrated, painterly, anime, sketch, CGI, or stylized rendering. "
         "no text, no labels, no watermark. "
         "Render items in this exact order from top-left to bottom-right cells:\n"
         + "\n".join(item_lines)
