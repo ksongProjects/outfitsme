@@ -211,8 +211,8 @@ export default function ItemsTab() {
           <p className="subtext">{emptyStateMessage}</p>
         </div>
       ) : (
-        <div className="table-scroll-wrap item-catalog-table-wrap">
-          <table className="data-table item-catalog-table">
+        <div className="table-scroll-wrap">
+          <table className="data-table">
             <thead>
               <tr>
                 <th>Select</th>
@@ -363,6 +363,5 @@ export default function ItemsTab() {
     </section>
   );
 }
-
 
 
