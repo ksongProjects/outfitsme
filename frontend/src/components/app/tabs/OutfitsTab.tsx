@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { Trash2 } from "lucide-react";
+import { Trash2, XIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { useSettingsContext, useWardrobeContext } from "@/components/app/DashboardContext";
@@ -9,6 +9,7 @@ import AppImage from "@/components/app/ui/AppImage";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogHeader,
   DialogTitle,
@@ -248,11 +249,21 @@ export default function OutfitsTab() {
           }
         }}
       >
-        <DialogContent className="modal-panel modal-panel-no-scroll">
-          <DialogHeader className="modal-header o-split o-split--start">
-            <DialogTitle className="modal-title">Outfit details</DialogTitle>
+        <DialogContent className="modal-panel modal-panel-image outfit-detail-modal" showCloseButton={false}>
+          <DialogHeader className="modal-header outfit-detail-header">
+            <div className="o-split o-split--start outfit-detail-header-row">
+              <DialogTitle className="modal-title">Outfit details</DialogTitle>
+              <DialogClose
+                aria-label="Close outfit details"
+                title="Close outfit details"
+                render={<Button type="button" variant="ghost" size="icon-sm" />}
+              >
+                <XIcon />
+                <span className="sr-only">Close</span>
+              </DialogClose>
+            </div>
             {!outfitDetailsLoading && outfitDetails?.selected_outfit ? (
-              <div className="modal-header-actions o-cluster o-cluster--wrap o-cluster--stack-sm">
+              <div className="modal-header-actions o-cluster o-cluster--wrap o-cluster--stack-sm outfit-detail-header-actions">
                 <Button
                   type="button"
                   variant="outline"
@@ -283,7 +294,7 @@ export default function OutfitsTab() {
               </div>
             ) : null}
           </DialogHeader>
-          <div className="modal-body">
+          <div className="modal-body outfit-detail-body">
             {outfitDetailsLoading ? (
               <p className="subtext">Loading outfit details...</p>
             ) : (
@@ -317,9 +328,9 @@ export default function OutfitsTab() {
                     height={2000}
                   />
                 ) : null}
-                <div>
+                <div className="outfit-detail-panel">
                   {outfitDetails?.selected_outfit ? (
-                    <div className="outfit-group">
+                    <div className="outfit-detail-content o-stack o-stack--tight">
                       {isEditingName ? (
                         <>
                           <label htmlFor="outfit-name-input"><strong>Name</strong></label>
@@ -330,7 +341,7 @@ export default function OutfitsTab() {
                             placeholder="Outfit name"
                             maxLength={80}
                           />
-                          <div className="o-cluster o-cluster--wrap o-cluster--stack-sm">
+                          <div className="o-cluster o-cluster--wrap o-cluster--stack-sm outfit-detail-actions">
                             <Button
                               type="button"
                               variant="outline"
@@ -352,16 +363,16 @@ export default function OutfitsTab() {
                           </div>
                         </>
                       ) : (
-                        <p><strong>Name:</strong> {outfitDetails.selected_outfit.style || "Unlabeled"}</p>
+                        <p className="outfit-detail-field"><strong>Name:</strong> {outfitDetails.selected_outfit.style || "Unlabeled"}</p>
                       )}
-                      <p>
+                      <p className="outfit-detail-field">
                         <strong>Type:</strong> {OUTFIT_SOURCE_LABELS[outfitDetails.selected_outfit.source_type || "photo_analysis"] || "Photo analysis"}
                       </p>
                       {(outfitDetails.selected_outfit.items || []).length ? (
-                        <ul className="o-list">
+                        <ul className="o-list outfit-detail-items">
                           {outfitDetails.selected_outfit.items?.map((item, index) => (
-                            <li key={`detail-item-${index}`} className="analysis-item">
-                              <span className="o-media o-media--stack-sm">
+                            <li key={`detail-item-${index}`} className="analysis-item outfit-detail-item">
+                              <span className="o-media outfit-detail-item-media">
                                 {item.image_url ? (
                                   <Button
                                     type="button"
@@ -459,7 +470,3 @@ export default function OutfitsTab() {
     </section>
   );
 }
-
-
-
-

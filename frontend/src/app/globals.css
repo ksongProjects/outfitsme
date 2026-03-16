@@ -1436,9 +1436,11 @@ button:not(:disabled),
 .modal-panel {
   width: min(70rem, calc(100vw - 2rem)) !important;
   max-width: none !important;
+  max-height: calc(100dvh - 2rem) !important;
   border-radius: 1.5rem !important;
   padding: 1rem !important;
   background: rgba(255, 252, 247, 0.96) !important;
+  overflow: hidden !important;
 }
 
 .modal-panel-sm {
@@ -1477,6 +1479,49 @@ button:not(:disabled),
   width: min(24rem, 42vw);
   max-width: 100%;
   max-height: min(68vh, 38rem);
+}
+
+.outfit-detail-body {
+  max-height: min(78vh, 46rem);
+}
+
+.outfit-detail-header {
+  gap: 0.9rem;
+}
+
+.outfit-detail-header-row {
+  align-items: center;
+}
+
+.outfit-detail-panel {
+  min-width: 0;
+  padding: 1rem;
+  border: 1px solid rgba(179, 151, 126, 0.16);
+  border-radius: 1.25rem;
+  background: rgba(255, 250, 244, 0.72);
+}
+
+.outfit-detail-content {
+  min-width: 0;
+}
+
+.outfit-detail-field,
+.outfit-detail-items {
+  margin: 0;
+}
+
+.outfit-detail-actions {
+  justify-content: flex-start;
+}
+
+.outfit-detail-item {
+  align-items: flex-start;
+}
+
+.outfit-detail-item-media {
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: nowrap;
 }
 
 .item-preview-image,
@@ -1816,7 +1861,22 @@ pre {
     text-transform: uppercase;
   }
 
-  .data-table td[data-label="Photo"],
+  .data-table td[data-label="Photo"] {
+    grid-template-columns: minmax(5.5rem, 7rem) minmax(0, 1fr);
+    justify-items: stretch;
+    align-items: center;
+  }
+
+  .data-table td[data-label="Photo"] > * {
+    justify-self: start;
+    align-self: center;
+  }
+
+  .data-table td[data-label="Photo"] .o-media--stack-sm {
+    flex-direction: row;
+    align-items: center;
+  }
+
   .data-table td[data-label="Action"] {
     grid-template-columns: 1fr;
   }
@@ -1838,6 +1898,20 @@ pre {
   .outfit-detail-image {
     flex-basis: auto;
     width: 100%;
+  }
+
+  .outfit-detail-body {
+    max-height: calc(100dvh - 10rem);
+  }
+
+  .outfit-detail-panel {
+    padding: 0.85rem;
+  }
+
+  .outfit-detail-items .analysis-item,
+  .outfit-detail-item-media {
+    flex-direction: row;
+    align-items: center;
   }
 
   .o-cluster--stack-sm {
