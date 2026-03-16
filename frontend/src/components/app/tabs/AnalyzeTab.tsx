@@ -1,15 +1,22 @@
 ﻿"use client";
 
-import { useState } from "react";
-import { Search, Wand2 } from "lucide-react";
+import { useEffect, useState } from "react";
+import { ChevronDown, ChevronUp, Wand2 } from "lucide-react";
 import { toast } from "sonner";
 
 import HistoryTab from "@/components/app/tabs/HistoryTab";
 import { useAnalysisContext, useSettingsContext, useWardrobeContext } from "@/components/app/DashboardContext";
 import AppImage from "@/components/app/ui/AppImage";
-import BaseButton from "@/components/app/ui/BaseButton";
-import BaseSelect from "@/components/app/ui/BaseSelect";
 import ImageUploadField from "@/components/app/ui/ImageUploadField";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { formatItemLabel, getItemIcon } from "@/lib/formatters";
 
 export default function AnalyzeTab() {
@@ -38,7 +45,6 @@ export default function AnalyzeTab() {
     disabled,
     loading,
     analysis,
-    similarResults,
     selectedModel,
     setSelectedModel,
     modelOptions,
@@ -88,6 +94,12 @@ export default function AnalyzeTab() {
   const statusLabel = stageLabelByKey[jobStatus?.status || ""] || jobStatus?.status || "Pending";
   const stageLabel = stageLabelByKey[progress?.stage || ""] || progress?.stage || "";
   const analysisInProgress = loading || ["queued", "processing_started", "submitting"].includes(jobStatus?.status || "");
+  const shouldCollapseResults = activeAnalysisCount > 1;
+  const [resultsExpanded, setResultsExpanded] = useState(true);
+
+  useEffect(() => {
+    setResultsExpanded(activeAnalysisCount <= 1);
+  }, [activeAnalysisCount]);
 
   const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
   const minCropSize = 0.01;
@@ -283,7 +295,7 @@ export default function AnalyzeTab() {
       </div>
 
       <div className="analysis-layout">
-        <section className="c-surface c-surface--stack">
+        <Card as="section" className="c-surface c-surface--stack">
           <div className="c-section-head o-stack o-stack--tight">
             <h3>Upload and analyze</h3>
             <p className="subtext">Best results come from a clear full-body or torso-focused outfit photo.</p>
@@ -292,19 +304,24 @@ export default function AnalyzeTab() {
           {modelOptions.length > 1 ? (
             <div className="field-stack">
               <label htmlFor="analysis-model">Analysis model</label>
-              <BaseSelect
-                id="analysis-model"
-                value={selectedModel}
-                onValueChange={(nextValue) => setSelectedModel(nextValue)}
-                options={(modelOptions || [])
-                  .filter((model) => model.supports_image)
-                  .map((model) => ({
-                    value: model.id,
-                    label: `${model.label}${model.available ? "" : " (Unavailable)"}`,
-                    disabled: !model.available,
-                  }))}
-                placeholder="Select model"
-              />
+              <Select value={selectedModel} onValueChange={(nextValue) => setSelectedModel(nextValue)}>
+                <SelectTrigger id="analysis-model" className="w-full">
+                  <SelectValue placeholder="Select model" />
+                </SelectTrigger>
+                <SelectContent>
+                  {(modelOptions || [])
+                    .filter((model) => model.supports_image)
+                    .map((model) => (
+                      <SelectItem
+                        key={model.id}
+                        value={model.id}
+                        disabled={!model.available}
+                      >
+                        {`${model.label}${model.available ? "" : " (Unavailable)"}`}
+                      </SelectItem>
+                    ))}
+                </SelectContent>
+              </Select>
             </div>
           ) : null}
 
@@ -409,137 +426,134 @@ export default function AnalyzeTab() {
 
           <div className="o-cluster o-cluster--wrap o-cluster--stack-sm">
             {fileName ? (
-              <BaseButton type="button" variant="ghost" onClick={clearSelectedFile}>
+              <Button type="button" variant="outline" onClick={clearSelectedFile}>
                 Cancel
-              </BaseButton>
+              </Button>
             ) : null}
             {fileName && cropArea ? (
-              <BaseButton type="button" variant="ghost" onClick={() => setCropArea(null)}>
+              <Button type="button" variant="outline" onClick={() => setCropArea(null)}>
                 Reset crop
-              </BaseButton>
+              </Button>
             ) : null}
-            <BaseButton variant="primary" onClick={runAnalysis} disabled={disabled}>
+            <Button onClick={runAnalysis} disabled={disabled}>
               {loading ? "Queue another photo" : "Analyze selection"}
-            </BaseButton>
+            </Button>
           </div>
-        </section>
+        </Card>
 
-        <section className="c-surface c-surface--stack">
-          <div className="c-section-head o-stack o-stack--tight">
-            <h3>Results</h3>
-            <p className="subtext">Detected outfits, items, and starting points for retailer discovery.</p>
-          </div>
-
-          {analysisInProgress ? (
-            <div className="loading-panel o-cluster o-cluster--start" role="status" aria-live="polite">
-              <span className="loading-spinner loading-spinner-lg" aria-hidden="true" />
-              <div>
-                <p className="loading-panel-title">Analysis in progress</p>
-                <p className="subtext">{progress?.message || "Your photo is being analyzed. Results will appear here automatically."}</p>
-              </div>
+        <Card as="section" className="c-surface c-surface--stack">
+          <div className="o-split o-split--start o-split--stack-sm analysis-results-head">
+            <div className="c-section-head o-stack o-stack--tight">
+              <h3>Results</h3>
+              <p className="subtext">Detected outfits and wardrobe-ready item breakdowns from your latest completed analysis.</p>
             </div>
+            {shouldCollapseResults ? (
+              <Button
+                type="button"
+                variant="outline"
+                className="analysis-results-toggle"
+                aria-expanded={resultsExpanded}
+                aria-controls="analysis-results-body"
+                onClick={() => setResultsExpanded((current) => !current)}
+              >
+                {resultsExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                {resultsExpanded ? "Hide results" : "Show results"}
+              </Button>
+            ) : null}
+          </div>
+
+          {shouldCollapseResults && !resultsExpanded ? (
+            <p className="subtext">Multiple jobs are queued. Expand this panel to review the latest completed analysis while the queue finishes.</p>
           ) : null}
 
-          {!analysis && !loading ? <p className="subtext">Analyze a photo to view detected style, item breakdowns, and similar shopping leads.</p> : null}
-
-          {analysis ? (
-            <div className="o-stack">
-              {(detectedOutfits.length > 0 ? detectedOutfits : [{ style: analysis.style, items: analysis.items }]).map((outfit, index) => (
-                <article key={`analysis-outfit-${index}`} className="c-surface c-surface--stack">
-                  <div className="o-split o-split--start o-split--stack-sm">
-                    <div>
-                      <p className="result-label">Outfit {index + 1}</p>
-                      <h4>{outfit.style || "Unlabeled style"}</h4>
-                    </div>
-                    <BaseButton
-                      type="button"
-                      variant="ghost"
-                      onClick={() => handleGenerateOutfitsMe(index)}
-                      disabled={outfitMeLoading || !imageGenerationEnabled || !trialActive}
-                      title={
-                        !trialActive
-                          ? "Trial required for OutfitsMe"
-                          : !imageGenerationEnabled
-                            ? "Enable outfit image generation in Settings"
-                            : profilePhotoUrl
-                              ? "Generate OutfitsMe preview"
-                              : "Profile photo required for OutfitsMe"
-                      }
-                    >
-                      <Wand2 size={16} />
-                      {outfitMeLoading ? "Generating..." : "OutfitsMe"}
-                    </BaseButton>
+          {!shouldCollapseResults || resultsExpanded ? (
+            <div id="analysis-results-body" className="o-stack">
+              {analysisInProgress ? (
+                <div className="loading-panel o-cluster o-cluster--start" role="status" aria-live="polite">
+                  <span className="loading-spinner loading-spinner-lg" aria-hidden="true" />
+                  <div>
+                    <p className="loading-panel-title">Analysis in progress</p>
+                    <p className="subtext">{progress?.message || "Your photo is being analyzed. Results will appear here automatically."}</p>
                   </div>
+                </div>
+              ) : null}
 
-                  <ul className="o-list">
-                    {(outfit.items || []).map((item, itemIndex) => (
-                      <li key={`analysis-item-${index}-${itemIndex}`} className="analysis-item">
-                        {item.image_url ? (
-                          <AppImage
-                            src={item.image_url}
-                            alt={item.name || "Detected item"}
-                            className="analysis-item-thumb"
-                            width={64}
-                            height={64}
-                          />
-                        ) : null}
-                        <span className="item-icon" aria-hidden="true">{getItemIcon(item)}</span>
-                        <span>{formatItemLabel(item)}</span>
-                      </li>
-                    ))}
-                  </ul>
+              {!analysis && !loading ? (
+                <p className="subtext">Analyze a photo to view detected outfits and reusable item breakdowns.</p>
+              ) : null}
 
-                  {outfitMePreviewByIndex[index] ? (
-                    <AppImage
-                      src={outfitMePreviewByIndex[index]}
-                      alt={`OutfitsMe preview for outfit ${index + 1}`}
-                      className="analysis-outfitsme-preview"
-                      width={1600}
-                      height={2000}
-                    />
-                  ) : null}
-                </article>
-              ))}
-
-              {similarResults.length > 0 ? (
-                <article className="c-surface c-surface--stack">
-                  <div className="o-split o-split--start o-split--stack-sm">
-                    <div>
-                      <p className="result-label">Discovery</p>
-                      <h4>Similar items</h4>
-                    </div>
-                    <span className="search-pill"><Search size={14} /> beta</span>
-                  </div>
-                  <div className="o-cluster o-cluster--wrap o-cluster--stack-sm">
-                    {similarResults.map((result, index) => (
-                      <div key={`similar-${result.item}-${index}`} className="c-surface o-stack o-stack--tight">
-                        <p className="similar-item">{result.item}</p>
-                        <p className="subtext">{result.store}</p>
-                        <div className="similar-meta">
-                          <span>{result.price}</span>
-                          <span>{result.availability}</span>
+              {analysis ? (
+                <div className="o-stack">
+                  {(detectedOutfits.length > 0 ? detectedOutfits : [{ style: analysis.style, items: analysis.items }]).map((outfit, index) => (
+                    <Card as="article" key={`analysis-outfit-${index}`} className="c-surface c-surface--stack">
+                      <div className="o-split o-split--start o-split--stack-sm">
+                        <div>
+                          <p className="result-label">Outfit {index + 1}</p>
+                          <h4>{outfit.style || "Unlabeled style"}</h4>
                         </div>
-                        <p className="subtext">Delivery: {result.delivery_timeline}</p>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          onClick={() => handleGenerateOutfitsMe(index)}
+                          disabled={outfitMeLoading || !imageGenerationEnabled || !trialActive}
+                          title={
+                            !trialActive
+                              ? "Trial required for OutfitsMe"
+                              : !imageGenerationEnabled
+                                ? "Enable outfit image generation in Settings"
+                                : profilePhotoUrl
+                                  ? "Generate OutfitsMe preview"
+                                  : "Profile photo required for OutfitsMe"
+                          }
+                        >
+                          <Wand2 size={16} />
+                          {outfitMeLoading ? "Generating..." : "OutfitsMe"}
+                        </Button>
                       </div>
-                    ))}
-                  </div>
-                  <p className="subtext">
-                    These results are still placeholder-level matching. For real retailer search, we should add store integrations plus optional size and country preferences.
-                  </p>
-                </article>
+
+                      <ul className="o-list">
+                        {(outfit.items || []).map((item, itemIndex) => (
+                          <li key={`analysis-item-${index}-${itemIndex}`} className="analysis-item">
+                            {item.image_url ? (
+                              <AppImage
+                                src={item.image_url}
+                                alt={item.name || "Detected item"}
+                                className="analysis-item-thumb"
+                                width={64}
+                                height={64}
+                              />
+                            ) : null}
+                            <span className="item-icon" aria-hidden="true">{getItemIcon(item)}</span>
+                            <span>{formatItemLabel(item)}</span>
+                          </li>
+                        ))}
+                      </ul>
+
+                      {outfitMePreviewByIndex[index] ? (
+                        <AppImage
+                          src={outfitMePreviewByIndex[index]}
+                          alt={`OutfitsMe preview for outfit ${index + 1}`}
+                          className="analysis-outfitsme-preview"
+                          width={1600}
+                          height={2000}
+                        />
+                      ) : null}
+                    </Card>
+                  ))}
+                </div>
               ) : null}
             </div>
           ) : null}
-        </section>
+        </Card>
       </div>
 
-      <div className="c-surface c-surface--stack">
+      <Card className="c-surface c-surface--stack">
         <div className="c-section-head o-stack o-stack--tight">
           <h3>Recent analyses</h3>
           <p className="subtext">Keep an eye on earlier uploads while you work through new outfit ideas.</p>
         </div>
         <HistoryTab />
-      </div>
+      </Card>
     </section>
   );
 }

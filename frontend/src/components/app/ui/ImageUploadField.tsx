@@ -2,7 +2,7 @@
 
 import { useRef, useState } from "react";
 
-import BaseButton from "@/components/app/ui/BaseButton";
+import { Button } from "@/components/ui/button";
 
 type ImageUploadFieldProps = {
   id: string;
@@ -113,13 +113,13 @@ export default function ImageUploadField({
         <p className="dropzone-file">{fileName || emptyText}</p>
       </div>
       <div className="image-upload-actions">
-        <BaseButton type="button" variant="ghost" onClick={() => openPicker(browseInputRef.current)} disabled={disabled}>
+        <Button type="button" variant="outline" onClick={() => openPicker(browseInputRef.current)} disabled={disabled}>
           {browseLabel}
-        </BaseButton>
+        </Button>
         {enableCamera ? (
-          <BaseButton type="button" variant="ghost" onClick={() => openPicker(cameraInputRef.current)} disabled={disabled}>
+          <Button type="button" variant="outline" onClick={() => openPicker(cameraInputRef.current)} disabled={disabled}>
             {cameraLabel}
-          </BaseButton>
+          </Button>
         ) : null}
       </div>
       <input

@@ -31,9 +31,7 @@ export default function AppHeader({
       </span>
       <span className="app-header-brand-copy">
         <span className="brand-name">OutfitsMe</span>
-        <span className="brand-tagline">
-          Style help, outfit ideas, and a closet you can actually use.
-        </span>
+
       </span>
     </span>
   );
@@ -42,11 +40,11 @@ export default function AppHeader({
     <header className={cn("app-page-header", className)}>
       <div className="app-header">
         {onBrandClick ? (
-          <button type="button" className="app-header-brand-button" onClick={onBrandClick}>
+          <button type="button" className="app-header-brand app-header-brand-button" onClick={onBrandClick}>
             {brandContent}
           </button>
         ) : (
-          <div>{brandContent}</div>
+          <div className="app-header-brand">{brandContent}</div>
         )}
         {actions ? <div className="app-header-actions">{actions}</div> : null}
       </div>

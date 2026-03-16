@@ -4,8 +4,8 @@ import { useState } from "react";
 
 import { useHistoryContext } from "@/components/app/DashboardContext";
 import AppImage from "@/components/app/ui/AppImage";
-import BaseButton from "@/components/app/ui/BaseButton";
-import BaseDialog from "@/components/app/ui/BaseDialog";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
 export default function HistoryTab() {
   const { history, historyLoading, historyMessage, refreshHistory } = useHistoryContext();
@@ -19,9 +19,9 @@ export default function HistoryTab() {
           <h2>Analysis history</h2>
           <p className="tab-header-subtext">Review past photo analyses and reopen the source imagery when needed.</p>
         </div>
-        <BaseButton variant="ghost" onClick={() => void refreshHistory()} disabled={historyLoading}>
+        <Button variant="outline" onClick={() => void refreshHistory()} disabled={historyLoading}>
           {historyLoading ? "Loading..." : "Refresh"}
-        </BaseButton>
+        </Button>
       </div>
 
       {historyMessage ? <p className="subtext">{historyMessage}</p> : null}
@@ -44,9 +44,9 @@ export default function HistoryTab() {
                 <td data-label="Photo">
                   <div className="o-media o-media--stack-sm">
                     {entry.image_url ? (
-                      <BaseButton
+                      <Button
                         type="button"
-                        variant="ghost"
+                        variant="outline"
                         className="history-thumb-btn"
                         onClick={() => setPreviewEntry(entry)}
                         aria-label="Open photo preview"
@@ -59,7 +59,7 @@ export default function HistoryTab() {
                           width={64}
                           height={64}
                         />
-                      </BaseButton>
+                      </Button>
                     ) : (
                       <span className="subtext">No preview</span>
                     )}
@@ -76,27 +76,26 @@ export default function HistoryTab() {
         </table>
       </div>
 
-      <BaseDialog
-        open={Boolean(previewEntry)}
-        onOpenChange={(open) => setPreviewEntry(open ? previewEntry : null)}
-        title="Analysis photo preview"
-        scrollable={false}
-        size="image"
-      >
-        <div className="history-preview-body">
-          {previewEntry?.image_url ? (
-            <AppImage
-              src={previewEntry.image_url}
-              alt="Analyzed outfit preview"
-              className="modal-image history-preview-image"
-              width={1600}
-              height={2000}
-            />
-          ) : (
-            <p className="subtext">Preview unavailable for this photo.</p>
-          )}
-        </div>
-      </BaseDialog>
+      <Dialog open={Boolean(previewEntry)} onOpenChange={(open) => setPreviewEntry(open ? previewEntry : null)}>
+        <DialogContent className="modal-panel modal-panel-image modal-panel-no-scroll">
+          <DialogHeader className="modal-header o-split o-split--start">
+            <DialogTitle className="modal-title">Analysis photo preview</DialogTitle>
+          </DialogHeader>
+          <div className="modal-body history-preview-body">
+            {previewEntry?.image_url ? (
+              <AppImage
+                src={previewEntry.image_url}
+                alt="Analyzed outfit preview"
+                className="modal-image history-preview-image"
+                width={1600}
+                height={2000}
+              />
+            ) : (
+              <p className="subtext">Preview unavailable for this photo.</p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }

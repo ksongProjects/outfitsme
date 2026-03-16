@@ -5,10 +5,21 @@ import { toast } from "sonner";
 
 import { useItemsContext } from "@/components/app/DashboardContext";
 import AppImage from "@/components/app/ui/AppImage";
-import BaseButton from "@/components/app/ui/BaseButton";
-import BaseCheckbox from "@/components/app/ui/BaseCheckbox";
-import BaseDialog from "@/components/app/ui/BaseDialog";
-import BaseSelect from "@/components/app/ui/BaseSelect";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { formatItemLabel, getItemIcon } from "@/lib/formatters";
 
 const normalizeFilterValue = (value: string | undefined) =>
@@ -92,35 +103,53 @@ export default function ItemsTab() {
           <h2>Item catalog</h2>
           <p className="tab-header-subtext">Filter detected items, select the pieces you like, and build new outfits from them.</p>
         </div>
-        <BaseButton variant="ghost" onClick={() => void refreshItems()} disabled={itemsLoading}>
+        <Button variant="outline" onClick={() => void refreshItems()} disabled={itemsLoading}>
           {itemsLoading ? "Loading..." : "Refresh"}
-        </BaseButton>
+        </Button>
       </div>
 
       {itemsMessage ? <p className="subtext">{itemsMessage}</p> : null}
 
       <div className="o-cluster o-cluster--wrap o-cluster--stack-sm">
-        <BaseSelect
-          value={categoryFilter}
-          onValueChange={setCategoryFilter}
-          options={[{ value: "all", label: "All types" }, ...categoryOptions]}
-          placeholder="All types"
-        />
-        <BaseSelect
-          value={colorFilter}
-          onValueChange={setColorFilter}
-          options={[{ value: "all", label: "All colors" }, ...colorOptions]}
-          placeholder="All colors"
-        />
-        <BaseSelect
-          value={styleFilter}
-          onValueChange={setStyleFilter}
-          options={[{ value: "all", label: "All styles" }, ...styleOptions]}
-          placeholder="All styles"
-        />
-        <BaseButton
+        <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+          <SelectTrigger className="w-full sm:w-40">
+            <SelectValue placeholder="All types" />
+          </SelectTrigger>
+          <SelectContent>
+            {[{ value: "all", label: "All types" }, ...categoryOptions].map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={colorFilter} onValueChange={setColorFilter}>
+          <SelectTrigger className="w-full sm:w-40">
+            <SelectValue placeholder="All colors" />
+          </SelectTrigger>
+          <SelectContent>
+            {[{ value: "all", label: "All colors" }, ...colorOptions].map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={styleFilter} onValueChange={setStyleFilter}>
+          <SelectTrigger className="w-full sm:w-40">
+            <SelectValue placeholder="All styles" />
+          </SelectTrigger>
+          <SelectContent>
+            {[{ value: "all", label: "All styles" }, ...styleOptions].map((option) => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Button
           type="button"
-          variant="ghost"
+          variant="outline"
           onClick={() => {
             setCategoryFilter("all");
             setColorFilter("all");
@@ -128,7 +157,7 @@ export default function ItemsTab() {
           }}
         >
           Clear filters
-        </BaseButton>
+        </Button>
       </div>
 
       {activeFilterChips.length > 0 ? (
@@ -159,7 +188,7 @@ export default function ItemsTab() {
               >
                 <td data-label="Select">
                   <span onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>
-                    <BaseCheckbox checked={selectedItemIds.includes(item.id)} onCheckedChange={() => toggleSelectItem(item.id)} />
+                    <Checkbox checked={selectedItemIds.includes(item.id)} onCheckedChange={() => toggleSelectItem(item.id)} />
                   </span>
                 </td>
                 <td data-label="Category">{item.category || "Item"}</td>
@@ -189,95 +218,105 @@ export default function ItemsTab() {
       <div className="o-cluster o-cluster--between o-cluster--wrap o-cluster--stack-sm">
         <p className="subtext">Page {itemsPage}</p>
         <div className="o-cluster o-cluster--wrap o-cluster--stack-sm">
-          <BaseButton type="button" variant="ghost" onClick={prevItemsPage} disabled={itemsLoading || itemsPage <= 1}>
+          <Button type="button" variant="outline" onClick={prevItemsPage} disabled={itemsLoading || itemsPage <= 1}>
             Previous
-          </BaseButton>
-          <BaseButton type="button" variant="ghost" onClick={nextItemsPage} disabled={itemsLoading || !itemsHasMore}>
+          </Button>
+          <Button type="button" variant="outline" onClick={nextItemsPage} disabled={itemsLoading || !itemsHasMore}>
             Next
-          </BaseButton>
+          </Button>
         </div>
       </div>
 
       <div className="o-cluster o-cluster--between o-cluster--wrap o-cluster--stack-sm">
         <p className="subtext">{selectedItems.length} item{selectedItems.length === 1 ? "" : "s"} selected</p>
         <div className="o-cluster o-cluster--wrap o-cluster--stack-sm">
-          <BaseButton type="button" variant="ghost" onClick={resetItemsState} disabled={selectedItems.length === 0}>
+          <Button type="button" variant="outline" onClick={resetItemsState} disabled={selectedItems.length === 0}>
             Unselect all
-          </BaseButton>
-          <BaseButton type="button" variant="primary" disabled={selectedItems.length === 0} onClick={() => setConfirmModalOpen(true)}>
+          </Button>
+          <Button type="button" disabled={selectedItems.length === 0} onClick={() => setConfirmModalOpen(true)}>
             Create new outfit
-          </BaseButton>
+          </Button>
         </div>
       </div>
 
-      <BaseDialog open={confirmModalOpen} onOpenChange={setConfirmModalOpen} title="Confirm new outfit">
-        <div className="o-detail-layout o-detail-layout--stack-sm">
-          <div className="o-stack o-stack--tight">
-            <h4>Preview</h4>
-            <p className="subtext">{selectedItems.length} item{selectedItems.length === 1 ? "" : "s"} selected</p>
-            <div className="o-cluster o-cluster--wrap o-cluster--stack-sm">
-              {selectedItems.map((item) => (
-                <div key={`preview-${item.id}`} className="selection-preview-pill">
-                  <span className="item-icon" aria-hidden="true">{getItemIcon(item)}</span>
-                  <span>{item.name || "Unknown"}</span>
-                </div>
-              ))}
+      <Dialog open={confirmModalOpen} onOpenChange={setConfirmModalOpen}>
+        <DialogContent className="modal-panel">
+          <DialogHeader className="modal-header o-split o-split--start">
+            <DialogTitle className="modal-title">Confirm new outfit</DialogTitle>
+          </DialogHeader>
+          <div className="modal-body o-detail-layout o-detail-layout--stack-sm">
+            <div className="o-stack o-stack--tight">
+              <h4>Preview</h4>
+              <p className="subtext">{selectedItems.length} item{selectedItems.length === 1 ? "" : "s"} selected</p>
+              <div className="o-cluster o-cluster--wrap o-cluster--stack-sm">
+                {selectedItems.map((item) => (
+                  <div key={`preview-${item.id}`} className="selection-preview-pill">
+                    <span className="item-icon" aria-hidden="true">{getItemIcon(item)}</span>
+                    <span>{item.name || "Unknown"}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <div>
+              <h4>Selected items</h4>
+              <ul className="o-list">
+                {selectedItems.map((item) => (
+                  <li key={`selected-${item.id}`} className="analysis-item">
+                    <span className="item-icon" aria-hidden="true">{getItemIcon(item)}</span>
+                    <span>{formatItemLabel(item)}</span>
+                  </li>
+                ))}
+              </ul>
+              <div className="o-cluster o-cluster--wrap o-cluster--stack-sm">
+                <Button type="button" variant="outline" onClick={() => setConfirmModalOpen(false)}>
+                  Cancel
+                </Button>
+                <Button type="button" onClick={handleConfirmSelectedItems} disabled={composeOutfitLoading}>
+                  {composeOutfitLoading ? "Creating..." : "Confirm outfit"}
+                </Button>
+              </div>
             </div>
           </div>
-          <div>
-            <h4>Selected items</h4>
-            <ul className="o-list">
-              {selectedItems.map((item) => (
-                <li key={`selected-${item.id}`} className="analysis-item">
-                  <span className="item-icon" aria-hidden="true">{getItemIcon(item)}</span>
-                  <span>{formatItemLabel(item)}</span>
-                </li>
-              ))}
-            </ul>
-            <div className="o-cluster o-cluster--wrap o-cluster--stack-sm">
-              <BaseButton type="button" variant="ghost" onClick={() => setConfirmModalOpen(false)}>
-                Cancel
-              </BaseButton>
-              <BaseButton type="button" variant="primary" onClick={handleConfirmSelectedItems} disabled={composeOutfitLoading}>
-                {composeOutfitLoading ? "Creating..." : "Confirm outfit"}
-              </BaseButton>
-            </div>
-          </div>
-        </div>
-      </BaseDialog>
+        </DialogContent>
+      </Dialog>
 
-      <BaseDialog
+      <Dialog
         open={Boolean(activeItem)}
         onOpenChange={(open) => {
           if (!open) {
             setActiveItem(null);
           }
         }}
-        title="Item details"
-        size="fit"
       >
-        {activeItem ? (
-          <>
-            {activeItem.image_url ? (
-              <AppImage
-                src={activeItem.image_url}
-                alt={activeItem.name || "Item"}
-                className="modal-image"
-                width={1600}
-                height={2000}
-              />
-            ) : (
-              <p className="subtext">Image generation disabled.</p>
-            )}
-            <ul className="o-list o-list--split">
-              <li><strong>Name:</strong> {activeItem.name || "Unknown"}</li>
-              <li><strong>Category:</strong> {activeItem.category || "Item"}</li>
-              <li><strong>Color:</strong> {activeItem.color || "Unknown"}</li>
-              <li><strong>Style:</strong> {activeItem.style_label || "Unknown"}</li>
-            </ul>
-          </>
-        ) : null}
-      </BaseDialog>
+        <DialogContent className="modal-panel modal-panel-fit">
+          <DialogHeader className="modal-header o-split o-split--start">
+            <DialogTitle className="modal-title">Item details</DialogTitle>
+          </DialogHeader>
+          <div className="modal-body">
+            {activeItem ? (
+              <>
+                {activeItem.image_url ? (
+                  <AppImage
+                    src={activeItem.image_url}
+                    alt={activeItem.name || "Item"}
+                    className="modal-image"
+                    width={1600}
+                    height={2000}
+                  />
+                ) : (
+                  <p className="subtext">Image generation disabled.</p>
+                )}
+                <ul className="o-list o-list--split">
+                  <li><strong>Name:</strong> {activeItem.name || "Unknown"}</li>
+                  <li><strong>Category:</strong> {activeItem.category || "Item"}</li>
+                  <li><strong>Color:</strong> {activeItem.color || "Unknown"}</li>
+                  <li><strong>Style:</strong> {activeItem.style_label || "Unknown"}</li>
+                </ul>
+              </>
+            ) : null}
+          </div>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }

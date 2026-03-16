@@ -2,15 +2,16 @@
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { ArrowRight, LogIn, SearchIcon, ShirtIcon, Wand2 } from "lucide-react";
+import { ArrowRight, LogIn } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 
 import AppFooter from "@/components/app/AppFooter";
 import AppHeader from "@/components/app/AppHeader";
-import BaseButton from "@/components/app/ui/BaseButton";
-import BaseCheckbox from "@/components/app/ui/BaseCheckbox";
+import { Card } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Button } from "@/components/ui/button";
 import { items } from "@/components/custom/items";
 import { signIn } from "@/lib/auth-client";
 
@@ -21,7 +22,9 @@ const Masonry = dynamic(() => import("@/components/custom/Masonry"), {
 export default function LandingAuth() {
   const termsVersion = "2026-03-05";
   const [acceptedTerms, setAcceptedTerms] = useState(false);
-  const [activeAuthFlow, setActiveAuthFlow] = useState<"signin" | "signup" | null>(null);
+  const [activeAuthFlow, setActiveAuthFlow] = useState<
+    "signin" | "signup" | null
+  >(null);
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -32,15 +35,20 @@ export default function LandingAuth() {
     }
 
     const authFlow = (searchParams.get("authFlow") || "").trim().toLowerCase();
-    const errorDescription = (searchParams.get("error_description") || "").trim();
-    let message = errorDescription || "Google sign-in failed. Please try again.";
+    const errorDescription = (
+      searchParams.get("error_description") || ""
+    ).trim();
+    let message =
+      errorDescription || "Google sign-in failed. Please try again.";
 
     if (authError === "signup_disabled") {
-      message = authFlow === "signin"
-        ? "No OutfitsMe account exists for that Google login yet. Accept the terms first if you want to create one."
-        : "Account creation is currently unavailable for that Google login.";
+      message =
+        authFlow === "signin"
+          ? "No OutfitsMe account exists for that Google login yet. Accept the terms first if you want to create one."
+          : "Account creation is currently unavailable for that Google login.";
     } else if (authError === "account_not_linked") {
-      message = "This Google account is not linked to your existing OutfitsMe account.";
+      message =
+        "This Google account is not linked to your existing OutfitsMe account.";
     } else if (authError === "unable_to_link_account") {
       message = "We couldn't connect that Google account to OutfitsMe.";
     }
@@ -61,7 +69,8 @@ export default function LandingAuth() {
         {
           provider: "google",
           callbackURL: "/dashboard",
-          errorCallbackURL: mode === "signin" ? "/?authFlow=signin" : "/?authFlow=signup",
+          errorCallbackURL:
+            mode === "signin" ? "/?authFlow=signin" : "/?authFlow=signup",
           ...(mode === "signup"
             ? {
                 requestSignUp: true,
@@ -71,13 +80,19 @@ export default function LandingAuth() {
         },
         {
           onSuccess: () => {
-            toast.success(mode === "signin" ? "Signed in successfully with Google." : "Account created successfully with Google.");
+            toast.success(
+              mode === "signin"
+                ? "Signed in successfully with Google."
+                : "Account created successfully with Google.",
+            );
           },
           onError: (ctx) => {
-            toast.error(ctx.error?.message || "Google sign-in failed. Please try again.");
+            toast.error(
+              ctx.error?.message || "Google sign-in failed. Please try again.",
+            );
             setActiveAuthFlow(null);
           },
-        }
+        },
       );
     } catch {
       toast.error("Google sign-in failed. Please try again.");
@@ -93,77 +108,106 @@ export default function LandingAuth() {
         <AppHeader />
 
         <section className="landing-columns">
-          <div className="o-stack">
-            <div className="hero-copy">
-              <span className="hero-pill">A simpler way to plan outfits</span>
-              <h3>Save outfit ideas, spot what you are wearing, and try new looks faster.</h3>
-              <p className="hero-copy-text">
-                Upload a photo, pull out the pieces, save the look, and come back anytime when you want to remix it or preview something new.
-              </p>
-            </div>
+          <div className="o-stack landing-copy-column">
+            <Card
+              as="section"
+              className="c-surface c-surface--stack landing-hero-card"
+            >
+              <span className="section-kicker">Personal styling, simplified</span>
+              <div className="o-stack o-stack--tight o-stack--start">
+                <h1 className="landing-hero-title">
+                  Your personal style, made simpler.
+                </h1>
+                <p className="hero-copy-text landing-hero-summary">
+                  Find outfit inspiration, create looks you love, and enjoy 14
+                  days free.
+                </p>
+                <p className="subtext landing-hero-detail">
+                  Upload a look you like, break it into pieces, and turn it into
+                  outfits you can refine and preview in minutes.
+                </p>
+              </div>
 
-            <div className="o-grid o-grid--thirds">
-              <article className="c-surface o-stack o-stack--tight">
-                <div className="o-media o-media--tight">
-                  <SearchIcon size={18} className="feature-icon" />
-                  <h3>Analyze</h3>
-                </div>
-                <p>See the clothes in a photo and get a quick read on the overall look.</p>
-              </article>
-              <article className="c-surface o-stack o-stack--tight">
-                <div className="o-media o-media--tight">
-                  <Wand2 size={18} className="feature-icon" />
-                  <h3>Preview</h3>
-                </div>
-                <p>Try fresh outfit ideas with a preview that feels personal to you.</p>
-              </article>
-              <article className="c-surface o-stack o-stack--tight">
-                <div className="o-media o-media--tight">
-                  <ShirtIcon size={18} className="feature-icon" />
-                  <h3>Organize</h3>
-                </div>
-                <p>Keep your favorite looks and pieces in one easy place.</p>
-              </article>
-            </div>
+              <ol className="landing-process-list" aria-label="How OutfitsMe works">
+                <li className="landing-process-step">
+                  <span className="landing-process-number">1</span>
+                  <div className="o-stack o-stack--tight">
+                    <strong>Get inspired</strong>
+                    <span>
+                      Start from a photo, a vibe, or pieces already in your closet.
+                    </span>
+                  </div>
+                </li>
+                <li className="landing-process-step">
+                  <span className="landing-process-number">2</span>
+                  <div className="o-stack o-stack--tight">
+                    <strong>Create your look</strong>
+                    <span>
+                      Mix and match items to build outfits that feel more like you.
+                    </span>
+                  </div>
+                </li>
+                <li className="landing-process-step">
+                  <span className="landing-process-number">3</span>
+                  <div className="o-stack o-stack--tight">
+                    <strong>Preview before you wear</strong>
+                    <span>
+                      See how new combinations come together before making a call.
+                    </span>
+                  </div>
+                </li>
+              </ol>
+            </Card>
 
-            <section className="c-surface c-surface--stack">
+            <Card
+              as="section"
+              className="c-surface c-surface--stack landing-auth-card"
+            >
               <div className="auth-header">
                 <span className="section-kicker">Get started</span>
               </div>
 
               <label className="remember-me-row" htmlFor="accept-terms">
-                <BaseCheckbox
+                <Checkbox
                   id="accept-terms"
                   checked={acceptedTerms}
-                  onCheckedChange={(checked) => setAcceptedTerms(Boolean(checked))}
+                  onCheckedChange={(checked) =>
+                    setAcceptedTerms(Boolean(checked))
+                  }
                 />
                 <span>
-                  I agree to the <Link href="/terms" className="underline">Terms of Service</Link> and understand this trial tracks usage while I explore OutfitsMe.
+                  I agree to the{" "}
+                  <Link href="/terms" className="underline">
+                    Terms of Service
+                  </Link>{" "}
+                  and understand this trial tracks usage while I explore
+                  OutfitsMe.
                 </span>
               </label>
               <div className="o-cluster o-cluster--wrap o-cluster--end o-cluster--stack-sm">
-                <BaseButton
+                <Button
                   type="button"
-                  variant="ghost"
+                  variant="outline"
                   disabled={activeAuthFlow !== null}
-                  className="auth-secondary-btn"
                   onClick={() => void handleGoogleAuth("signin")}
                 >
-                  {activeAuthFlow === "signin" ? "Signing in..." : "Continue with Google"}
+                  {activeAuthFlow === "signin"
+                    ? "Signing in..."
+                    : "Continue with Google"}
                   <LogIn size={16} />
-                </BaseButton>
-                <BaseButton
+                </Button>
+                <Button
                   type="button"
-                  variant="primary"
                   disabled={!acceptedTerms || activeAuthFlow !== null}
-                  className="auth-submit-btn"
                   onClick={() => void handleGoogleAuth("signup")}
                 >
-                  {activeAuthFlow === "signup" ? "Creating account..." : "Create account"}
+                  {activeAuthFlow === "signup"
+                    ? "Creating account..."
+                    : "Create account"}
                   <ArrowRight size={16} />
-                </BaseButton>
+                </Button>
               </div>
-            </section>
+            </Card>
           </div>
 
           <div className="o-stack" aria-hidden="true">

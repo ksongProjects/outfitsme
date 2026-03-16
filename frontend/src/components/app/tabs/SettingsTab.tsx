@@ -5,11 +5,18 @@ import Link from "next/link";
 
 import { useSettingsContext } from "@/components/app/DashboardContext";
 import AppImage from "@/components/app/ui/AppImage";
-import BaseButton from "@/components/app/ui/BaseButton";
-import BaseCheckbox from "@/components/app/ui/BaseCheckbox";
-import BaseInput from "@/components/app/ui/BaseInput";
-import BaseSelect from "@/components/app/ui/BaseSelect";
 import ImageUploadField from "@/components/app/ui/ImageUploadField";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 
 const SETTINGS_SECTIONS = [
   { id: "profile", label: "Profile" },
@@ -63,19 +70,19 @@ export default function SettingsTab() {
 
       <aside className="settings-menu">
         {SETTINGS_SECTIONS.map((section) => (
-          <BaseButton
+          <Button
             key={section.id}
-            variant="menu"
-            className={activeSection === section.id ? "active" : ""}
+            variant={activeSection === section.id ? "secondary" : "outline"}
+            className="justify-start"
             onClick={() => scrollToSection(section.id)}
           >
             {section.label}
-          </BaseButton>
+          </Button>
         ))}
       </aside>
 
       <div className="o-stack o-stack--section">
-        <article id="settings-profile" className="c-surface c-surface--stack settings-section-card">
+        <Card as="article" id="settings-profile" className="c-surface c-surface--stack settings-section-card">
           <h2>Profile</h2>
           {!profilePhotoUrl ? <label>Reference photo</label> : null}
           {profilePhotoUrl ? (
@@ -99,25 +106,24 @@ export default function SettingsTab() {
             disabled={profilePhotoUploading}
           />
           <div className="o-cluster o-cluster--wrap o-cluster--stack-sm">
-            <BaseButton
-              variant="ghost"
+            <Button
+              variant="outline"
               onClick={() => uploadProfilePhoto(profilePhotoFile)}
               disabled={!profilePhotoFile || profilePhotoUploading}
             >
               {profilePhotoUploading ? "Uploading..." : "Upload reference photo"}
-            </BaseButton>
+            </Button>
           </div>
           <label htmlFor="settings-name">Display name</label>
           <p className="subtext">Access level: <strong>{userRole}</strong></p>
-          <BaseInput
+          <Input
             id="settings-name"
             value={profileName}
             onChange={(event) => setProfileName(event.target.value)}
             placeholder="Your name"
           />
           <label htmlFor="settings-gender">Gender</label>
-          <BaseSelect
-            id="settings-gender"
+          <Select
             value={settingsForm.profile_gender || "unspecified"}
             onValueChange={(value) =>
               setSettingsForm((prev) => ({
@@ -125,16 +131,19 @@ export default function SettingsTab() {
                 profile_gender: value === "unspecified" ? "" : value,
               }))
             }
-            options={[
-              { value: "unspecified", label: "Prefer not to say" },
-              { value: "female", label: "Female" },
-              { value: "male", label: "Male" },
-              { value: "non-binary", label: "Non-binary" },
-            ]}
-            placeholder="Select gender"
-          />
+          >
+            <SelectTrigger id="settings-gender" className="w-full">
+              <SelectValue placeholder="Select gender" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="unspecified">Prefer not to say</SelectItem>
+              <SelectItem value="female">Female</SelectItem>
+              <SelectItem value="male">Male</SelectItem>
+              <SelectItem value="non-binary">Non-binary</SelectItem>
+            </SelectContent>
+          </Select>
           <label htmlFor="settings-age">Age</label>
-          <BaseInput
+          <Input
             id="settings-age"
             type="number"
             min={1}
@@ -144,11 +153,11 @@ export default function SettingsTab() {
             placeholder="Age"
           />
           <div className="o-cluster o-cluster--wrap o-cluster--stack-sm">
-            <BaseButton variant="primary" onClick={saveProfile}>Save profile</BaseButton>
+            <Button onClick={saveProfile}>Save profile</Button>
           </div>
-        </article>
+        </Card>
 
-        <article id="settings-features" className="c-surface c-surface--stack settings-section-card">
+        <Card as="article" id="settings-features" className="c-surface c-surface--stack settings-section-card">
           <h2>Features</h2>
           <p className="subtext">Turn advanced capabilities on only when they fit the experience you want to offer users.</p>
           <div className="settings-feature-row o-split o-split--start o-split--stack-sm">
@@ -156,7 +165,7 @@ export default function SettingsTab() {
               <p><strong>Outfit image generation</strong></p>
               <p className="subtext">Generate item thumbnails and composed outfit visuals using your profile reference photo.</p>
             </div>
-            <BaseCheckbox
+            <Checkbox
               checked={Boolean(settingsForm.enable_outfit_image_generation)}
               onCheckedChange={(value) =>
                 setSettingsForm((prev) => ({ ...prev, enable_outfit_image_generation: Boolean(value) }))
@@ -168,7 +177,7 @@ export default function SettingsTab() {
               <p><strong>Accessory analysis</strong></p>
               <p className="subtext">Include bags, jewelry, and other accessories during photo analysis.</p>
             </div>
-            <BaseCheckbox
+            <Checkbox
               checked={Boolean(settingsForm.enable_accessory_analysis)}
               onCheckedChange={(value) =>
                 setSettingsForm((prev) => ({ ...prev, enable_accessory_analysis: Boolean(value) }))
@@ -180,18 +189,18 @@ export default function SettingsTab() {
               <p><strong>Online store search (Coming soon)</strong></p>
               <p className="subtext">Retail search is temporarily disabled while we finish the storefront integration.</p>
             </div>
-            <BaseCheckbox
+            <Checkbox
               checked={false}
               disabled
               aria-label="Online store search coming soon"
             />
           </div>
           <div className="o-cluster o-cluster--wrap o-cluster--stack-sm">
-            <BaseButton variant="primary" onClick={saveFeatureSettings}>Save feature settings</BaseButton>
+            <Button onClick={saveFeatureSettings}>Save feature settings</Button>
           </div>
-        </article>
+        </Card>
 
-        <article id="settings-costs" className="c-surface c-surface--stack settings-section-card">
+        <Card as="article" id="settings-costs" className="c-surface c-surface--stack settings-section-card">
           <h2>Cost usage</h2>
           {costSummaryLoading ? (
             <p className="subtext">Loading cost usage...</p>
@@ -220,9 +229,9 @@ export default function SettingsTab() {
             <p className="subtext">Cost usage unavailable.</p>
           )}
           <div className="o-cluster o-cluster--wrap o-cluster--stack-sm">
-            <BaseButton variant="ghost" onClick={() => void refreshCosts()}>Refresh costs</BaseButton>
+            <Button variant="outline" onClick={() => void refreshCosts()}>Refresh costs</Button>
           </div>
-        </article>
+        </Card>
 
       </div>
     </section>

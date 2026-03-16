@@ -2,7 +2,8 @@
 
 import { BarChart3, Clock3, Images, ShirtIcon, SparklesIcon } from "lucide-react";
 
-import BaseButton from "@/components/app/ui/BaseButton";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import type { AnalysisLimits, HistoryEntry, StatsPayload } from "@/lib/types";
 
 type DashboardTabProps = {
@@ -44,31 +45,31 @@ export default function DashboardTab({
             Track your wardrobe growth, AI usage, and the patterns emerging from your outfit history.
           </p>
         </div>
-        <BaseButton variant="ghost" onClick={refreshStats} disabled={loading}>
+        <Button variant="outline" onClick={refreshStats} disabled={loading}>
           {loading ? "Refreshing..." : "Refresh"}
-        </BaseButton>
+        </Button>
       </div>
 
       <div className="o-grid o-grid--stats">
-        <article className="c-surface c-surface--stack c-surface--accent">
+        <Card as="article" className="c-surface c-surface--stack c-surface--accent">
           <SparklesIcon size={18} className="stats-icon"/>
           <p className="stats-label">Completed jobs</p>
           <p className="stats-value">{stats.analyses_count}</p>
-        </article>
-        <article className="c-surface c-surface--stack c-surface--accent">
+        </Card>
+        <Card as="article" className="c-surface c-surface--stack c-surface--accent">
           <Images size={18} className="stats-icon"/>
           <p className="stats-label">Generated outfit images</p>
           <p className="stats-value">{stats.generated_outfit_images_count ?? stats.outfits_count}</p>
-        </article>
-        <article className="c-surface c-surface--stack c-surface--accent">
+        </Card>
+        <Card as="article" className="c-surface c-surface--stack c-surface--accent">
           <ShirtIcon size={18} className="stats-icon"/>
           <p className="stats-label">Items cataloged</p>
           <p className="stats-value">{stats.items_count}</p>
-        </article>
+        </Card>
       </div>
 
       <div className="o-grid o-grid--cards">
-        <article className="c-surface c-surface--stack">
+        <Card as="article" className="c-surface c-surface--stack">
           <div className="o-split o-split--start o-split--stack-sm">
             <h3>Top clothing types</h3>
             <BarChart3 size={18} />
@@ -85,9 +86,9 @@ export default function DashboardTab({
               ))}
             </ul>
           )}
-        </article>
+        </Card>
 
-        <article className="c-surface c-surface--stack">
+        <Card as="article" className="c-surface c-surface--stack">
           <div className="o-split o-split--start o-split--stack-sm">
             <h3>Simple totals</h3>
             <ShirtIcon size={18} />
@@ -98,9 +99,9 @@ export default function DashboardTab({
             <p>Generated outfit images this week: <strong>{stats.weekly_activity?.outfits_count ?? 0}</strong></p>
             <p>Items added this week: <strong>{stats.weekly_activity?.items_count ?? 0}</strong></p>
           </div>
-        </article>
+        </Card>
 
-        <article className="c-surface c-surface--stack">
+        <Card as="article" className="c-surface c-surface--stack">
           <div className="o-split o-split--start o-split--stack-sm">
             <h3>Usage and recent activity</h3>
             <Clock3 size={18} />
@@ -132,7 +133,7 @@ export default function DashboardTab({
               ))}
             </ul>
           )}
-        </article>
+        </Card>
       </div>
     </section>
   );

@@ -5,10 +5,14 @@ import { cn } from "@/lib/utils"
 function Card({
   className,
   size = "default",
+  as: Component = "div",
   ...props
-}: React.ComponentProps<"div"> & { size?: "default" | "sm" }) {
+}: React.HTMLAttributes<HTMLElement> & {
+  size?: "default" | "sm"
+  as?: keyof React.JSX.IntrinsicElements
+}) {
   return (
-    <div
+    <Component
       data-slot="card"
       data-size={size}
       className={cn(

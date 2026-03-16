@@ -14,6 +14,8 @@ import OutfitsTab from "@/components/app/tabs/OutfitsTab";
 import SettingsTab from "@/components/app/tabs/SettingsTab";
 import { DashboardProviders } from "@/components/app/DashboardContext";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -108,7 +110,6 @@ export default function HomePage() {
 
   const userFullName = (auth.session?.user?.name || "").trim();
   const userEmail = auth.session?.user?.email || "";
-  const userLabel = userFullName || userEmail || "your account";
 
   if (auth.isLoading || (auth.isSessionRefetching && !auth.sessionError)) {
     return (
@@ -145,46 +146,44 @@ export default function HomePage() {
           className="dashboard-header"
           onBrandClick={() => handleTabChange("dashboard")}
           actions={(
-            <DropdownMenu>
-              <DropdownMenuTrigger className="hero-badge-button" aria-label="Account menu">
-                <Avatar
-                  size="lg"
-                  className="hero-badge"
-                  aria-label={settingsState.profilePhotoUrl ? "Profile photo uploaded" : "Default profile badge"}
-                >
-                  {settingsState.profilePhotoUrl ? (
-                    <AvatarImage src={settingsState.profilePhotoUrl} alt="Profile badge" className="hero-badge-image" />
-                  ) : null}
-                  <AvatarFallback className="hero-badge-fallback">
-                    <User size={22} />
-                  </AvatarFallback>
-                </Avatar>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="avatar-menu-content">
-                <DropdownMenuLabel className="avatar-menu-label">
-                  <p className="avatar-menu-name">{userFullName || "OutfitsMe account"}</p>
-                  {userEmail ? <p className="avatar-menu-email">{userEmail}</p> : null}
-                </DropdownMenuLabel>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem className="avatar-menu-item" onClick={() => handleTabChange("settings")}>
-                  <Settings2 size={16} />
-                  <span>Settings</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem className="avatar-menu-item" variant="danger" onClick={handleSignOut}>
-                  <LogOut size={16} />
-                  <span>Sign out</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+            <div className="dashboard-user-actions">
+              <DropdownMenu>
+                <DropdownMenuTrigger className="hero-badge-button" aria-label="Account menu">
+                  <Avatar
+                    size="lg"
+                    className="hero-badge"
+                    aria-label={settingsState.profilePhotoUrl ? "Profile photo uploaded" : "Default profile badge"}
+                  >
+                    {settingsState.profilePhotoUrl ? (
+                      <AvatarImage src={settingsState.profilePhotoUrl} alt="Profile badge" className="hero-badge-image" />
+                    ) : null}
+                    <AvatarFallback className="hero-badge-fallback">
+                      <User size={22} />
+                    </AvatarFallback>
+                  </Avatar>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="avatar-menu-content">
+                  <DropdownMenuLabel className="avatar-menu-label">
+                    <p className="avatar-menu-name">{userFullName || "OutfitsMe account"}</p>
+                    {userEmail ? <p className="avatar-menu-email">{userEmail}</p> : null}
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem className="avatar-menu-item" onClick={() => handleTabChange("settings")}>
+                    <Settings2 size={16} />
+                    <span>Settings</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem className="avatar-menu-item" variant="danger" onClick={handleSignOut}>
+                    <LogOut size={16} />
+                    <span>Sign out</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </div>
           )}
         >
           <div className="dashboard-header-copy">
-            <h3>{userFullName ? `Welcome back, ${userFullName}` : "Welcome back"}</h3>
-            <p className="subtext">
-              {userFullName
-                ? "Your style workspace is synced and ready for the next outfit."
-                : `Signed in as ${userLabel}`}
-            </p>
+            <h2>{userFullName ? `Welcome back, ${userFullName}` : "Welcome back"}</h2>
+            <p className="subtext">Your style workspace is synced and ready for the next outfit.</p>
           </div>
         </AppHeader>
 
@@ -194,21 +193,22 @@ export default function HomePage() {
               const Icon = tab.icon;
               const isActive = tab.id === dashboardTab;
               return (
-                <button
+                <Button
                   key={tab.id}
                   type="button"
-                  className={`tab-btn ${isActive ? "active" : ""}`}
+                  variant={isActive ? "secondary" : "outline"}
+                  className="h-12 w-full justify-center gap-2 rounded-full px-4 text-[0.97rem] whitespace-normal max-[720px]:px-3"
                   aria-label={tab.label}
                   onClick={() => handleTabChange(tab.id)}
                 >
                   <Icon size={16} />
-                  <span className="tab-btn-label">{tab.label}</span>
-                </button>
+                  <span className="max-[720px]:hidden">{tab.label}</span>
+                </Button>
               );
             })}
           </nav>
 
-          <section className="c-surface dashboard-card-shell">
+          <Card as="section" className="c-surface dashboard-card-shell">
             {dashboardTab === "dashboard" ? (
               <DashboardTab
                 stats={statsState.stats}
@@ -230,7 +230,7 @@ export default function HomePage() {
             {dashboardTab === "wardrobe" ? <OutfitsTab /> : null}
             {dashboardTab === "items" ? <ItemsTab /> : null}
             {dashboardTab === "settings" ? <SettingsTab /> : null}
-          </section>
+          </Card>
         </section>
 
         <AppFooter />
@@ -238,4 +238,3 @@ export default function HomePage() {
     </DashboardProviders>
   );
 }
-

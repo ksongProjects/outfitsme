@@ -6,10 +6,21 @@ import { toast } from "sonner";
 
 import { useSettingsContext, useWardrobeContext } from "@/components/app/DashboardContext";
 import AppImage from "@/components/app/ui/AppImage";
-import BaseButton from "@/components/app/ui/BaseButton";
-import BaseDialog from "@/components/app/ui/BaseDialog";
-import BaseInput from "@/components/app/ui/BaseInput";
-import BaseSelect from "@/components/app/ui/BaseSelect";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { formatItemLabel, getItemIcon } from "@/lib/formatters";
 
 const OUTFIT_SOURCE_LABELS: Record<string, string> = {
@@ -107,28 +118,28 @@ export default function OutfitsTab() {
           <h2>My outfits</h2>
           <p className="tab-header-subtext">Browse saved looks, rename strong combinations, and generate try-on previews.</p>
         </div>
-        <BaseButton variant="ghost" onClick={() => void refreshWardrobe()} disabled={wardrobeLoading}>
+        <Button variant="outline" onClick={() => void refreshWardrobe()} disabled={wardrobeLoading}>
           {wardrobeLoading ? "Loading..." : "Refresh"}
-        </BaseButton>
+        </Button>
       </div>
 
       {wardrobeMessage ? <p className="subtext">{wardrobeMessage}</p> : null}
 
       <div className="o-cluster o-cluster--wrap o-cluster--stack-sm">
-        <BaseSelect
-          value={sourceFilter}
-          onValueChange={(nextValue) => setSourceFilter(nextValue)}
-          options={[
-            { value: "all", label: "All outfit types" },
-            { value: "photo_analysis", label: "Photo analysis" },
-            { value: "custom_outfit", label: "Custom outfit" },
-            { value: "outfitsme_generated", label: "OutfitsMe generated" },
-          ]}
-          placeholder="All outfit types"
-        />
-        <BaseButton type="button" variant="ghost" onClick={() => setSourceFilter("all")}>
+        <Select value={sourceFilter} onValueChange={(nextValue) => setSourceFilter(nextValue)}>
+          <SelectTrigger className="w-full sm:w-48">
+            <SelectValue placeholder="All outfit types" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All outfit types</SelectItem>
+            <SelectItem value="photo_analysis">Photo analysis</SelectItem>
+            <SelectItem value="custom_outfit">Custom outfit</SelectItem>
+            <SelectItem value="outfitsme_generated">OutfitsMe generated</SelectItem>
+          </SelectContent>
+        </Select>
+        <Button type="button" variant="outline" onClick={() => setSourceFilter("all")}>
           Clear filters
-        </BaseButton>
+        </Button>
       </div>
 
       {wardrobe.length > 0 && filteredWardrobe.length === 0 ? (
@@ -166,10 +177,11 @@ export default function OutfitsTab() {
                 <td data-label="Created">{entry.created_at ? new Date(entry.created_at).toLocaleString() : "-"}</td>
                 <td data-label="Type">{OUTFIT_SOURCE_LABELS[entry.source_type || "photo_analysis"] || "Photo analysis"}</td>
                 <td data-label="Action">
-                  <BaseButton
+                  <Button
                     type="button"
-                    variant="icon"
-                    className="danger-icon-btn"
+                    variant="ghost"
+                    size="icon-sm"
+                    className="text-destructive hover:text-destructive"
                     onClick={(event) => {
                       event.stopPropagation();
                       setPendingDelete(entry);
@@ -179,7 +191,7 @@ export default function OutfitsTab() {
                     title="Delete outfit"
                   >
                     {deletingOutfitId === entry.outfit_id ? "..." : <Trash2 size={16} />}
-                  </BaseButton>
+                  </Button>
                 </td>
               </tr>
             ))}
@@ -190,16 +202,16 @@ export default function OutfitsTab() {
       <div className="o-cluster o-cluster--between o-cluster--wrap o-cluster--stack-sm">
         <p className="subtext">Page {wardrobePage}</p>
         <div className="o-cluster o-cluster--wrap o-cluster--stack-sm">
-          <BaseButton type="button" variant="ghost" onClick={prevWardrobePage} disabled={wardrobeLoading || wardrobePage <= 1}>
+          <Button type="button" variant="outline" onClick={prevWardrobePage} disabled={wardrobeLoading || wardrobePage <= 1}>
             Previous
-          </BaseButton>
-          <BaseButton type="button" variant="ghost" onClick={nextWardrobePage} disabled={wardrobeLoading || !wardrobeHasMore}>
+          </Button>
+          <Button type="button" variant="outline" onClick={nextWardrobePage} disabled={wardrobeLoading || !wardrobeHasMore}>
             Next
-          </BaseButton>
+          </Button>
         </div>
       </div>
 
-      <BaseDialog
+      <Dialog
         open={Boolean(outfitDetails || outfitDetailsLoading)}
         onOpenChange={(open) => {
           if (!open) {
@@ -207,204 +219,215 @@ export default function OutfitsTab() {
             closeOutfitDetails();
           }
         }}
-        title="Outfit details"
-        scrollable={false}
-        headerActions={
-          !outfitDetailsLoading && outfitDetails?.selected_outfit ? (
-            <>
-              <BaseButton
-                type="button"
-                variant="ghost"
-                onClick={handleGenerateOutfitsMe}
-                disabled={outfitMeLoading || !imageGenerationEnabled}
-                title={
-                  !imageGenerationEnabled
-                    ? "Enable outfit image generation in Settings > Features"
-                    : profilePhotoUrl
-                      ? "Generate OutfitsMe preview"
-                      : "Profile photo required for OutfitsMe"
-                }
-              >
-                {outfitMeLoading ? "OutfitsMe..." : "OutfitsMe"}
-              </BaseButton>
-              {!isEditingName ? (
-                <BaseButton
-                  type="button"
-                  variant="ghost"
-                  onClick={() => {
-                    setEditedName(outfitDetails?.selected_outfit?.style || "");
-                    setIsEditingName(true);
-                  }}
-                >
-                  Edit
-                </BaseButton>
-              ) : null}
-            </>
-          ) : null
-        }
       >
-        {outfitDetailsLoading ? (
-          <p className="subtext">Loading outfit details...</p>
-        ) : (
-          <div className="o-detail-layout o-detail-layout--stack-sm">
-            {outfitDetails?.source_outfit_image_url ? (
-              <AppImage
-                src={outfitDetails.source_outfit_image_url}
-                alt="Source outfit"
-                className="modal-image outfit-detail-image"
-                width={1600}
-                height={2000}
-              />
+        <DialogContent className="modal-panel modal-panel-no-scroll">
+          <DialogHeader className="modal-header o-split o-split--start">
+            <DialogTitle className="modal-title">Outfit details</DialogTitle>
+            {!outfitDetailsLoading && outfitDetails?.selected_outfit ? (
+              <div className="modal-header-actions o-cluster o-cluster--wrap o-cluster--stack-sm">
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleGenerateOutfitsMe}
+                  disabled={outfitMeLoading || !imageGenerationEnabled}
+                  title={
+                    !imageGenerationEnabled
+                      ? "Enable outfit image generation in Settings > Features"
+                      : profilePhotoUrl
+                        ? "Generate OutfitsMe preview"
+                        : "Profile photo required for OutfitsMe"
+                  }
+                >
+                  {outfitMeLoading ? "OutfitsMe..." : "OutfitsMe"}
+                </Button>
+                {!isEditingName ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={() => {
+                      setEditedName(outfitDetails?.selected_outfit?.style || "");
+                      setIsEditingName(true);
+                    }}
+                  >
+                    Edit
+                  </Button>
+                ) : null}
+              </div>
             ) : null}
-            {outfitDetails?.image_url ? (
-              <AppImage
-                src={outfitDetails.image_url}
-                alt="Original outfit"
-                className="modal-image outfit-detail-image"
-                width={1600}
-                height={2000}
-              />
+          </DialogHeader>
+          <div className="modal-body">
+            {outfitDetailsLoading ? (
+              <p className="subtext">Loading outfit details...</p>
             ) : (
-              <p className="subtext">Original image is unavailable for this outfit.</p>
-            )}
-            {outfitDetails?.outfitsme_image_url ? (
-              <AppImage
-                src={outfitDetails.outfitsme_image_url}
-                alt="OutfitsMe preview"
-                className="modal-image outfit-detail-image"
-                width={1600}
-                height={2000}
-              />
-            ) : null}
-            <div>
-              {outfitDetails?.selected_outfit ? (
-                <div className="outfit-group">
-                  {isEditingName ? (
-                    <>
-                      <label htmlFor="outfit-name-input"><strong>Name</strong></label>
-                      <BaseInput
-                        id="outfit-name-input"
-                        value={editedName}
-                        onChange={(event) => setEditedName(event.target.value)}
-                        placeholder="Outfit name"
-                        maxLength={80}
-                      />
-                      <div className="o-cluster o-cluster--wrap o-cluster--stack-sm">
-                        <BaseButton
-                          type="button"
-                          variant="ghost"
-                          onClick={() => {
-                            setEditedName(outfitDetails.selected_outfit?.style || "");
-                            setIsEditingName(false);
-                          }}
-                          disabled={updatingOutfitId === outfitDetails.selected_outfit.outfit_id}
-                        >
-                          Cancel
-                        </BaseButton>
-                        <BaseButton
-                          type="button"
-                          variant="primary"
-                          onClick={handleSaveOutfitName}
-                          disabled={!editedName.trim() || updatingOutfitId === outfitDetails.selected_outfit.outfit_id}
-                        >
-                          {updatingOutfitId === outfitDetails.selected_outfit.outfit_id ? "Saving..." : "Save"}
-                        </BaseButton>
-                      </div>
-                    </>
+              <div className="o-detail-layout o-detail-layout--stack-sm">
+                {outfitDetails?.source_outfit_image_url ? (
+                  <AppImage
+                    src={outfitDetails.source_outfit_image_url}
+                    alt="Source outfit"
+                    className="modal-image outfit-detail-image"
+                    width={1600}
+                    height={2000}
+                  />
+                ) : null}
+                {outfitDetails?.image_url ? (
+                  <AppImage
+                    src={outfitDetails.image_url}
+                    alt="Original outfit"
+                    className="modal-image outfit-detail-image"
+                    width={1600}
+                    height={2000}
+                  />
+                ) : (
+                  <p className="subtext">Original image is unavailable for this outfit.</p>
+                )}
+                {outfitDetails?.outfitsme_image_url ? (
+                  <AppImage
+                    src={outfitDetails.outfitsme_image_url}
+                    alt="OutfitsMe preview"
+                    className="modal-image outfit-detail-image"
+                    width={1600}
+                    height={2000}
+                  />
+                ) : null}
+                <div>
+                  {outfitDetails?.selected_outfit ? (
+                    <div className="outfit-group">
+                      {isEditingName ? (
+                        <>
+                          <label htmlFor="outfit-name-input"><strong>Name</strong></label>
+                          <Input
+                            id="outfit-name-input"
+                            value={editedName}
+                            onChange={(event) => setEditedName(event.target.value)}
+                            placeholder="Outfit name"
+                            maxLength={80}
+                          />
+                          <div className="o-cluster o-cluster--wrap o-cluster--stack-sm">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              onClick={() => {
+                                setEditedName(outfitDetails.selected_outfit?.style || "");
+                                setIsEditingName(false);
+                              }}
+                              disabled={updatingOutfitId === outfitDetails.selected_outfit.outfit_id}
+                            >
+                              Cancel
+                            </Button>
+                            <Button
+                              type="button"
+                              onClick={handleSaveOutfitName}
+                              disabled={!editedName.trim() || updatingOutfitId === outfitDetails.selected_outfit.outfit_id}
+                            >
+                              {updatingOutfitId === outfitDetails.selected_outfit.outfit_id ? "Saving..." : "Save"}
+                            </Button>
+                          </div>
+                        </>
+                      ) : (
+                        <p><strong>Name:</strong> {outfitDetails.selected_outfit.style || "Unlabeled"}</p>
+                      )}
+                      <p>
+                        <strong>Type:</strong> {OUTFIT_SOURCE_LABELS[outfitDetails.selected_outfit.source_type || "photo_analysis"] || "Photo analysis"}
+                      </p>
+                      {(outfitDetails.selected_outfit.items || []).length ? (
+                        <ul className="o-list">
+                          {outfitDetails.selected_outfit.items?.map((item, index) => (
+                            <li key={`detail-item-${index}`} className="analysis-item">
+                              <span className="o-media o-media--stack-sm">
+                                {item.image_url ? (
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    className="history-thumb-btn"
+                                    onClick={(event) => {
+                                      event.stopPropagation();
+                                      setItemPreview({
+                                        image_url: item.image_url || "",
+                                        name: item.name || "Outfit item",
+                                      });
+                                    }}
+                                    aria-label="Open item image preview"
+                                    title="Open item image preview"
+                                  >
+                                    <AppImage
+                                      src={item.image_url}
+                                      alt={item.name || "Outfit item"}
+                                      className="item-thumb"
+                                      width={48}
+                                      height={48}
+                                    />
+                                  </Button>
+                                ) : null}
+                                <span className="item-icon" aria-hidden="true">{getItemIcon(item)}</span>
+                                <span>{formatItemLabel(item)}</span>
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      ) : (
+                        <p className="subtext">No items were stored for this outfit.</p>
+                      )}
+                    </div>
                   ) : (
-                    <p><strong>Name:</strong> {outfitDetails.selected_outfit.style || "Unlabeled"}</p>
-                  )}
-                  <p>
-                    <strong>Type:</strong> {OUTFIT_SOURCE_LABELS[outfitDetails.selected_outfit.source_type || "photo_analysis"] || "Photo analysis"}
-                  </p>
-                  {(outfitDetails.selected_outfit.items || []).length ? (
-                    <ul className="o-list">
-                      {outfitDetails.selected_outfit.items?.map((item, index) => (
-                        <li key={`detail-item-${index}`} className="analysis-item">
-                          <span className="o-media o-media--stack-sm">
-                            {item.image_url ? (
-                              <BaseButton
-                                type="button"
-                                variant="ghost"
-                                className="history-thumb-btn"
-                                onClick={(event) => {
-                                  event.stopPropagation();
-                                  setItemPreview({
-                                    image_url: item.image_url || "",
-                                    name: item.name || "Outfit item",
-                                  });
-                                }}
-                                aria-label="Open item image preview"
-                                title="Open item image preview"
-                              >
-                                <AppImage
-                                  src={item.image_url}
-                                  alt={item.name || "Outfit item"}
-                                  className="item-thumb"
-                                  width={48}
-                                  height={48}
-                                />
-                              </BaseButton>
-                            ) : null}
-                            <span className="item-icon" aria-hidden="true">{getItemIcon(item)}</span>
-                            <span>{formatItemLabel(item)}</span>
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="subtext">No items were stored for this outfit.</p>
+                    <p className="subtext">The selected outfit could not be loaded for this photo.</p>
                   )}
                 </div>
-              ) : (
-                <p className="subtext">The selected outfit could not be loaded for this photo.</p>
-              )}
-            </div>
+              </div>
+            )}
           </div>
-        )}
-      </BaseDialog>
+        </DialogContent>
+      </Dialog>
 
-      <BaseDialog
+      <Dialog
         open={Boolean(pendingDelete)}
         onOpenChange={(open) => {
           if (!open) {
             setPendingDelete(null);
           }
         }}
-        title="Delete outfit"
-        size="sm"
       >
-        <p>Remove this outfit from your wardrobe?</p>
-        <p className="subtext">Style: <strong>{pendingDelete?.style_label || "Unlabeled"}</strong></p>
-        <div className="o-cluster o-cluster--wrap o-cluster--stack-sm">
-          <BaseButton type="button" variant="ghost" onClick={() => setPendingDelete(null)} disabled={deletingOutfitId === pendingDelete?.outfit_id}>
-            Cancel
-          </BaseButton>
-          <BaseButton type="button" variant="ghost" className="danger-btn" onClick={handleDelete} disabled={deletingOutfitId === pendingDelete?.outfit_id}>
-            {deletingOutfitId === pendingDelete?.outfit_id ? "Deleting..." : "Delete"}
-          </BaseButton>
-        </div>
-      </BaseDialog>
+        <DialogContent className="modal-panel modal-panel-sm">
+          <DialogHeader className="modal-header o-split o-split--start">
+            <DialogTitle className="modal-title">Delete outfit</DialogTitle>
+          </DialogHeader>
+          <div className="modal-body">
+            <p>Remove this outfit from your wardrobe?</p>
+            <p className="subtext">Style: <strong>{pendingDelete?.style_label || "Unlabeled"}</strong></p>
+            <div className="o-cluster o-cluster--wrap o-cluster--stack-sm">
+              <Button type="button" variant="outline" onClick={() => setPendingDelete(null)} disabled={deletingOutfitId === pendingDelete?.outfit_id}>
+                Cancel
+              </Button>
+              <Button type="button" variant="destructive" onClick={handleDelete} disabled={deletingOutfitId === pendingDelete?.outfit_id}>
+                {deletingOutfitId === pendingDelete?.outfit_id ? "Deleting..." : "Delete"}
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
 
-      <BaseDialog
+      <Dialog
         open={Boolean(itemPreview)}
         onOpenChange={(open) => setItemPreview(open ? itemPreview : null)}
-        title={itemPreview?.name || "Item preview"}
-        size="image"
-        scrollable={false}
       >
-        {itemPreview?.image_url ? (
-          <AppImage
-            src={itemPreview.image_url}
-            alt={itemPreview.name || "Item preview"}
-            className="modal-image item-preview-image"
-            width={1600}
-            height={2000}
-          />
-        ) : (
-          <p className="subtext">Preview unavailable for this item.</p>
-        )}
-      </BaseDialog>
+        <DialogContent className="modal-panel modal-panel-image modal-panel-no-scroll">
+          <DialogHeader className="modal-header o-split o-split--start">
+            <DialogTitle className="modal-title">{itemPreview?.name || "Item preview"}</DialogTitle>
+          </DialogHeader>
+          <div className="modal-body">
+            {itemPreview?.image_url ? (
+              <AppImage
+                src={itemPreview.image_url}
+                alt={itemPreview.name || "Item preview"}
+                className="modal-image item-preview-image"
+                width={1600}
+                height={2000}
+              />
+            ) : (
+              <p className="subtext">Preview unavailable for this item.</p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }

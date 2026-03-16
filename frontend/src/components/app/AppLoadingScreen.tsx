@@ -2,6 +2,8 @@
 
 import Image from "next/image";
 
+import { Card } from "@/components/ui/card";
+
 type AppLoadingScreenProps = {
   title?: string;
   subtitle?: string;
@@ -17,7 +19,7 @@ export default function AppLoadingScreen({
       <div className="dashboard-background-orb dashboard-background-orb-b" />
 
       <section className="app-loading-stage">
-        <section className="c-surface dashboard-card-shell app-loading-card o-grid">
+        <Card as="section" className="c-surface dashboard-card-shell app-loading-card o-grid">
           <div className="app-loading-head o-stack o-stack--center">
             <div className="app-loading-mark" aria-hidden="true">
               <Image src="/logo.png" alt="" width={44} height={44} priority className="app-loading-mark-image" />
@@ -47,7 +49,7 @@ export default function AppLoadingScreen({
               <div className="app-loading-metric" />
             </div>
           </div>
-        </section>
+        </Card>
       </section>
     </main>
   );

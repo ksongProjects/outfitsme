@@ -1,11 +1,13 @@
-﻿import Link from "next/link";
+import Link from "next/link";
 
 import AppFooter from "@/components/app/AppFooter";
+import { buttonVariants } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
 
 export default function TermsPage() {
   return (
     <main className="legal-shell">
-      <section className="c-surface c-surface--stack c-surface--legal">
+      <Card as="section" className="c-surface c-surface--stack c-surface--legal">
         <span className="section-kicker">Legal</span>
         <h1>OutfitsMe Terms of Service</h1>
         <p className="subtext">Last updated: March 5, 2026</p>
@@ -47,11 +49,11 @@ export default function TermsPage() {
         </p>
 
         <div className="o-cluster o-cluster--wrap o-cluster--stack-sm">
-          <Link className="ghost-btn" href="/">
+          <Link className={buttonVariants({ variant: "outline" })} href="/">
             Back to app
           </Link>
         </div>
-      </section>
+      </Card>
       <AppFooter />
     </main>
   );
