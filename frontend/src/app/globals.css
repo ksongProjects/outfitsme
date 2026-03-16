@@ -66,19 +66,23 @@
 @layer base {
   * {
     box-sizing: border-box;
+    -ms-overflow-style: none;
+    scrollbar-width: none;
     @apply border-border outline-ring/50;
+  }
+
+  *::-webkit-scrollbar {
+    display: none;
+    width: 0;
+    height: 0;
+    background: transparent;
   }
 
   html {
     scroll-behavior: smooth;
     font-size: clamp(14px, 0.22vw + 13.5px, 16px);
     -webkit-text-size-adjust: 100%;
-    scrollbar-gutter: stable;
-  }
-
-  body {
-    margin: 0;
-    min-height: 100vh;
+    scrollbar-gutter: auto;
     background:
       radial-gradient(
         circle at 12% 10%,
@@ -97,10 +101,42 @@
       ),
       linear-gradient(180deg, #fffaf4 0%, #f8f1e7 46%, #f2ebe2 100%);
     background-attachment: fixed;
+  }
+
+  body {
+    margin: 0;
+    min-height: 100vh;
+    background: transparent;
     color: #342a24;
     font-family: var(--font-heading), sans-serif;
     line-height: 1.5;
     text-rendering: optimizeLegibility;
+  }
+
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    width: 100vw;
+    background:
+      radial-gradient(
+        circle at 12% 10%,
+        rgba(252, 220, 194, 0.74),
+        transparent 24%
+      ),
+      radial-gradient(
+        circle at 86% 14%,
+        rgba(244, 197, 152, 0.48),
+        transparent 21%
+      ),
+      radial-gradient(
+        circle at 50% 82%,
+        rgba(235, 220, 192, 0.62),
+        transparent 28%
+      ),
+      linear-gradient(180deg, #fffaf4 0%, #f8f1e7 46%, #f2ebe2 100%);
+    pointer-events: none;
+    z-index: -1;
   }
 
   a {
@@ -904,9 +940,9 @@ button:not(:disabled),
   max-width: none;
   margin: 0;
   padding: 0;
-  min-height: 100svh;
+  min-height: 100dvh;
   display: grid;
-  align-items: center;
+  place-items: center;
   overflow: visible;
 }
 
@@ -917,7 +953,7 @@ button:not(:disabled),
   display: grid;
   place-items: center;
   align-content: center;
-  min-height: 100svh;
+  min-height: 100dvh;
 }
 
 .app-loading-card {
@@ -1608,9 +1644,14 @@ pre {
     width: 100%;
   }
 
+  .app-loading-shell {
+    padding-inline: var(--page-gutter);
+  }
+
   .app-loading-stage {
-    width: min(var(--layout-max-width), calc(100% - (var(--page-gutter) * 2)));
-    min-height: 100svh;
+    width: min(100%, 28rem);
+    min-height: 100dvh;
+    padding: 0;
   }
 
   .app-footer {

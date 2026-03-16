@@ -201,7 +201,6 @@ export default function ItemsTab() {
 
       {shouldShowEmptyState ? (
         <div className="table-empty-state" role="status" aria-live="polite">
-          <p className="table-empty-state-title">No items to show</p>
           <p className="subtext">{emptyStateMessage}</p>
         </div>
       ) : (

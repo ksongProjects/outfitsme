@@ -30,7 +30,6 @@ export default function HistoryTab() {
 
       {shouldShowEmptyState ? (
         <div className="table-empty-state" role="status" aria-live="polite">
-          <p className="table-empty-state-title">No analysis history yet</p>
           <p className="subtext">{historyMessage || "Analyze a photo to populate this table."}</p>
         </div>
       ) : (
