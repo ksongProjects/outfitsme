@@ -16,6 +16,7 @@ from app.services.gemini_service import (
 )
 from app.services.models_service import build_model_availability
 from app.services.supabase_service import (
+    build_analysis_job_cost_summary,
     claim_analysis_job,
     download_photo_bytes,
     get_analysis_job_by_id,
@@ -53,7 +54,12 @@ _ACCESSORY_KEYWORDS = {
 }
 
 
-def _build_response_payload(analysis: dict, chosen_model_id: str, persistence: dict) -> dict:
+def _build_response_payload(
+    analysis: dict,
+    chosen_model_id: str,
+    persistence: dict,
+    cost_summary: dict | None = None
+) -> dict:
     usage = analysis.get("_usage") if isinstance(analysis, dict) else None
     return {
         "style": analysis.get("style"),
@@ -61,6 +67,7 @@ def _build_response_payload(analysis: dict, chosen_model_id: str, persistence: d
         "outfits": [dict(outfit) for outfit in (analysis.get("outfits") or []) if isinstance(outfit, dict)],
         "analysis_model": chosen_model_id,
         "ai_usage": usage if isinstance(usage, dict) else {},
+        "cost_summary": cost_summary if isinstance(cost_summary, dict) else {},
         **persistence
     }
 
@@ -300,6 +307,7 @@ def _generate_item_images_for_analysis(
             "generated_items": 0,
             "failed_items": 0,
             "skipped_items": 0,
+            "ai_usage": {},
             "disabled": True
         }
 
@@ -315,6 +323,7 @@ def _generate_item_images_for_analysis(
             "generated_items": 0,
             "failed_items": 0,
             "skipped_items": 0,
+            "ai_usage": {},
             "disabled": True
         }
 
@@ -326,6 +335,7 @@ def _generate_item_images_for_analysis(
         "generated_items": 0,
         "failed_items": 0,
         "skipped_items": 0,
+        "ai_usage": {},
         "disabled": False
     }
     _mark_job_progress(
@@ -367,6 +377,7 @@ def _generate_item_images_for_analysis(
                 reference_mime_type=source_mime_type,
                 return_usage=True
             )
+            summary["ai_usage"] = sprite_usage if isinstance(sprite_usage, dict) else {}
             cropped_data_uris = _slice_sprite_to_item_data_uris(
                 sprite_data_uri or "",
                 len(pending_items),
@@ -474,13 +485,25 @@ def process_analysis_job(job_id: str) -> None:
             analysis_for_response = _attach_item_images_to_analysis(analysis, persisted_items)
         if isinstance(analysis_for_response, dict):
             analysis_for_response["_usage"] = analysis_usage
+        cost_summary = build_analysis_job_cost_summary(
+            analysis_usage=analysis_usage,
+            item_image_usage=(item_image_summary or {}).get("ai_usage") if isinstance(item_image_summary, dict) else {},
+            generated_item_image_count=(item_image_summary or {}).get("generated_items", 0)
+            if isinstance(item_image_summary, dict)
+            else 0
+        )
         _mark_job_progress(
             job_id,
             stage="finalizing",
             message="Finalizing analysis response.",
             counts=item_image_summary
         )
-        response_payload = _build_response_payload(analysis_for_response, chosen_model_id, persistence)
+        response_payload = _build_response_payload(
+            analysis_for_response,
+            chosen_model_id,
+            persistence,
+            cost_summary=cost_summary
+        )
         mark_analysis_job_completed(job_id, response_payload)
     except requests.HTTPError as exc:
         mark_analysis_job_failed(job_id, f"Model request failed: {exc}")

@@ -20,6 +20,7 @@ class BetterAuthSessionError(RuntimeError):
 
 _JWKS_CACHE: dict[str, object] = {"keys": {}, "expires_at": 0.0}
 _DB_POOL: SimpleConnectionPool | None = None
+_DB_CONNECT_TIMEOUT_SECONDS = 3
 
 
 def _base64url_decode(value: str) -> bytes:
@@ -124,7 +125,13 @@ def _get_database_pool() -> SimpleConnectionPool:
     global _DB_POOL
     if _DB_POOL is None:
         try:
-            _DB_POOL = SimpleConnectionPool(1, 5, settings.DATABASE_URL)
+            _DB_POOL = SimpleConnectionPool(
+                1,
+                5,
+                settings.DATABASE_URL,
+                connect_timeout=_DB_CONNECT_TIMEOUT_SECONDS,
+                application_name="outfitsme-api",
+            )
         except psycopg2.Error as e:
             raise BetterAuthSessionError(f"Failed to connect to database: {e}")
     return _DB_POOL

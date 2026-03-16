@@ -10,6 +10,30 @@ import type { ItemRecord } from "@/lib/types";
 const EMPTY_ITEMS: ItemRecord[] = [];
 const ITEMS_STALE_MS = 60 * 1000;
 
+const normalizeLabel = (value: unknown, fallback: string) => {
+  const cleaned = String(value || "").trim().replace(/\s+/g, " ");
+  if (!cleaned) {
+    return fallback;
+  }
+  return cleaned.replace(/\b\w/g, (char) => char.toUpperCase());
+};
+
+const getItemStyleLabel = (item: ItemRecord) =>
+  normalizeLabel(
+    typeof item.attributes_json?.outfit_style === "string"
+      ? item.attributes_json.outfit_style
+      : item.style_label,
+    "Unknown"
+  );
+
+const normalizeItemRecord = (item: ItemRecord): ItemRecord => ({
+  ...item,
+  category: normalizeLabel(item.category, "Item"),
+  name: normalizeLabel(item.name, "Unknown Item"),
+  color: normalizeLabel(item.color, "Unknown"),
+  style_label: getItemStyleLabel(item),
+});
+
 export function useItemsState({ accessToken }: { accessToken: string }) {
   const PAGE_SIZE = 20;
   const queryClient = useQueryClient();
@@ -32,7 +56,7 @@ export function useItemsState({ accessToken }: { accessToken: string }) {
 
     const itemsJson = await itemsRes.json();
     return {
-      items: (itemsJson.items || []) as ItemRecord[],
+      items: ((itemsJson.items || []) as ItemRecord[]).map(normalizeItemRecord),
       has_more: Boolean(itemsJson.has_more),
     } satisfies ItemsPagePayload;
   };

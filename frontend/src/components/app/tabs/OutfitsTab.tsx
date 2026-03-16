@@ -62,6 +62,17 @@ export default function OutfitsTab() {
     () => wardrobe.filter((entry) => sourceFilter === "all" || (entry.source_type || "photo_analysis") === sourceFilter),
     [wardrobe, sourceFilter]
   );
+  const outfitCountsByPhoto = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const entry of wardrobe) {
+      const photoId = entry.photo_id || "";
+      if (!photoId) {
+        continue;
+      }
+      counts.set(photoId, (counts.get(photoId) || 0) + 1);
+    }
+    return counts;
+  }, [wardrobe]);
 
   const handleDelete = async () => {
     if (!pendingDelete) {
@@ -75,7 +86,7 @@ export default function OutfitsTab() {
 
   const getOutfitDisplayName = (entry: (typeof wardrobe)[number]) => {
     const style = entry.style_label || "Unlabeled";
-    if ((entry.outfit_count || 1) > 1) {
+    if ((outfitCountsByPhoto.get(entry.photo_id || "") || 1) > 1) {
       return `${style} (${(entry.outfit_index || 0) + 1})`;
     }
     return style;
@@ -126,7 +137,15 @@ export default function OutfitsTab() {
       {wardrobeMessage ? <p className="subtext">{wardrobeMessage}</p> : null}
 
       <div className="o-cluster o-cluster--wrap o-cluster--stack-sm">
-        <Select value={sourceFilter} onValueChange={(nextValue) => setSourceFilter(nextValue)}>
+        <Select
+          value={sourceFilter}
+          onValueChange={(nextValue) => {
+            if (!nextValue) {
+              return;
+            }
+            setSourceFilter(nextValue);
+          }}
+        >
           <SelectTrigger className="w-full sm:w-48">
             <SelectValue placeholder="All outfit types" />
           </SelectTrigger>

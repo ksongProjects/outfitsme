@@ -125,12 +125,15 @@ export default function SettingsTab() {
           <label htmlFor="settings-gender">Gender</label>
           <Select
             value={settingsForm.profile_gender || "unspecified"}
-            onValueChange={(value) =>
+            onValueChange={(value) => {
+              if (!value) {
+                return;
+              }
               setSettingsForm((prev) => ({
                 ...prev,
                 profile_gender: value === "unspecified" ? "" : value,
-              }))
-            }
+              }));
+            }}
           >
             <SelectTrigger id="settings-gender" className="w-full">
               <SelectValue placeholder="Select gender" />

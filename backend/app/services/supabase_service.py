@@ -5,7 +5,7 @@ import binascii
 import json
 import mimetypes
 import re
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from time import monotonic
 from uuid import uuid4
 
@@ -156,6 +156,81 @@ def _estimate_token_cost_usd(usage: dict) -> dict:
         "input": input_cost,
         "output": output_cost,
         "total": round(input_cost + output_cost, 6)
+    }
+
+
+def _merge_token_costs(*entries: dict | None) -> dict:
+    input_total = 0.0
+    output_total = 0.0
+    for entry in entries:
+        token_costs = entry or {}
+        input_total += float(token_costs.get("input") or 0)
+        output_total += float(token_costs.get("output") or 0)
+    return {
+        "input": round(input_total, 6),
+        "output": round(output_total, 6),
+        "total": round(input_total + output_total, 6)
+    }
+
+
+def build_analysis_job_cost_summary(
+    *,
+    analysis_usage: dict | None = None,
+    item_image_usage: dict | None = None,
+    generated_item_image_count: int = 0
+) -> dict:
+    normalized_analysis_usage = _normalize_ai_usage(analysis_usage or {})
+    normalized_item_image_usage = _normalize_ai_usage(item_image_usage or {})
+    analysis_unit_cost = round(
+        settings.ANALYSIS_INPUT_COST_USD + settings.ANALYSIS_OUTPUT_IMAGE_COST_USD,
+        4
+    )
+    item_image_unit_cost = round(settings.ITEM_IMAGE_COST_USD, 4)
+    analysis_token_costs = _estimate_token_cost_usd(normalized_analysis_usage)
+    item_image_token_costs = _estimate_token_cost_usd(normalized_item_image_usage)
+    total_usage = _sum_ai_usage([normalized_analysis_usage, normalized_item_image_usage])
+    total_token_costs = _merge_token_costs(analysis_token_costs, item_image_token_costs)
+    analysis_estimated_cost = analysis_unit_cost
+    item_image_estimated_cost = round(max(_safe_outfit_index(generated_item_image_count), 0) * item_image_unit_cost, 4)
+    return {
+        "version": 1,
+        "analysis": {
+            "usage": normalized_analysis_usage,
+            "estimated_cost_usd": analysis_estimated_cost,
+            "estimated_token_cost_usd": analysis_token_costs,
+            "unit_costs_usd": {
+                "operation": analysis_unit_cost,
+                "input": settings.ANALYSIS_INPUT_COST_USD,
+                "output_image": settings.ANALYSIS_OUTPUT_IMAGE_COST_USD
+            }
+        },
+        "item_image_generation": {
+            "generated_items": _safe_outfit_index(generated_item_image_count),
+            "usage": normalized_item_image_usage,
+            "estimated_cost_usd": item_image_estimated_cost,
+            "estimated_token_cost_usd": item_image_token_costs,
+            "unit_costs_usd": {
+                "operation": item_image_unit_cost
+            }
+        },
+        "total_usage": total_usage,
+        "estimated_costs_usd": {
+            "analysis": analysis_estimated_cost,
+            "item_image_generation": item_image_estimated_cost,
+            "total": round(analysis_estimated_cost + item_image_estimated_cost, 4)
+        },
+        "estimated_token_costs_usd": {
+            "analysis": analysis_token_costs,
+            "item_image_generation": item_image_token_costs,
+            "total": total_token_costs
+        },
+        "pricing_snapshot": {
+            "gemini_input_cost_per_1m_tokens_usd": settings.GEMINI_INPUT_COST_PER_1M_TOKENS_USD,
+            "gemini_output_cost_per_1m_tokens_usd": settings.GEMINI_OUTPUT_COST_PER_1M_TOKENS_USD,
+            "analysis_input_cost_usd": settings.ANALYSIS_INPUT_COST_USD,
+            "analysis_output_image_cost_usd": settings.ANALYSIS_OUTPUT_IMAGE_COST_USD,
+            "item_image_cost_usd": settings.ITEM_IMAGE_COST_USD
+        }
     }
 
 
@@ -387,11 +462,11 @@ def _to_int(value) -> int:
         return 0
 
 
-def _query_dashboard_snapshot(user_id: str, week_start_iso: str) -> tuple[dict, list[dict]] | None:
+def _query_dashboard_snapshot(user_id: str) -> dict | None:
     try:
         with get_database_connection() as conn:
             with conn.cursor() as cur:
-                snapshot = _fetchone_dict(
+                return _fetchone_dict(
                     cur,
                     """
                     select
@@ -417,48 +492,7 @@ def _query_dashboard_snapshot(user_id: str, week_start_iso: str) -> tuple[dict, 
                         select count(*)
                         from public.items i
                         where i.user_id = %s
-                      ) as items_count,
-                      (
-                        select count(*)
-                        from public.analysis_jobs aj
-                        where aj.user_id = %s
-                          and aj.status = 'completed'
-                          and aj.completed_at >= %s::timestamptz
-                      ) as weekly_analyses_count,
-                      (
-                        select count(*)
-                        from public.outfits o
-                        where o.user_id = %s
-                          and o.source_type = %s
-                          and o.created_at >= %s::timestamptz
-                      ) as weekly_outfits_count,
-                      (
-                        select count(*)
-                        from public.items i
-                        where i.user_id = %s
-                          and i.created_at >= %s::timestamptz
-                      ) as weekly_items_count,
-                      (
-                        select p.id
-                        from public.photos p
-                        where p.user_id = %s
-                        order by p.created_at desc
-                        limit 1
-                      ) as latest_photo_id,
-                      (
-                        select p.storage_path
-                        from public.photos p
-                        where p.user_id = %s
-                        order by p.created_at desc
-                        limit 1
-                      ) as latest_photo_storage_path,
-                      (
-                        select p.created_at
-                        from public.photos p
-                        where p.user_id = %s
-                        order by p.created_at desc
-                        limit 1
-                      ) as latest_photo_created_at
+                      ) as items_count
                     """,
                     (
                         user_id,
@@ -466,36 +500,8 @@ def _query_dashboard_snapshot(user_id: str, week_start_iso: str) -> tuple[dict, 
                         user_id,
                         OUTFIT_SOURCE_OUTFITSME,
                         user_id,
-                        user_id,
-                        week_start_iso,
-                        user_id,
-                        OUTFIT_SOURCE_OUTFITSME,
-                        week_start_iso,
-                        user_id,
-                        week_start_iso,
-                        user_id,
-                        user_id,
-                        user_id,
                     )
                 )
-                cur.execute(
-                    """
-                    select
-                      coalesce(nullif(btrim(category), ''), 'Item') as label,
-                      count(*)::integer as count
-                    from public.items
-                    where user_id = %s
-                    group by 1
-                    order by 2 desc, 1 asc
-                    limit 10
-                    """,
-                    (user_id,)
-                )
-                item_rows = [
-                    {"label": row[0], "count": row[1]}
-                    for row in (cur.fetchall() or [])
-                ]
-        return snapshot or {}, item_rows
     except Exception:  # noqa: BLE001
         return None
 
@@ -1030,46 +1036,6 @@ def _normalize_items_with_images(
 
 def list_wardrobe(user_id: str, limit: int = 20, offset: int = 0) -> list[dict]:
     client = get_supabase_client()
-    wardrobe = []
-    try:
-        rpc_response = client.rpc(
-            "get_wardrobe_rows",
-            {"p_user_id": user_id, "p_limit": max(1, int(limit)), "p_offset": max(0, int(offset))}
-        ).execute()
-        rpc_rows = rpc_response.data or []
-        signed_urls = _resolve_signed_urls_for_paths(
-            client,
-            [str(row.get("storage_path") or "") for row in rpc_rows],
-            expires_in_seconds=3600
-        )
-        for row in rpc_rows:
-            storage_path = str(row.get("storage_path") or "")
-            outfit_id = row.get("outfit_id")
-            outfit_index = _safe_outfit_index(row.get("outfit_index"))
-            wardrobe.append(
-                {
-                    "row_id": row.get("row_id") or outfit_id or f"{row.get('photo_id')}:{outfit_index}",
-                    "outfit_id": outfit_id,
-                    "photo_id": row.get("photo_id"),
-                    "storage_path": storage_path,
-                    "image_url": signed_urls.get(storage_path),
-                    "created_at": row.get("created_at") or row.get("photo_created_at"),
-                    "analysis_id": row.get("analysis_id"),
-                    "analysis_created_at": None,
-                    "style_label": _normalize_label(row.get("style_label"), "Unlabeled"),
-                    "source_type": _normalize_outfit_source_type(row.get("source_type")),
-                    "source_outfit_id": row.get("source_outfit_id"),
-                    "generated_image_path": row.get("generated_image_path") or "",
-                    "outfit_index": outfit_index,
-                    "outfit_count": int(row.get("outfit_count") or 1),
-                    "outfit_items_count": int(row.get("outfit_items_count") or 0)
-                }
-            )
-        return wardrobe
-    except Exception:  # noqa: BLE001
-        # Fallback for environments where RPC migrations have not been applied yet.
-        pass
-
     outfits_response = (
         client.table("outfits")
         .select("id,photo_id,analysis_id,outfit_index,style_label,created_at,source_type,source_outfit_id,generated_image_path")
@@ -1082,9 +1048,8 @@ def list_wardrobe(user_id: str, limit: int = 20, offset: int = 0) -> list[dict]:
     if not outfits:
         return []
 
+    wardrobe = []
     photo_ids = list({outfit.get("photo_id") for outfit in outfits if outfit.get("photo_id")})
-    outfit_ids = [outfit.get("id") for outfit in outfits if outfit.get("id")]
-
     photos_by_id = {}
     if photo_ids:
         photos_response = (
@@ -1095,36 +1060,6 @@ def list_wardrobe(user_id: str, limit: int = 20, offset: int = 0) -> list[dict]:
             .execute()
         )
         photos_by_id = {photo.get("id"): photo for photo in (photos_response.data or []) if photo.get("id")}
-
-    counts_by_photo = {}
-    if photo_ids:
-        photo_outfits_response = (
-            client.table("outfits")
-            .select("photo_id")
-            .in_("photo_id", photo_ids)
-            .eq("user_id", user_id)
-            .execute()
-        )
-        for row in (photo_outfits_response.data or []):
-            photo_id = row.get("photo_id")
-            if not photo_id:
-                continue
-            counts_by_photo[photo_id] = counts_by_photo.get(photo_id, 0) + 1
-
-    item_counts_by_outfit = {}
-    if outfit_ids:
-        outfit_items_response = (
-            client.table("outfit_items")
-            .select("outfit_id")
-            .in_("outfit_id", outfit_ids)
-            .eq("user_id", user_id)
-            .execute()
-        )
-        for row in (outfit_items_response.data or []):
-            outfit_id = row.get("outfit_id")
-            if not outfit_id:
-                continue
-            item_counts_by_outfit[outfit_id] = item_counts_by_outfit.get(outfit_id, 0) + 1
 
     signed_urls = _resolve_signed_urls_for_paths(
         client,
@@ -1163,8 +1098,6 @@ def list_wardrobe(user_id: str, limit: int = 20, offset: int = 0) -> list[dict]:
                 "source_outfit_id": outfit.get("source_outfit_id"),
                 "generated_image_path": generated_image_path,
                 "outfit_index": _safe_outfit_index(outfit.get("outfit_index")),
-                "outfit_count": counts_by_photo.get(outfit.get("photo_id"), 1),
-                "outfit_items_count": item_counts_by_outfit.get(outfit_id, 0)
             }
         )
 
@@ -1174,36 +1107,6 @@ def list_wardrobe(user_id: str, limit: int = 20, offset: int = 0) -> list[dict]:
 def list_analysis_history(user_id: str, limit: int = 50) -> list[dict]:
     client = get_supabase_client()
     resolve_signed_url = _build_signed_url_resolver(client, expires_in_seconds=3600)
-    try:
-        rpc_response = client.rpc(
-            "get_analysis_history_rows",
-            {"p_user_id": user_id, "p_limit": max(1, int(limit))}
-        ).execute()
-        rpc_rows = rpc_response.data or []
-        history = []
-        for row in rpc_rows:
-            storage_path = str(row.get("storage_path") or "")
-            history.append(
-                {
-                    "job_id": row.get("job_id"),
-                    "photo_id": row.get("photo_id"),
-                    "analysis_model": row.get("analysis_model"),
-                    "status": row.get("status"),
-                    "error_message": row.get("error_message"),
-                    "created_at": row.get("created_at"),
-                    "started_at": row.get("started_at"),
-                    "completed_at": row.get("completed_at"),
-                    "updated_at": row.get("updated_at"),
-                    "photo_created_at": row.get("photo_created_at"),
-                    "storage_path": storage_path,
-                    "image_url": resolve_signed_url(storage_path),
-                    "outfit_count": int(row.get("outfit_count") or 0)
-                }
-            )
-        return history
-    except Exception:  # noqa: BLE001
-        # Fallback for environments where RPC migrations have not been applied yet.
-        pass
 
     jobs_response = (
         client.table("analysis_jobs")
@@ -1229,21 +1132,6 @@ def list_analysis_history(user_id: str, limit: int = 50) -> list[dict]:
         )
         photos_by_id = {photo.get("id"): photo for photo in (photos_response.data or []) if photo.get("id")}
 
-    outfit_counts_by_photo = {}
-    if photo_ids:
-        outfits_response = (
-            client.table("outfits")
-            .select("photo_id")
-            .in_("photo_id", photo_ids)
-            .eq("user_id", user_id)
-            .execute()
-        )
-        for row in (outfits_response.data or []):
-            photo_id = row.get("photo_id")
-            if not photo_id:
-                continue
-            outfit_counts_by_photo[photo_id] = outfit_counts_by_photo.get(photo_id, 0) + 1
-
     history = []
     for job in jobs:
         photo_id = job.get("photo_id")
@@ -1264,7 +1152,6 @@ def list_analysis_history(user_id: str, limit: int = 50) -> list[dict]:
                 "photo_created_at": photo.get("created_at"),
                 "storage_path": storage_path,
                 "image_url": image_url,
-                "outfit_count": outfit_counts_by_photo.get(photo_id, 0)
             }
         )
     return history
@@ -1272,39 +1159,6 @@ def list_analysis_history(user_id: str, limit: int = 50) -> list[dict]:
 
 def list_user_items(user_id: str, limit: int = 20, offset: int = 0) -> list[dict]:
     client = get_supabase_client()
-    try:
-        rpc_response = client.rpc(
-            "get_item_catalog_rows",
-            {"p_user_id": user_id, "p_limit": max(1, int(limit)), "p_offset": max(0, int(offset))}
-        ).execute()
-        rpc_rows = rpc_response.data or []
-        signed_urls = _resolve_signed_urls_for_paths(
-            client,
-            [
-                str(_coerce_dict(row.get("attributes_json") or {}).get("generated_item_image_path") or "")
-                for row in rpc_rows
-            ],
-            expires_in_seconds=3600
-        )
-        normalized_items = []
-        for row in rpc_rows:
-            attributes = _coerce_dict(row.get("attributes_json") or {})
-            image_path = attributes.get("generated_item_image_path") or ""
-            normalized_items.append(
-                {
-                    **row,
-                    "category": _normalize_label(row.get("category"), "Item"),
-                    "name": _normalize_label(row.get("name"), "Unknown Item"),
-                    "color": _normalize_label(row.get("color"), "Unknown"),
-                    "style_label": _normalize_label(row.get("style_label"), "Unknown"),
-                    "image_url": signed_urls.get(str(image_path or ""))
-                }
-            )
-        return normalized_items
-    except Exception:  # noqa: BLE001
-        # Fallback for environments where RPC migrations have not been applied yet.
-        pass
-
     items_response = (
         client.table("items")
         .select("id,analysis_id,category,name,color,attributes_json,created_at")
@@ -1314,21 +1168,6 @@ def list_user_items(user_id: str, limit: int = 20, offset: int = 0) -> list[dict
         .execute()
     )
     items = items_response.data or []
-    analysis_ids = list({item.get("analysis_id") for item in items if item.get("analysis_id")})
-    analysis_by_id = {}
-    if analysis_ids:
-        analyses_response = (
-            client.table("outfit_analyses")
-            .select("id,style_label,raw_json")
-            .in_("id", analysis_ids)
-            .eq("user_id", user_id)
-            .execute()
-        )
-        for analysis in (analyses_response.data or []):
-            analysis_by_id[analysis.get("id")] = {
-                "style_label": _normalize_label(analysis.get("style_label"), "Unknown"),
-                "raw_json": _coerce_dict(analysis.get("raw_json") if isinstance(analysis, dict) else {})
-            }
 
     signed_urls = _resolve_signed_urls_for_paths(
         client,
@@ -1346,10 +1185,6 @@ def list_user_items(user_id: str, limit: int = 20, offset: int = 0) -> list[dict
         normalized_items.append(
             {
                 **item,
-                "category": _normalize_label(item.get("category"), "Item"),
-                "name": _normalize_label(item.get("name"), "Unknown Item"),
-                "color": _normalize_label(item.get("color"), "Unknown"),
-                "style_label": _resolve_item_style_label(item, analysis_by_id),
                 "image_url": signed_urls.get(str(image_path or ""))
             }
         )
@@ -2117,18 +1952,12 @@ def get_wardrobe_photo_details(user_id: str, photo_id: str, outfit_index: int | 
 
 
 def get_dashboard_stats(user_id: str) -> dict:
-    now_utc = datetime.now(timezone.utc)
-    week_start_iso = (now_utc - timedelta(days=7)).isoformat()
-    snapshot_result = _query_dashboard_snapshot(user_id, week_start_iso)
-    if snapshot_result:
-        snapshot, item_type_counts = snapshot_result
+    snapshot = _query_dashboard_snapshot(user_id)
+    if snapshot:
         photos_count = _to_int(snapshot.get("photos_count"))
         analyses_count = _to_int(snapshot.get("analyses_count"))
         outfits_count = _to_int(snapshot.get("outfits_count"))
         items_count = _to_int(snapshot.get("items_count"))
-        weekly_analyses_count = _to_int(snapshot.get("weekly_analyses_count"))
-        weekly_outfits_count = _to_int(snapshot.get("weekly_outfits_count"))
-        weekly_items_count = _to_int(snapshot.get("weekly_items_count"))
     else:
         client = get_supabase_client()
         photos = (
@@ -2153,53 +1982,16 @@ def get_dashboard_stats(user_id: str) -> dict:
         ).data or []
         items = (
             client.table("items")
-            .select("id,category")
+            .select("id")
             .eq("user_id", user_id)
             .execute()
         ).data or []
-        weekly_analyses_count = len(
-            (
-                client.table("analysis_jobs")
-                .select("id")
-                .eq("user_id", user_id)
-                .eq("status", "completed")
-                .gte("completed_at", week_start_iso)
-                .execute()
-            ).data or []
-        )
-        weekly_outfits_count = len(
-            (
-                client.table("outfits")
-                .select("id")
-                .eq("user_id", user_id)
-                .eq("source_type", OUTFIT_SOURCE_OUTFITSME)
-                .gte("created_at", week_start_iso)
-                .execute()
-            ).data or []
-        )
-        weekly_items_count = len(
-            (
-                client.table("items")
-                .select("id")
-                .eq("user_id", user_id)
-                .gte("created_at", week_start_iso)
-                .execute()
-            ).data or []
-        )
         photos_count = len(
             [photo for photo in photos if not str(photo.get("storage_path") or "").startswith("virtual/")]
         )
         analyses_count = len(analyses)
-        items_count = len(items)
         outfits_count = len(outfits)
-        type_counts: dict[str, int] = {}
-        for item in items:
-            label = _normalize_label(item.get("category"), "Item")
-            type_counts[label] = type_counts.get(label, 0) + 1
-        item_type_counts = [
-            {"label": label, "count": count}
-            for label, count in sorted(type_counts.items(), key=lambda pair: (-pair[1], pair[0]))
-        ][:10]
+        items_count = len(items)
 
     return {
         "photos_count": photos_count,
@@ -2207,13 +1999,6 @@ def get_dashboard_stats(user_id: str) -> dict:
         "analyses_count": analyses_count,
         "items_count": items_count,
         "generated_outfit_images_count": outfits_count,
-        "weekly_activity": {
-            "analyses_count": weekly_analyses_count,
-            "outfits_count": weekly_outfits_count,
-            "items_count": weekly_items_count,
-            "window_start_utc": week_start_iso
-        },
-        "top_item_types": item_type_counts,
     }
 
 
@@ -2534,9 +2319,18 @@ def get_user_cost_summary(user_id: str, month_start_iso: str) -> dict:
         .execute()
     ).data or []
     analysis_usages = []
+    item_usages = []
     for row in analysis_usage_rows:
         result_json = _coerce_dict((row or {}).get("result_json") or {})
-        analysis_usages.append(_coerce_dict(result_json.get("ai_usage") or {}))
+        saved_cost_summary = _coerce_dict(result_json.get("cost_summary") or {})
+        saved_analysis_usage = _coerce_dict(
+            _coerce_dict(saved_cost_summary.get("analysis") or {}).get("usage") or {}
+        )
+        saved_item_usage = _coerce_dict(
+            _coerce_dict(saved_cost_summary.get("item_image_generation") or {}).get("usage") or {}
+        )
+        analysis_usages.append(saved_analysis_usage or _coerce_dict(result_json.get("ai_usage") or {}))
+        item_usages.append(saved_item_usage)
     analysis_token_usage = _sum_ai_usage(analysis_usages)
 
     outfit_analysis_rows = (
@@ -2553,20 +2347,6 @@ def get_user_cost_summary(user_id: str, month_start_iso: str) -> dict:
             continue
         outfit_usages.append(_coerce_dict(raw_json.get("ai_usage") or {}))
     outfit_token_usage = _sum_ai_usage(outfit_usages)
-
-    item_rows = (
-        client.table("items")
-        .select("attributes_json")
-        .eq("user_id", user_id)
-        .gte("created_at", month_start_iso)
-        .execute()
-    ).data or []
-    item_usages = []
-    for row in item_rows:
-        attributes = _coerce_dict((row or {}).get("attributes_json") or {})
-        if not attributes.get("generated_item_image_path"):
-            continue
-        item_usages.append(_coerce_dict(attributes.get("generated_item_image_ai_usage") or {}))
     item_token_usage = _sum_ai_usage(item_usages)
 
     token_costs = {
@@ -2623,7 +2403,7 @@ def get_user_cost_summary(user_id: str, month_start_iso: str) -> dict:
             "outfit_image_generation": outfit_token_usage,
             "item_image_generation": item_token_usage,
             "total": _sum_ai_usage([analysis_token_usage, outfit_token_usage, item_token_usage]),
-            "source": "Gemini usageMetadata when available; estimator fallback otherwise."
+            "source": "Saved per-job Gemini usage when available; estimator fallback otherwise."
         },
         "token_pricing_usd_per_1m": {
             "input": settings.GEMINI_INPUT_COST_PER_1M_TOKENS_USD,

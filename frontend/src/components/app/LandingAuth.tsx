@@ -113,14 +113,16 @@ export default function LandingAuth() {
               as="section"
               className="c-surface c-surface--stack landing-hero-card"
             >
-              <span className="section-kicker">Personal styling, simplified</span>
+              <span className="section-kicker">
+                Personal styling, simplified
+              </span>
               <div className="o-stack o-stack--tight o-stack--start">
-                <h1 className="landing-hero-title">
+                <h2 className="landing-hero-title">
                   Your personal style, made simpler.
-                </h1>
+                </h2>
                 <p className="hero-copy-text landing-hero-summary">
-                  Find outfit inspiration, create looks you love, and enjoy 14
-                  days free.
+                  Find outfit inspiration, create your own, and enjoy 14 days
+                  free.
                 </p>
                 <p className="subtext landing-hero-detail">
                   Upload a look you like, break it into pieces, and turn it into
@@ -128,31 +130,43 @@ export default function LandingAuth() {
                 </p>
               </div>
 
-              <ol className="landing-process-list" aria-label="How OutfitsMe works">
+              <ol
+                className="landing-process-list"
+                aria-label="How OutfitsMe works"
+              >
                 <li className="landing-process-step">
-                  <span className="landing-process-number">1</span>
                   <div className="o-stack o-stack--tight">
-                    <strong>Get inspired</strong>
+                    <div className="flex items-center gap-2">
+                      <span className="landing-process-number">1</span>
+                      <strong>Get inspired</strong>
+                    </div>
                     <span>
-                      Start from a photo, a vibe, or pieces already in your closet.
+                      Start from a photo, a vibe, or pieces already in your
+                      closet.
                     </span>
                   </div>
                 </li>
                 <li className="landing-process-step">
-                  <span className="landing-process-number">2</span>
                   <div className="o-stack o-stack--tight">
-                    <strong>Create your look</strong>
+                    <div className="flex items-center gap-2">
+                      <span className="landing-process-number">2</span>
+                      <strong>Create your look</strong>
+                    </div>
                     <span>
-                      Mix and match items to build outfits that feel more like you.
+                      Mix and match items to build outfits that feel more like
+                      you.
                     </span>
                   </div>
                 </li>
                 <li className="landing-process-step">
-                  <span className="landing-process-number">3</span>
                   <div className="o-stack o-stack--tight">
-                    <strong>Preview before you wear</strong>
+                    <div className="flex items-center gap-2">
+                      <span className="landing-process-number">3</span>
+                      <strong>Preview before you wear</strong>
+                    </div>
                     <span>
-                      See how new combinations come together before making a call.
+                      See how new combinations come together before making a
+                      call.
                     </span>
                   </div>
                 </li>

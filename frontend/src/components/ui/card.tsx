@@ -2,15 +2,20 @@ import * as React from "react"
 
 import { cn } from "@/lib/utils"
 
-function Card({
+type CardProps<T extends React.ElementType> = {
+  size?: "default" | "sm"
+  as?: T
+  className?: string
+} & Omit<React.ComponentPropsWithoutRef<T>, "as" | "className">
+
+function Card<T extends React.ElementType = "div">({
   className,
   size = "default",
-  as: Component = "div",
+  as,
   ...props
-}: React.HTMLAttributes<HTMLElement> & {
-  size?: "default" | "sm"
-  as?: keyof React.JSX.IntrinsicElements
-}) {
+}: CardProps<T>) {
+  const Component = (as || "div") as React.ElementType
+
   return (
     <Component
       data-slot="card"

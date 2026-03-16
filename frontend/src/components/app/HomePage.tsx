@@ -181,10 +181,6 @@ export default function HomePage() {
             </div>
           )}
         >
-          <div className="dashboard-header-copy">
-            <h2>{userFullName ? `Welcome back, ${userFullName}` : "Welcome back"}</h2>
-            <p className="subtext">Your style workspace is synced and ready for the next outfit.</p>
-          </div>
         </AppHeader>
 
         <section className="dashboard-stage">
@@ -197,12 +193,12 @@ export default function HomePage() {
                   key={tab.id}
                   type="button"
                   variant={isActive ? "secondary" : "outline"}
-                  className="h-12 w-full justify-center gap-2 rounded-full px-4 text-[0.97rem] whitespace-normal max-[720px]:px-3"
+                  className="dashboard-nav-button w-full"
                   aria-label={tab.label}
                   onClick={() => handleTabChange(tab.id)}
                 >
                   <Icon size={16} />
-                  <span className="max-[720px]:hidden">{tab.label}</span>
+                  <span className="dashboard-nav-label">{tab.label}</span>
                 </Button>
               );
             })}

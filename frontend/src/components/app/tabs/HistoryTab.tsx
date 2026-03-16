@@ -33,7 +33,6 @@ export default function HistoryTab() {
               <th>Photo</th>
               <th>Model</th>
               <th>Status</th>
-              <th>Outfits</th>
               <th>Created</th>
               <th>Completed</th>
             </tr>
@@ -67,7 +66,6 @@ export default function HistoryTab() {
                 </td>
                 <td data-label="Model">{entry.analysis_model || "Unknown"}</td>
                 <td data-label="Status">{entry.status || "Unknown"}</td>
-                <td data-label="Outfits">{entry.outfit_count ?? 0}</td>
                 <td data-label="Created">{entry.created_at ? new Date(entry.created_at).toLocaleString() : "-"}</td>
                 <td data-label="Completed">{entry.completed_at ? new Date(entry.completed_at).toLocaleString() : "-"}</td>
               </tr>

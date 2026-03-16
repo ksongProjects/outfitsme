@@ -111,7 +111,15 @@ export default function ItemsTab() {
       {itemsMessage ? <p className="subtext">{itemsMessage}</p> : null}
 
       <div className="o-cluster o-cluster--wrap o-cluster--stack-sm">
-        <Select value={categoryFilter} onValueChange={setCategoryFilter}>
+        <Select
+          value={categoryFilter}
+          onValueChange={(nextValue) => {
+            if (!nextValue) {
+              return;
+            }
+            setCategoryFilter(nextValue);
+          }}
+        >
           <SelectTrigger className="w-full sm:w-40">
             <SelectValue placeholder="All types" />
           </SelectTrigger>
@@ -123,7 +131,15 @@ export default function ItemsTab() {
             ))}
           </SelectContent>
         </Select>
-        <Select value={colorFilter} onValueChange={setColorFilter}>
+        <Select
+          value={colorFilter}
+          onValueChange={(nextValue) => {
+            if (!nextValue) {
+              return;
+            }
+            setColorFilter(nextValue);
+          }}
+        >
           <SelectTrigger className="w-full sm:w-40">
             <SelectValue placeholder="All colors" />
           </SelectTrigger>
@@ -135,7 +151,15 @@ export default function ItemsTab() {
             ))}
           </SelectContent>
         </Select>
-        <Select value={styleFilter} onValueChange={setStyleFilter}>
+        <Select
+          value={styleFilter}
+          onValueChange={(nextValue) => {
+            if (!nextValue) {
+              return;
+            }
+            setStyleFilter(nextValue);
+          }}
+        >
           <SelectTrigger className="w-full sm:w-40">
             <SelectValue placeholder="All styles" />
           </SelectTrigger>

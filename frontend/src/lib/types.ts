@@ -84,13 +84,6 @@ export type StatsPayload = {
   analyses_count: number;
   items_count: number;
   generated_outfit_images_count?: number;
-  weekly_activity: {
-    analyses_count: number;
-    outfits_count: number;
-    items_count: number;
-    window_start_utc: string | null;
-  };
-  top_item_types: Array<{ label: string; count: number }>;
 };
 
 export type AnalysisLimits = {

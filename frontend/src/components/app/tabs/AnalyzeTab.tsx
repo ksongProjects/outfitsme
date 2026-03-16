@@ -304,7 +304,15 @@ export default function AnalyzeTab() {
           {modelOptions.length > 1 ? (
             <div className="field-stack">
               <label htmlFor="analysis-model">Analysis model</label>
-              <Select value={selectedModel} onValueChange={(nextValue) => setSelectedModel(nextValue)}>
+              <Select
+                value={selectedModel}
+                onValueChange={(nextValue) => {
+                  if (!nextValue) {
+                    return;
+                  }
+                  setSelectedModel(nextValue);
+                }}
+              >
                 <SelectTrigger id="analysis-model" className="w-full">
                   <SelectValue placeholder="Select model" />
                 </SelectTrigger>

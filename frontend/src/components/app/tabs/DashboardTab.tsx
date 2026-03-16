@@ -1,6 +1,6 @@
 "use client";
 
-import { BarChart3, Clock3, Images, ShirtIcon, SparklesIcon } from "lucide-react";
+import { Clock3, Images, ShirtIcon, SparklesIcon } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -25,7 +25,6 @@ export default function DashboardTab({
   history,
   historyLoading,
 }: DashboardTabProps) {
-  const itemTypeCounts = stats?.top_item_types || [];
   const dailyLimit = analysisLimits?.daily_limit ?? 0;
   const usedToday = analysisLimits?.used_today ?? 0;
   const remainingToday = analysisLimits?.remaining_today;
@@ -71,52 +70,42 @@ export default function DashboardTab({
       <div className="o-grid o-grid--cards">
         <Card as="article" className="c-surface c-surface--stack">
           <div className="o-split o-split--start o-split--stack-sm">
-            <h3>Top clothing types</h3>
-            <BarChart3 size={18} />
-          </div>
-          {itemTypeCounts.length === 0 ? (
-            <p className="subtext">Analyze a few outfits to unlock clothing type counts.</p>
-          ) : (
-            <ul className="o-list o-list--split">
-              {itemTypeCounts.map((entry) => (
-                <li key={`item-type-${entry.label}`}>
-                  <strong>{entry.label}</strong>
-                  <span className="subtext">{entry.count} tracked</span>
-                </li>
-              ))}
-            </ul>
-          )}
-        </Card>
-
-        <Card as="article" className="c-surface c-surface--stack">
-          <div className="o-split o-split--start o-split--stack-sm">
-            <h3>Simple totals</h3>
+            <h3>Library totals</h3>
             <ShirtIcon size={18} />
           </div>
           <div className="insight-summary">
             <p>Photos analyzed: <strong>{stats.photos_count ?? 0}</strong></p>
-            <p>Completed jobs this week: <strong>{stats.weekly_activity?.analyses_count ?? 0}</strong></p>
-            <p>Generated outfit images this week: <strong>{stats.weekly_activity?.outfits_count ?? 0}</strong></p>
-            <p>Items added this week: <strong>{stats.weekly_activity?.items_count ?? 0}</strong></p>
+            <p>Completed analysis jobs: <strong>{stats.analyses_count ?? 0}</strong></p>
+            <p>Generated outfits: <strong>{stats.generated_outfit_images_count ?? stats.outfits_count ?? 0}</strong></p>
+            <p>Items cataloged: <strong>{stats.items_count ?? 0}</strong></p>
           </div>
         </Card>
 
         <Card as="article" className="c-surface c-surface--stack">
           <div className="o-split o-split--start o-split--stack-sm">
-            <h3>Usage and recent activity</h3>
-            <Clock3 size={18} />
+            <h3>Usage access</h3>
+            <SparklesIcon size={18} />
           </div>
           {limitsLoading ? (
             <p className="subtext">Loading usage limits...</p>
           ) : accessMode === "unlimited" ? (
             <p className="subtext">Access level: <strong>{userRole}</strong>. AI usage is currently unlimited.</p>
           ) : trialActive ? (
-            <p className="subtext">
-              Trial usage today: <strong>{usedToday}/{dailyLimit}</strong> used, <strong>{remainingToday}</strong> left. Trial days remaining: <strong>{trialDaysRemaining}</strong>.
-            </p>
+            <div className="insight-summary">
+              <p>Today used: <strong>{usedToday}/{dailyLimit}</strong></p>
+              <p>Remaining today: <strong>{remainingToday ?? 0}</strong></p>
+              <p>Trial days remaining: <strong>{trialDaysRemaining}</strong></p>
+            </div>
           ) : (
             <p className="subtext">Trial status: <strong>expired</strong>.</p>
           )}
+        </Card>
+
+        <Card as="article" className="c-surface c-surface--stack">
+          <div className="o-split o-split--start o-split--stack-sm">
+            <h3>Recent activity</h3>
+            <Clock3 size={18} />
+          </div>
           {historyLoading ? (
             <p className="subtext">Loading recent activity...</p>
           ) : recentActions.length === 0 ? (

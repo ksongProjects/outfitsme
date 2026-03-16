@@ -10,6 +10,22 @@ import type { WardrobeDetails, WardrobeEntry } from "@/lib/types";
 const WARDROBE_STALE_MS = 60 * 1000;
 const DETAILS_CACHE_STALE_MS = 5 * 60 * 1000;
 
+const normalizeLabel = (value: unknown, fallback: string) => {
+  const cleaned = String(value || "").trim().replace(/\s+/g, " ");
+  if (!cleaned) {
+    return fallback;
+  }
+  return cleaned.replace(/\b\w/g, (char) => char.toUpperCase());
+};
+
+const normalizeWardrobeEntry = (entry: WardrobeEntry): WardrobeEntry => ({
+  ...entry,
+  row_id: entry.row_id || entry.outfit_id || `${entry.photo_id}:${entry.outfit_index ?? 0}`,
+  style_label: normalizeLabel(entry.style_label, "Unlabeled"),
+  source_type: String(entry.source_type || "photo_analysis"),
+  outfit_index: typeof entry.outfit_index === "number" ? entry.outfit_index : 0,
+});
+
 export function useWardrobeState({
   accessToken,
   onWardrobeChanged,
@@ -92,7 +108,7 @@ export function useWardrobeState({
 
     const wardrobeJson = await wardrobeRes.json();
     return {
-      wardrobe: (wardrobeJson.wardrobe || []) as WardrobeEntry[],
+      wardrobe: ((wardrobeJson.wardrobe || []) as WardrobeEntry[]).map(normalizeWardrobeEntry),
       has_more: Boolean(wardrobeJson.has_more),
     } satisfies WardrobePagePayload;
   };
