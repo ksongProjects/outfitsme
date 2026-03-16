@@ -1,11 +1,11 @@
 "use client";
 
-import Image from "next/image";
 import { useEffect, useEffectEvent, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { LayoutDashboard, LogOut, Search, Settings2, Shirt, Sparkles, User } from "lucide-react";
 
 import AppFooter from "@/components/app/AppFooter";
+import AppHeader from "@/components/app/AppHeader";
 import AppLoadingScreen from "@/components/app/AppLoadingScreen";
 import AnalyzeTab from "@/components/app/tabs/AnalyzeTab";
 import DashboardTab from "@/components/app/tabs/DashboardTab";
@@ -30,15 +30,14 @@ import { useSettingsState } from "@/hooks/use-settings-state";
 import { useStatsState } from "@/hooks/use-stats-state";
 import { useWardrobeState } from "@/hooks/use-wardrobe-state";
 
-const TAB_OPTIONS = [
+const NAV_TAB_OPTIONS = [
   { id: "dashboard", label: "Home", icon: LayoutDashboard },
   { id: "analyze", label: "Photo analysis", icon: Sparkles },
   { id: "wardrobe", label: "My outfits", icon: Shirt },
   { id: "items", label: "Item catalog", icon: Search },
-  { id: "settings", label: "Settings", icon: Settings2 },
 ] as const;
 
-type DashboardTabId = (typeof TAB_OPTIONS)[number]["id"];
+type DashboardTabId = ((typeof NAV_TAB_OPTIONS)[number]["id"]) | "settings";
 
 export default function HomePage() {
   const router = useRouter();
@@ -142,27 +141,10 @@ export default function HomePage() {
         <div className="dashboard-background-orb dashboard-background-orb-a" />
         <div className="dashboard-background-orb dashboard-background-orb-b" />
 
-        <header className="dashboard-header">
-          <div className="dashboard-header-copy">
-            <button type="button" className="brand-button dashboard-brand-button" onClick={() => handleTabChange("dashboard")}>
-              <span className="brand-lockup">
-                <span className="brand-mark" aria-hidden="true">
-                  <Image src="/logo.png" alt="" width={40} height={40} className="brand-mark-image" priority />
-                </span>
-                <span>
-                  <span className="brand-name">OutfitsMe</span>
-                </span>
-              </span>
-            </button>
-            <h2>{userFullName ? `Welcome back, ${userFullName}` : "Welcome back"}</h2>
-            <p className="subtext">
-              {userFullName
-                ? "Your style workspace is synced and ready for the next outfit."
-                : `Signed in as ${userLabel}`}
-            </p>
-          </div>
-
-          <div className="dashboard-user-actions">
+        <AppHeader
+          className="dashboard-header"
+          onBrandClick={() => handleTabChange("dashboard")}
+          actions={(
             <DropdownMenu>
               <DropdownMenuTrigger className="hero-badge-button" aria-label="Account menu">
                 <Avatar
@@ -194,12 +176,21 @@ export default function HomePage() {
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+          )}
+        >
+          <div className="dashboard-header-copy">
+            <h3>{userFullName ? `Welcome back, ${userFullName}` : "Welcome back"}</h3>
+            <p className="subtext">
+              {userFullName
+                ? "Your style workspace is synced and ready for the next outfit."
+                : `Signed in as ${userLabel}`}
+            </p>
           </div>
-        </header>
+        </AppHeader>
 
         <section className="dashboard-stage">
           <nav className="tab-row" aria-label="Dashboard sections">
-            {TAB_OPTIONS.map((tab) => {
+            {NAV_TAB_OPTIONS.map((tab) => {
               const Icon = tab.icon;
               const isActive = tab.id === dashboardTab;
               return (
@@ -207,16 +198,17 @@ export default function HomePage() {
                   key={tab.id}
                   type="button"
                   className={`tab-btn ${isActive ? "active" : ""}`}
+                  aria-label={tab.label}
                   onClick={() => handleTabChange(tab.id)}
                 >
                   <Icon size={16} />
-                  <span>{tab.label}</span>
+                  <span className="tab-btn-label">{tab.label}</span>
                 </button>
               );
             })}
           </nav>
 
-          <section className="card dashboard-card-shell">
+          <section className="c-surface dashboard-card-shell">
             {dashboardTab === "dashboard" ? (
               <DashboardTab
                 stats={statsState.stats}

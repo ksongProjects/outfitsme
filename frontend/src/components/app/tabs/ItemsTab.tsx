@@ -85,7 +85,7 @@ export default function ItemsTab() {
   };
 
   return (
-    <section className="tab-stack">
+    <section className="o-stack o-stack--section">
       <div className="tab-header">
         <div className="tab-header-title">
           <span className="section-kicker">Catalog</span>
@@ -99,7 +99,7 @@ export default function ItemsTab() {
 
       {itemsMessage ? <p className="subtext">{itemsMessage}</p> : null}
 
-      <div className="filter-row">
+      <div className="o-cluster o-cluster--wrap o-cluster--stack-sm">
         <BaseSelect
           value={categoryFilter}
           onValueChange={setCategoryFilter}
@@ -164,7 +164,7 @@ export default function ItemsTab() {
                 </td>
                 <td data-label="Category">{item.category || "Item"}</td>
                 <td data-label="Name">
-                  <span className="wardrobe-item-row">
+                  <span className="o-media o-media--stack-sm">
                     {item.image_url ? (
                       <AppImage
                         src={item.image_url}
@@ -186,9 +186,9 @@ export default function ItemsTab() {
         </table>
       </div>
 
-      <div className="pagination-row">
+      <div className="o-cluster o-cluster--between o-cluster--wrap o-cluster--stack-sm">
         <p className="subtext">Page {itemsPage}</p>
-        <div className="button-row">
+        <div className="o-cluster o-cluster--wrap o-cluster--stack-sm">
           <BaseButton type="button" variant="ghost" onClick={prevItemsPage} disabled={itemsLoading || itemsPage <= 1}>
             Previous
           </BaseButton>
@@ -198,9 +198,9 @@ export default function ItemsTab() {
         </div>
       </div>
 
-      <div className="pagination-row">
+      <div className="o-cluster o-cluster--between o-cluster--wrap o-cluster--stack-sm">
         <p className="subtext">{selectedItems.length} item{selectedItems.length === 1 ? "" : "s"} selected</p>
-        <div className="button-row">
+        <div className="o-cluster o-cluster--wrap o-cluster--stack-sm">
           <BaseButton type="button" variant="ghost" onClick={resetItemsState} disabled={selectedItems.length === 0}>
             Unselect all
           </BaseButton>
@@ -211,11 +211,11 @@ export default function ItemsTab() {
       </div>
 
       <BaseDialog open={confirmModalOpen} onOpenChange={setConfirmModalOpen} title="Confirm new outfit">
-        <div className="outfit-details-layout">
-          <div className="selection-preview">
+        <div className="o-detail-layout o-detail-layout--stack-sm">
+          <div className="o-stack o-stack--tight">
             <h4>Preview</h4>
             <p className="subtext">{selectedItems.length} item{selectedItems.length === 1 ? "" : "s"} selected</p>
-            <div className="selection-preview-grid">
+            <div className="o-cluster o-cluster--wrap o-cluster--stack-sm">
               {selectedItems.map((item) => (
                 <div key={`preview-${item.id}`} className="selection-preview-pill">
                   <span className="item-icon" aria-hidden="true">{getItemIcon(item)}</span>
@@ -226,7 +226,7 @@ export default function ItemsTab() {
           </div>
           <div>
             <h4>Selected items</h4>
-            <ul className="analysis-items">
+            <ul className="o-list">
               {selectedItems.map((item) => (
                 <li key={`selected-${item.id}`} className="analysis-item">
                   <span className="item-icon" aria-hidden="true">{getItemIcon(item)}</span>
@@ -234,7 +234,7 @@ export default function ItemsTab() {
                 </li>
               ))}
             </ul>
-            <div className="button-row">
+            <div className="o-cluster o-cluster--wrap o-cluster--stack-sm">
               <BaseButton type="button" variant="ghost" onClick={() => setConfirmModalOpen(false)}>
                 Cancel
               </BaseButton>
@@ -269,7 +269,7 @@ export default function ItemsTab() {
             ) : (
               <p className="subtext">Image generation disabled.</p>
             )}
-            <ul className="compact-list">
+            <ul className="o-list o-list--split">
               <li><strong>Name:</strong> {activeItem.name || "Unknown"}</li>
               <li><strong>Category:</strong> {activeItem.category || "Item"}</li>
               <li><strong>Color:</strong> {activeItem.color || "Unknown"}</li>

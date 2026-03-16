@@ -273,7 +273,7 @@ export default function AnalyzeTab() {
   };
 
   return (
-    <section className="tab-stack">
+    <section className="o-stack o-stack--section">
       <div className="tab-header">
         <div className="tab-header-title">
           <span className="section-kicker">Create</span>
@@ -283,8 +283,8 @@ export default function AnalyzeTab() {
       </div>
 
       <div className="analysis-layout">
-        <section className="panel-card panel-card-soft">
-          <div className="panel-card-head">
+        <section className="c-surface c-surface--stack">
+          <div className="c-section-head o-stack o-stack--tight">
             <h3>Upload and analyze</h3>
             <p className="subtext">Best results come from a clear full-body or torso-focused outfit photo.</p>
           </div>
@@ -407,7 +407,7 @@ export default function AnalyzeTab() {
             </>
           ) : null}
 
-          <div className="button-row">
+          <div className="o-cluster o-cluster--wrap o-cluster--stack-sm">
             {fileName ? (
               <BaseButton type="button" variant="ghost" onClick={clearSelectedFile}>
                 Cancel
@@ -424,14 +424,14 @@ export default function AnalyzeTab() {
           </div>
         </section>
 
-        <section className="panel-card results-card">
-          <div className="panel-card-head">
+        <section className="c-surface c-surface--stack">
+          <div className="c-section-head o-stack o-stack--tight">
             <h3>Results</h3>
             <p className="subtext">Detected outfits, items, and starting points for retailer discovery.</p>
           </div>
 
           {analysisInProgress ? (
-            <div className="loading-panel" role="status" aria-live="polite">
+            <div className="loading-panel o-cluster o-cluster--start" role="status" aria-live="polite">
               <span className="loading-spinner loading-spinner-lg" aria-hidden="true" />
               <div>
                 <p className="loading-panel-title">Analysis in progress</p>
@@ -443,10 +443,10 @@ export default function AnalyzeTab() {
           {!analysis && !loading ? <p className="subtext">Analyze a photo to view detected style, item breakdowns, and similar shopping leads.</p> : null}
 
           {analysis ? (
-            <div className="analysis-results-stack">
+            <div className="o-stack">
               {(detectedOutfits.length > 0 ? detectedOutfits : [{ style: analysis.style, items: analysis.items }]).map((outfit, index) => (
-                <article key={`analysis-outfit-${index}`} className="result-card">
-                  <div className="result-card-head">
+                <article key={`analysis-outfit-${index}`} className="c-surface c-surface--stack">
+                  <div className="o-split o-split--start o-split--stack-sm">
                     <div>
                       <p className="result-label">Outfit {index + 1}</p>
                       <h4>{outfit.style || "Unlabeled style"}</h4>
@@ -471,7 +471,7 @@ export default function AnalyzeTab() {
                     </BaseButton>
                   </div>
 
-                  <ul className="analysis-items">
+                  <ul className="o-list">
                     {(outfit.items || []).map((item, itemIndex) => (
                       <li key={`analysis-item-${index}-${itemIndex}`} className="analysis-item">
                         {item.image_url ? (
@@ -502,17 +502,17 @@ export default function AnalyzeTab() {
               ))}
 
               {similarResults.length > 0 ? (
-                <article className="result-card retailer-card">
-                  <div className="result-card-head">
+                <article className="c-surface c-surface--stack">
+                  <div className="o-split o-split--start o-split--stack-sm">
                     <div>
                       <p className="result-label">Discovery</p>
                       <h4>Similar items</h4>
                     </div>
                     <span className="search-pill"><Search size={14} /> beta</span>
                   </div>
-                  <div className="similar-grid">
+                  <div className="o-cluster o-cluster--wrap o-cluster--stack-sm">
                     {similarResults.map((result, index) => (
-                      <div key={`similar-${result.item}-${index}`} className="similar-card">
+                      <div key={`similar-${result.item}-${index}`} className="c-surface o-stack o-stack--tight">
                         <p className="similar-item">{result.item}</p>
                         <p className="subtext">{result.store}</p>
                         <div className="similar-meta">
@@ -533,8 +533,8 @@ export default function AnalyzeTab() {
         </section>
       </div>
 
-      <div className="history-panel panel-card">
-        <div className="panel-card-head">
+      <div className="c-surface c-surface--stack">
+        <div className="c-section-head o-stack o-stack--tight">
           <h3>Recent analyses</h3>
           <p className="subtext">Keep an eye on earlier uploads while you work through new outfit ideas.</p>
         </div>

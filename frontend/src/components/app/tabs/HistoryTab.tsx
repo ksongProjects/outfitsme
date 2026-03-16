@@ -12,7 +12,7 @@ export default function HistoryTab() {
   const [previewEntry, setPreviewEntry] = useState<(typeof history)[number] | null>(null);
 
   return (
-    <section className="tab-stack">
+    <section className="o-stack o-stack--section">
       <div className="tab-header">
         <div className="tab-header-title">
           <span className="section-kicker">Archive</span>
@@ -42,7 +42,7 @@ export default function HistoryTab() {
             {history.map((entry) => (
               <tr key={entry.job_id}>
                 <td data-label="Photo">
-                  <div className="history-photo-cell">
+                  <div className="o-media o-media--stack-sm">
                     {entry.image_url ? (
                       <BaseButton
                         type="button"

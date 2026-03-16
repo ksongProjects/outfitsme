@@ -35,7 +35,7 @@ export default function DashboardTab({
   const recentActions = (history || []).slice(0, 5);
 
   return (
-    <section className="tab-stack">
+    <section className="o-stack o-stack--section">
       <div className="tab-header">
         <div className="tab-header-title">
           <span className="section-kicker">Overview</span>
@@ -49,34 +49,34 @@ export default function DashboardTab({
         </BaseButton>
       </div>
 
-      <div className="stats-grid">
-        <article className="stats-card stats-card-accent">
+      <div className="o-grid o-grid--stats">
+        <article className="c-surface c-surface--stack c-surface--accent">
           <SparklesIcon size={18} className="stats-icon"/>
           <p className="stats-label">Completed jobs</p>
           <p className="stats-value">{stats.analyses_count}</p>
         </article>
-        <article className="stats-card stats-card-accent">
+        <article className="c-surface c-surface--stack c-surface--accent">
           <Images size={18} className="stats-icon"/>
           <p className="stats-label">Generated outfit images</p>
           <p className="stats-value">{stats.generated_outfit_images_count ?? stats.outfits_count}</p>
         </article>
-        <article className="stats-card stats-card-accent">
+        <article className="c-surface c-surface--stack c-surface--accent">
           <ShirtIcon size={18} className="stats-icon"/>
           <p className="stats-label">Items cataloged</p>
           <p className="stats-value">{stats.items_count}</p>
         </article>
       </div>
 
-      <div className="dashboard-layout">
-        <article className="settings-card insight-card">
-          <div className="card-heading-row">
+      <div className="o-grid o-grid--cards">
+        <article className="c-surface c-surface--stack">
+          <div className="o-split o-split--start o-split--stack-sm">
             <h3>Top clothing types</h3>
             <BarChart3 size={18} />
           </div>
           {itemTypeCounts.length === 0 ? (
             <p className="subtext">Analyze a few outfits to unlock clothing type counts.</p>
           ) : (
-            <ul className="compact-list">
+            <ul className="o-list o-list--split">
               {itemTypeCounts.map((entry) => (
                 <li key={`item-type-${entry.label}`}>
                   <strong>{entry.label}</strong>
@@ -87,8 +87,8 @@ export default function DashboardTab({
           )}
         </article>
 
-        <article className="settings-card insight-card">
-          <div className="card-heading-row">
+        <article className="c-surface c-surface--stack">
+          <div className="o-split o-split--start o-split--stack-sm">
             <h3>Simple totals</h3>
             <ShirtIcon size={18} />
           </div>
@@ -100,8 +100,8 @@ export default function DashboardTab({
           </div>
         </article>
 
-        <article className="settings-card insight-card">
-          <div className="card-heading-row">
+        <article className="c-surface c-surface--stack">
+          <div className="o-split o-split--start o-split--stack-sm">
             <h3>Usage and recent activity</h3>
             <Clock3 size={18} />
           </div>
@@ -121,7 +121,7 @@ export default function DashboardTab({
           ) : recentActions.length === 0 ? (
             <p className="subtext">No recent activity yet. Analyze a photo to get started.</p>
           ) : (
-            <ul className="compact-list">
+            <ul className="o-list o-list--split">
               {recentActions.map((entry) => (
                 <li key={`recent-action-${entry.job_id}`}>
                   <strong>{entry.status || "Unknown"}</strong>

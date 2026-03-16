@@ -5,7 +5,7 @@ import AppFooter from "@/components/app/AppFooter";
 export default function TermsPage() {
   return (
     <main className="legal-shell">
-      <section className="card legal-card">
+      <section className="c-surface c-surface--stack c-surface--legal">
         <span className="section-kicker">Legal</span>
         <h1>OutfitsMe Terms of Service</h1>
         <p className="subtext">Last updated: March 5, 2026</p>
@@ -46,7 +46,7 @@ export default function TermsPage() {
           for indirect, incidental, or consequential damages resulting from use of the service.
         </p>
 
-        <div className="button-row">
+        <div className="o-cluster o-cluster--wrap o-cluster--stack-sm">
           <Link className="ghost-btn" href="/">
             Back to app
           </Link>
@@ -56,4 +56,3 @@ export default function TermsPage() {
     </main>
   );
 }
-

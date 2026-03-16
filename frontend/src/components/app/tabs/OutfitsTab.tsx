@@ -100,7 +100,7 @@ export default function OutfitsTab() {
   };
 
   return (
-    <section className="tab-stack">
+    <section className="o-stack o-stack--section">
       <div className="tab-header">
         <div className="tab-header-title">
           <span className="section-kicker">Wardrobe</span>
@@ -114,7 +114,7 @@ export default function OutfitsTab() {
 
       {wardrobeMessage ? <p className="subtext">{wardrobeMessage}</p> : null}
 
-      <div className="filter-row">
+      <div className="o-cluster o-cluster--wrap o-cluster--stack-sm">
         <BaseSelect
           value={sourceFilter}
           onValueChange={(nextValue) => setSourceFilter(nextValue)}
@@ -187,9 +187,9 @@ export default function OutfitsTab() {
         </table>
       </div>
 
-      <div className="pagination-row">
+      <div className="o-cluster o-cluster--between o-cluster--wrap o-cluster--stack-sm">
         <p className="subtext">Page {wardrobePage}</p>
-        <div className="button-row">
+        <div className="o-cluster o-cluster--wrap o-cluster--stack-sm">
           <BaseButton type="button" variant="ghost" onClick={prevWardrobePage} disabled={wardrobeLoading || wardrobePage <= 1}>
             Previous
           </BaseButton>
@@ -246,7 +246,7 @@ export default function OutfitsTab() {
         {outfitDetailsLoading ? (
           <p className="subtext">Loading outfit details...</p>
         ) : (
-          <div className="outfit-details-layout">
+          <div className="o-detail-layout o-detail-layout--stack-sm">
             {outfitDetails?.source_outfit_image_url ? (
               <AppImage
                 src={outfitDetails.source_outfit_image_url}
@@ -289,7 +289,7 @@ export default function OutfitsTab() {
                         placeholder="Outfit name"
                         maxLength={80}
                       />
-                      <div className="button-row">
+                      <div className="o-cluster o-cluster--wrap o-cluster--stack-sm">
                         <BaseButton
                           type="button"
                           variant="ghost"
@@ -318,10 +318,10 @@ export default function OutfitsTab() {
                     <strong>Type:</strong> {OUTFIT_SOURCE_LABELS[outfitDetails.selected_outfit.source_type || "photo_analysis"] || "Photo analysis"}
                   </p>
                   {(outfitDetails.selected_outfit.items || []).length ? (
-                    <ul className="analysis-items">
+                    <ul className="o-list">
                       {outfitDetails.selected_outfit.items?.map((item, index) => (
                         <li key={`detail-item-${index}`} className="analysis-item">
-                          <span className="wardrobe-item-row">
+                          <span className="o-media o-media--stack-sm">
                             {item.image_url ? (
                               <BaseButton
                                 type="button"
@@ -376,7 +376,7 @@ export default function OutfitsTab() {
       >
         <p>Remove this outfit from your wardrobe?</p>
         <p className="subtext">Style: <strong>{pendingDelete?.style_label || "Unlabeled"}</strong></p>
-        <div className="button-row">
+        <div className="o-cluster o-cluster--wrap o-cluster--stack-sm">
           <BaseButton type="button" variant="ghost" onClick={() => setPendingDelete(null)} disabled={deletingOutfitId === pendingDelete?.outfit_id}>
             Cancel
           </BaseButton>

@@ -1,7 +1,6 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import Image from "next/image";
 import Link from "next/link";
 import { ArrowRight, LogIn, SearchIcon, ShirtIcon, Wand2 } from "lucide-react";
 import { useEffect, useState } from "react";
@@ -9,6 +8,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 
 import AppFooter from "@/components/app/AppFooter";
+import AppHeader from "@/components/app/AppHeader";
 import BaseButton from "@/components/app/ui/BaseButton";
 import BaseCheckbox from "@/components/app/ui/BaseCheckbox";
 import { items } from "@/components/custom/items";
@@ -90,62 +90,43 @@ export default function LandingAuth() {
   return (
     <main className="landing-shell">
       <div className="landing-page">
-        <header className="landing-topbar">
-          <div className="brand-lockup">
-            <div className="brand-mark" aria-hidden="true">
-              <Image
-                src="/logo.png"
-                alt=""
-                width={40}
-                height={40}
-                className="brand-mark-image"
-                priority
-              />
-            </div>
-            <div>
-              <p className="brand-name">OutfitsMe</p>
-              <p className="brand-tagline">
-                AI styling, wardrobe memory, and outfit previews in one workflow.
-              </p>
-            </div>
-          </div>
-        </header>
+        <AppHeader />
 
         <section className="landing-columns">
-          <div className="landing-content-column">
+          <div className="o-stack">
             <div className="hero-copy">
-              <span className="hero-pill">From inspiration to wardrobe system</span>
-              <h3>Turn outfit photos into a searchable, reusable styling workspace.</h3>
+              <span className="hero-pill">A simpler way to plan outfits</span>
+              <h3>Save outfit ideas, spot what you are wearing, and try new looks faster.</h3>
               <p className="hero-copy-text">
-                Upload a look, identify the pieces, save the outfit, then generate fresh combinations and preview them on your own reference photo.
+                Upload a photo, pull out the pieces, save the look, and come back anytime when you want to remix it or preview something new.
               </p>
             </div>
 
-            <div className="hero-value-grid">
-              <article className="feature-card">
-                <div className="feature-card-title-row">
+            <div className="o-grid o-grid--thirds">
+              <article className="c-surface o-stack o-stack--tight">
+                <div className="o-media o-media--tight">
                   <SearchIcon size={18} className="feature-icon" />
                   <h3>Analyze</h3>
                 </div>
-                <p>Detect style, clothing items, and accessories from a single photo.</p>
+                <p>See the clothes in a photo and get a quick read on the overall look.</p>
               </article>
-              <article className="feature-card">
-                <div className="feature-card-title-row">
+              <article className="c-surface o-stack o-stack--tight">
+                <div className="o-media o-media--tight">
                   <Wand2 size={18} className="feature-icon" />
                   <h3>Preview</h3>
                 </div>
-                <p>Generate a personalized try-on style reference.</p>
+                <p>Try fresh outfit ideas with a preview that feels personal to you.</p>
               </article>
-              <article className="feature-card">
-                <div className="feature-card-title-row">
+              <article className="c-surface o-stack o-stack--tight">
+                <div className="o-media o-media--tight">
                   <ShirtIcon size={18} className="feature-icon" />
                   <h3>Organize</h3>
                 </div>
-                <p>Build a wardrobe memory you can filter, remix, and revisit.</p>
+                <p>Keep your favorite looks and pieces in one easy place.</p>
               </article>
             </div>
 
-            <section className="auth-panel card">
+            <section className="c-surface c-surface--stack">
               <div className="auth-header">
                 <span className="section-kicker">Get started</span>
               </div>
@@ -157,10 +138,10 @@ export default function LandingAuth() {
                   onCheckedChange={(checked) => setAcceptedTerms(Boolean(checked))}
                 />
                 <span>
-                  I agree to the <Link href="/terms" className="underline">Terms of Service</Link> and understand this version tracks usage under the managed trial.
+                  I agree to the <Link href="/terms" className="underline">Terms of Service</Link> and understand this trial tracks usage while I explore OutfitsMe.
                 </span>
               </label>
-              <div className="auth-button-row">
+              <div className="o-cluster o-cluster--wrap o-cluster--end o-cluster--stack-sm">
                 <BaseButton
                   type="button"
                   variant="ghost"
@@ -168,7 +149,7 @@ export default function LandingAuth() {
                   className="auth-secondary-btn"
                   onClick={() => void handleGoogleAuth("signin")}
                 >
-                  {activeAuthFlow === "signin" ? "Signing in..." : "Sign in with Google"}
+                  {activeAuthFlow === "signin" ? "Signing in..." : "Continue with Google"}
                   <LogIn size={16} />
                 </BaseButton>
                 <BaseButton
@@ -178,14 +159,14 @@ export default function LandingAuth() {
                   className="auth-submit-btn"
                   onClick={() => void handleGoogleAuth("signup")}
                 >
-                  {activeAuthFlow === "signup" ? "Creating account..." : "Sign up with Google"}
+                  {activeAuthFlow === "signup" ? "Creating account..." : "Create account"}
                   <ArrowRight size={16} />
                 </BaseButton>
               </div>
             </section>
           </div>
 
-          <div className="landing-visual-column" aria-hidden="true">
+          <div className="o-stack" aria-hidden="true">
             <div className="masonry-stage">
               <Masonry
                 items={items}

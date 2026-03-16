@@ -74,8 +74,8 @@ export default function SettingsTab() {
         ))}
       </aside>
 
-      <div className="settings-scroll-sections">
-        <article id="settings-profile" className="settings-card settings-section-card">
+      <div className="o-stack o-stack--section">
+        <article id="settings-profile" className="c-surface c-surface--stack settings-section-card">
           <h2>Profile</h2>
           {!profilePhotoUrl ? <label>Reference photo</label> : null}
           {profilePhotoUrl ? (
@@ -98,7 +98,7 @@ export default function SettingsTab() {
             emptyText="No profile photo selected"
             disabled={profilePhotoUploading}
           />
-          <div className="button-row">
+          <div className="o-cluster o-cluster--wrap o-cluster--stack-sm">
             <BaseButton
               variant="ghost"
               onClick={() => uploadProfilePhoto(profilePhotoFile)}
@@ -143,15 +143,15 @@ export default function SettingsTab() {
             onChange={(event) => setSettingsForm((prev) => ({ ...prev, profile_age: event.target.value }))}
             placeholder="Age"
           />
-          <div className="button-row">
+          <div className="o-cluster o-cluster--wrap o-cluster--stack-sm">
             <BaseButton variant="primary" onClick={saveProfile}>Save profile</BaseButton>
           </div>
         </article>
 
-        <article id="settings-features" className="settings-card settings-section-card">
+        <article id="settings-features" className="c-surface c-surface--stack settings-section-card">
           <h2>Features</h2>
           <p className="subtext">Turn advanced capabilities on only when they fit the experience you want to offer users.</p>
-          <div className="settings-feature-row">
+          <div className="settings-feature-row o-split o-split--start o-split--stack-sm">
             <div>
               <p><strong>Outfit image generation</strong></p>
               <p className="subtext">Generate item thumbnails and composed outfit visuals using your profile reference photo.</p>
@@ -163,7 +163,7 @@ export default function SettingsTab() {
               }
             />
           </div>
-          <div className="settings-feature-row">
+          <div className="settings-feature-row o-split o-split--start o-split--stack-sm">
             <div>
               <p><strong>Accessory analysis</strong></p>
               <p className="subtext">Include bags, jewelry, and other accessories during photo analysis.</p>
@@ -175,7 +175,7 @@ export default function SettingsTab() {
               }
             />
           </div>
-          <div className="settings-feature-row">
+          <div className="settings-feature-row o-split o-split--start o-split--stack-sm">
             <div>
               <p><strong>Online store search (Coming soon)</strong></p>
               <p className="subtext">Retail search is temporarily disabled while we finish the storefront integration.</p>
@@ -186,31 +186,31 @@ export default function SettingsTab() {
               aria-label="Online store search coming soon"
             />
           </div>
-          <div className="button-row">
+          <div className="o-cluster o-cluster--wrap o-cluster--stack-sm">
             <BaseButton variant="primary" onClick={saveFeatureSettings}>Save feature settings</BaseButton>
           </div>
         </article>
 
-        <article id="settings-costs" className="settings-card settings-section-card">
+        <article id="settings-costs" className="c-surface c-surface--stack settings-section-card">
           <h2>Cost usage</h2>
           {costSummaryLoading ? (
             <p className="subtext">Loading cost usage...</p>
           ) : costSummary ? (
             <>
               <p className="subtext">Month start: {costSummary.month_start_utc ? new Date(costSummary.month_start_utc).toLocaleString() : "-"}</p>
-              <ul className="compact-list">
+              <ul className="o-list o-list--split">
                 <li>Analysis runs: <strong>{costSummary.analysis_runs ?? 0}</strong></li>
                 <li>Custom outfit generations: <strong>{costSummary.custom_outfit_generations ?? 0}</strong></li>
               </ul>
               <h4>Estimated costs (USD)</h4>
-              <ul className="compact-list">
+              <ul className="o-list o-list--split">
                 <li>Analysis: <strong>${costSummary.estimated_costs_usd?.analysis ?? 0}</strong></li>
                 <li>Outfit image generation: <strong>${costSummary.estimated_costs_usd?.outfit_image_generation ?? 0}</strong></li>
                 <li>Item image generation: <strong>${costSummary.estimated_costs_usd?.item_image_generation ?? 0}</strong></li>
                 <li>Total: <strong>${costSummary.estimated_costs_usd?.total ?? 0}</strong></li>
               </ul>
               <h4>Token estimate</h4>
-              <ul className="compact-list">
+              <ul className="o-list o-list--split">
                 <li>Input tokens: <strong>{costSummary.token_usage_estimate?.total?.input_tokens ?? 0}</strong></li>
                 <li>Output tokens: <strong>{costSummary.token_usage_estimate?.total?.output_tokens ?? 0}</strong></li>
                 <li>Total tokens: <strong>{costSummary.token_usage_estimate?.total?.total_tokens ?? 0}</strong></li>
@@ -219,7 +219,7 @@ export default function SettingsTab() {
           ) : (
             <p className="subtext">Cost usage unavailable.</p>
           )}
-          <div className="button-row">
+          <div className="o-cluster o-cluster--wrap o-cluster--stack-sm">
             <BaseButton variant="ghost" onClick={() => void refreshCosts()}>Refresh costs</BaseButton>
           </div>
         </article>

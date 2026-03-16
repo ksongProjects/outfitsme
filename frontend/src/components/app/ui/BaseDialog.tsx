@@ -39,9 +39,9 @@ export default function BaseDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className={panelClasses} showCloseButton={false}>
-        <div className="modal-header">
+        <div className="modal-header o-split o-split--start">
           <DialogTitle className="modal-title">{title}</DialogTitle>
-          <div className="modal-header-actions">
+          <div className="modal-header-actions o-cluster o-cluster--wrap o-cluster--stack-sm">
             {headerActions}
             <BaseButton type="button" variant="ghost" onClick={() => onOpenChange(false)}>
               Close

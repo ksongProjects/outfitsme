@@ -5,7 +5,7 @@ import AppFooter from "@/components/app/AppFooter";
 export default function PrivacyPage() {
   return (
     <main className="legal-shell">
-      <section className="card legal-card">
+      <section className="c-surface c-surface--stack c-surface--legal">
         <span className="section-kicker">Legal</span>
         <h1>OutfitsMe Privacy Policy</h1>
         <p className="subtext">Last updated: March 5, 2026</p>
@@ -43,7 +43,7 @@ export default function PrivacyPage() {
         <h2>6. Contact</h2>
         <p>If you have privacy questions, contact the OutfitsMe team through the project support channel.</p>
 
-        <div className="button-row">
+        <div className="o-cluster o-cluster--wrap o-cluster--stack-sm">
           <Link className="ghost-btn" href="/">
             Back to app
           </Link>
