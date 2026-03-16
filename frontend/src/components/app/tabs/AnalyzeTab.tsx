@@ -556,10 +556,6 @@ export default function AnalyzeTab() {
       </div>
 
       <Card className="c-surface c-surface--stack">
-        <div className="c-section-head o-stack o-stack--tight">
-          <h3>Recent analyses</h3>
-          <p className="subtext">Keep an eye on earlier uploads while you work through new outfit ideas.</p>
-        </div>
         <HistoryTab />
       </Card>
     </section>

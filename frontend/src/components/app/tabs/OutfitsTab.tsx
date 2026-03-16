@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useMemo, useState } from "react";
 import { Trash2 } from "lucide-react";
@@ -62,6 +62,13 @@ export default function OutfitsTab() {
     () => wardrobe.filter((entry) => sourceFilter === "all" || (entry.source_type || "photo_analysis") === sourceFilter),
     [wardrobe, sourceFilter]
   );
+  const hasFilteredWardrobe = filteredWardrobe.length > 0;
+  const shouldShowEmptyState = !wardrobeLoading && !hasFilteredWardrobe;
+  const emptyStateMessage = wardrobe.length === 0
+    ? wardrobeMessage || "No wardrobe entries yet. Analyze your first outfit photo."
+    : sourceFilter !== "all"
+      ? "No outfits match the selected filter."
+      : "No outfits are available on this page.";
   const outfitCountsByPhoto = useMemo(() => {
     const counts = new Map<string, number>();
     for (const entry of wardrobe) {
@@ -134,7 +141,7 @@ export default function OutfitsTab() {
         </Button>
       </div>
 
-      {wardrobeMessage ? <p className="subtext">{wardrobeMessage}</p> : null}
+      {wardrobeMessage && hasFilteredWardrobe ? <p className="subtext">{wardrobeMessage}</p> : null}
 
       <div className="o-cluster o-cluster--wrap o-cluster--stack-sm">
         <Select
@@ -161,62 +168,65 @@ export default function OutfitsTab() {
         </Button>
       </div>
 
-      {wardrobe.length > 0 && filteredWardrobe.length === 0 ? (
-        <p className="subtext">No outfits match the selected filter.</p>
-      ) : null}
-
-      <div className="table-scroll-wrap">
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Photo</th>
-              <th>Name</th>
-              <th>Created</th>
-              <th>Type</th>
-              <th>Action</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredWardrobe.map((entry) => (
-              <tr key={entry.outfit_id} onClick={() => openOutfitDetails(entry.photo_id, entry.outfit_index ?? null)}>
-                <td data-label="Photo">
-                  {entry.image_url ? (
-                    <AppImage
-                      src={entry.image_url}
-                      alt={getOutfitDisplayName(entry)}
-                      className="history-thumb"
-                      width={64}
-                      height={64}
-                    />
-                  ) : (
-                    <span className="subtext">-</span>
-                  )}
-                </td>
-                <td data-label="Name">{getOutfitDisplayName(entry)}</td>
-                <td data-label="Created">{entry.created_at ? new Date(entry.created_at).toLocaleString() : "-"}</td>
-                <td data-label="Type">{OUTFIT_SOURCE_LABELS[entry.source_type || "photo_analysis"] || "Photo analysis"}</td>
-                <td data-label="Action">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="icon-sm"
-                    className="text-destructive hover:text-destructive"
-                    onClick={(event) => {
-                      event.stopPropagation();
-                      setPendingDelete(entry);
-                    }}
-                    disabled={deletingOutfitId === entry.outfit_id}
-                    aria-label="Delete outfit"
-                    title="Delete outfit"
-                  >
-                    {deletingOutfitId === entry.outfit_id ? "..." : <Trash2 size={16} />}
-                  </Button>
-                </td>
+      {shouldShowEmptyState ? (
+        <div className="table-empty-state" role="status" aria-live="polite">
+          <p className="table-empty-state-title">No outfits to show</p>
+          <p className="subtext">{emptyStateMessage}</p>
+        </div>
+      ) : (
+        <div className="table-scroll-wrap">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Photo</th>
+                <th>Name</th>
+                <th>Created</th>
+                <th>Type</th>
+                <th>Action</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {filteredWardrobe.map((entry) => (
+                <tr key={entry.outfit_id} onClick={() => openOutfitDetails(entry.photo_id, entry.outfit_index ?? null)}>
+                  <td data-label="Photo">
+                    {entry.image_url ? (
+                      <AppImage
+                        src={entry.image_url}
+                        alt={getOutfitDisplayName(entry)}
+                        className="history-thumb"
+                        width={64}
+                        height={64}
+                      />
+                    ) : (
+                      <span className="subtext">-</span>
+                    )}
+                  </td>
+                  <td data-label="Name">{getOutfitDisplayName(entry)}</td>
+                  <td data-label="Created">{entry.created_at ? new Date(entry.created_at).toLocaleString() : "-"}</td>
+                  <td data-label="Type">{OUTFIT_SOURCE_LABELS[entry.source_type || "photo_analysis"] || "Photo analysis"}</td>
+                  <td data-label="Action">
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      className="text-destructive hover:text-destructive"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setPendingDelete(entry);
+                      }}
+                      disabled={deletingOutfitId === entry.outfit_id}
+                      aria-label="Delete outfit"
+                      title="Delete outfit"
+                    >
+                      {deletingOutfitId === entry.outfit_id ? "..." : <Trash2 size={16} />}
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       <div className="o-cluster o-cluster--between o-cluster--wrap o-cluster--stack-sm">
         <p className="subtext">Page {wardrobePage}</p>
@@ -450,4 +460,7 @@ export default function OutfitsTab() {
     </section>
   );
 }
+
+
+
 

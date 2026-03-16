@@ -79,6 +79,9 @@ function createAuth() {
         },
       },
     },
+    session: {
+      expiresIn: 60 * 60,
+    },
     baseURL: appUrl,
     basePath: "/api/auth",
     secret: authSecret,

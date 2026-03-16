@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useState } from "react";
 
@@ -10,6 +10,8 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 export default function HistoryTab() {
   const { history, historyLoading, historyMessage, refreshHistory } = useHistoryContext();
   const [previewEntry, setPreviewEntry] = useState<(typeof history)[number] | null>(null);
+  const hasHistory = history.length > 0;
+  const shouldShowEmptyState = !historyLoading && !hasHistory;
 
   return (
     <section className="o-stack o-stack--section">
@@ -24,55 +26,62 @@ export default function HistoryTab() {
         </Button>
       </div>
 
-      {historyMessage ? <p className="subtext">{historyMessage}</p> : null}
+      {historyMessage && hasHistory ? <p className="subtext">{historyMessage}</p> : null}
 
-      <div className="table-scroll-wrap">
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Photo</th>
-              <th>Model</th>
-              <th>Status</th>
-              <th>Created</th>
-              <th>Completed</th>
-            </tr>
-          </thead>
-          <tbody>
-            {history.map((entry) => (
-              <tr key={entry.job_id}>
-                <td data-label="Photo">
-                  <div className="o-media o-media--stack-sm">
-                    {entry.image_url ? (
-                      <Button
-                        type="button"
-                        variant="outline"
-                        className="history-thumb-btn"
-                        onClick={() => setPreviewEntry(entry)}
-                        aria-label="Open photo preview"
-                        title="Open photo preview"
-                      >
-                        <AppImage
-                          className="history-thumb"
-                          src={entry.image_url}
-                          alt="Analyzed outfit"
-                          width={64}
-                          height={64}
-                        />
-                      </Button>
-                    ) : (
-                      <span className="subtext">No preview</span>
-                    )}
-                  </div>
-                </td>
-                <td data-label="Model">{entry.analysis_model || "Unknown"}</td>
-                <td data-label="Status">{entry.status || "Unknown"}</td>
-                <td data-label="Created">{entry.created_at ? new Date(entry.created_at).toLocaleString() : "-"}</td>
-                <td data-label="Completed">{entry.completed_at ? new Date(entry.completed_at).toLocaleString() : "-"}</td>
+      {shouldShowEmptyState ? (
+        <div className="table-empty-state" role="status" aria-live="polite">
+          <p className="table-empty-state-title">No analysis history yet</p>
+          <p className="subtext">{historyMessage || "Analyze a photo to populate this table."}</p>
+        </div>
+      ) : (
+        <div className="table-scroll-wrap">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Photo</th>
+                <th>Model</th>
+                <th>Status</th>
+                <th>Created</th>
+                <th>Completed</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {history.map((entry) => (
+                <tr key={entry.job_id}>
+                  <td data-label="Photo">
+                    <div className="o-media o-media--stack-sm">
+                      {entry.image_url ? (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="history-thumb-btn"
+                          onClick={() => setPreviewEntry(entry)}
+                          aria-label="Open photo preview"
+                          title="Open photo preview"
+                        >
+                          <AppImage
+                            className="history-thumb"
+                            src={entry.image_url}
+                            alt="Analyzed outfit"
+                            width={64}
+                            height={64}
+                          />
+                        </Button>
+                      ) : (
+                        <span className="subtext">No preview</span>
+                      )}
+                    </div>
+                  </td>
+                  <td data-label="Model">{entry.analysis_model || "Unknown"}</td>
+                  <td data-label="Status">{entry.status || "Unknown"}</td>
+                  <td data-label="Created">{entry.created_at ? new Date(entry.created_at).toLocaleString() : "-"}</td>
+                  <td data-label="Completed">{entry.completed_at ? new Date(entry.completed_at).toLocaleString() : "-"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       <Dialog open={Boolean(previewEntry)} onOpenChange={(open) => setPreviewEntry(open ? previewEntry : null)}>
         <DialogContent className="modal-panel modal-panel-image modal-panel-no-scroll">
@@ -97,4 +106,6 @@ export default function HistoryTab() {
     </section>
   );
 }
+
+
 

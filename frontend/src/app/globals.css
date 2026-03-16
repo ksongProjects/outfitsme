@@ -1086,8 +1086,10 @@ button:not(:disabled),
 }
 
 .analysis-layout {
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+  align-items: start;
+  gap: var(--section-gap);
 }
 
 .analysis-results-head {
@@ -1101,14 +1103,19 @@ button:not(:disabled),
 
 .analysis-layout > * {
   min-width: 0;
+  height: auto;
+  min-height: 0;
+  align-self: start;
 }
 
-.analysis-layout > * {
-  flex: 1 1 18rem;
+[data-slot="card"].dashboard-card-shell,
+.analysis-layout > [data-slot="card"] {
+  overflow: visible;
 }
 
 .image-upload-actions {
-  flex-wrap: wrap;
+  display: flex;
+  gap: 0.75rem;
 }
 
 .image-upload-actions > *,
@@ -1299,6 +1306,21 @@ button:not(:disabled),
   overflow-x: auto;
   border-radius: 1.1rem;
   border: 1px solid rgba(179, 151, 126, 0.18);
+}
+
+.table-empty-state {
+  display: grid;
+  gap: 0.45rem;
+  padding: 1rem 1.1rem;
+  border: 1px solid rgba(179, 151, 126, 0.18);
+  border-radius: 1.1rem;
+  background: rgba(255, 252, 247, 0.72);
+}
+
+.table-empty-state-title {
+  margin: 0;
+  color: #4f4036;
+  font-weight: 700;
 }
 
 .data-table {
@@ -1567,7 +1589,7 @@ pre {
   }
 
   .analysis-layout {
-    flex-direction: column;
+    grid-template-columns: 1fr;
   }
 
   .analysis-results-toggle {
@@ -1741,3 +1763,4 @@ pre {
     width: 100%;
   }
 }
+

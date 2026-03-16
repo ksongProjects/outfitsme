@@ -4,6 +4,9 @@ import { createAuthClient } from "better-auth/react";
 
 export const authClient = createAuthClient({
   basePath: "/api/auth",
+  sessionOptions: {
+    refetchOnWindowFocus: false,
+  },
 });
 
 export const { signIn, signOut, useSession } = authClient as typeof authClient & {

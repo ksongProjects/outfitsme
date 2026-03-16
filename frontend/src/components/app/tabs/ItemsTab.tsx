@@ -85,6 +85,13 @@ export default function ItemsTab() {
     colorFilter !== "all" ? `Color: ${getOptionLabel(colorOptions, colorFilter)}` : "",
     styleFilter !== "all" ? `Style: ${getOptionLabel(styleOptions, styleFilter)}` : "",
   ].filter(Boolean);
+  const hasFilteredItems = filteredItems.length > 0;
+  const shouldShowEmptyState = !itemsLoading && !hasFilteredItems;
+  const emptyStateMessage = items.length === 0
+    ? itemsMessage || "No items yet. Analyze an outfit to populate your item catalog."
+    : activeFilterChips.length > 0
+      ? "No items match the selected filters."
+      : "No items are available on this page.";
 
   const handleConfirmSelectedItems = async () => {
     try {
@@ -108,7 +115,7 @@ export default function ItemsTab() {
         </Button>
       </div>
 
-      {itemsMessage ? <p className="subtext">{itemsMessage}</p> : null}
+      {itemsMessage && hasFilteredItems ? <p className="subtext">{itemsMessage}</p> : null}
 
       <div className="o-cluster o-cluster--wrap o-cluster--stack-sm">
         <Select
@@ -192,52 +199,59 @@ export default function ItemsTab() {
         </div>
       ) : null}
 
-      <div className="table-scroll-wrap">
-        <table className="data-table">
-          <thead>
-            <tr>
-              <th>Select</th>
-              <th>Category</th>
-              <th>Name</th>
-              <th>Color</th>
-              <th>Style</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filteredItems.map((item) => (
-              <tr
-                key={item.id}
-                className={selectedItemIds.includes(item.id) ? "table-row-selected" : ""}
-                onClick={() => setActiveItem(item)}
-              >
-                <td data-label="Select">
-                  <span onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>
-                    <Checkbox checked={selectedItemIds.includes(item.id)} onCheckedChange={() => toggleSelectItem(item.id)} />
-                  </span>
-                </td>
-                <td data-label="Category">{item.category || "Item"}</td>
-                <td data-label="Name">
-                  <span className="o-media o-media--stack-sm">
-                    {item.image_url ? (
-                      <AppImage
-                        src={item.image_url}
-                        alt={item.name || "Item"}
-                        className="item-thumb"
-                        width={48}
-                        height={48}
-                      />
-                    ) : null}
-                    <span className="item-icon" aria-hidden="true">{getItemIcon(item)}</span>
-                    <span>{item.name || "Unknown"}</span>
-                  </span>
-                </td>
-                <td data-label="Color">{item.color || "Unknown"}</td>
-                <td data-label="Style">{item.style_label || "Unknown"}</td>
+      {shouldShowEmptyState ? (
+        <div className="table-empty-state" role="status" aria-live="polite">
+          <p className="table-empty-state-title">No items to show</p>
+          <p className="subtext">{emptyStateMessage}</p>
+        </div>
+      ) : (
+        <div className="table-scroll-wrap">
+          <table className="data-table">
+            <thead>
+              <tr>
+                <th>Select</th>
+                <th>Category</th>
+                <th>Name</th>
+                <th>Color</th>
+                <th>Style</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {filteredItems.map((item) => (
+                <tr
+                  key={item.id}
+                  className={selectedItemIds.includes(item.id) ? "table-row-selected" : ""}
+                  onClick={() => setActiveItem(item)}
+                >
+                  <td data-label="Select">
+                    <span onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>
+                      <Checkbox checked={selectedItemIds.includes(item.id)} onCheckedChange={() => toggleSelectItem(item.id)} />
+                    </span>
+                  </td>
+                  <td data-label="Category">{item.category || "Item"}</td>
+                  <td data-label="Name">
+                    <span className="o-media o-media--stack-sm">
+                      {item.image_url ? (
+                        <AppImage
+                          src={item.image_url}
+                          alt={item.name || "Item"}
+                          className="item-thumb"
+                          width={48}
+                          height={48}
+                        />
+                      ) : null}
+                      <span className="item-icon" aria-hidden="true">{getItemIcon(item)}</span>
+                      <span>{item.name || "Unknown"}</span>
+                    </span>
+                  </td>
+                  <td data-label="Color">{item.color || "Unknown"}</td>
+                  <td data-label="Style">{item.style_label || "Unknown"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
 
       <div className="o-cluster o-cluster--between o-cluster--wrap o-cluster--stack-sm">
         <p className="subtext">Page {itemsPage}</p>
@@ -344,5 +358,8 @@ export default function ItemsTab() {
     </section>
   );
 }
+
+
+
 
 
