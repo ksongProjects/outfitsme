@@ -2151,7 +2151,7 @@ def compose_outfit_from_items(
         .execute()
     )
     analysis_row = analysis_insert.data[0]
-    _insert_outfits_and_items(
+    outfits = _insert_outfits_and_items(
         client,
         user_id=user_id,
         photo_id=photo_row["id"],
@@ -2160,12 +2160,16 @@ def compose_outfit_from_items(
         analysis=raw_json,
         source_type=OUTFIT_SOURCE_CUSTOM
     )
+    primary_outfit = (outfits or [None])[0] or {}
 
     return {
         "photo_id": photo_row["id"],
         "analysis_id": analysis_row["id"],
+        "outfit_id": primary_outfit.get("id"),
+        "outfit_index": _safe_outfit_index(primary_outfit.get("outfit_index")),
         "style_label": style,
-        "items_count": len(composed_items)
+        "items_count": len(composed_items),
+        "items": composed_items
     }
 
 

@@ -139,7 +139,7 @@ export function useItemsState({ accessToken }: { accessToken: string }) {
     });
 
     setSelectedItemIds([]);
-    toast.success("New outfit created from selected items.");
+    toast.success("New outfit created with a generated preview.");
     return result;
   };
 

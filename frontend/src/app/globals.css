@@ -1422,6 +1422,17 @@ button:not(:disabled),
   background: rgba(244, 233, 220, 0.55);
 }
 
+.item-catalog-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+}
+
+.item-catalog-table td[data-label="Image"] .item-thumb {
+  display: block;
+}
+
 .history-thumb-btn {
   padding: 0 !important;
   border: 0 !important;
@@ -1469,7 +1480,6 @@ button:not(:disabled),
 }
 
 .modal-body {
-  padding-top: 1rem;
   max-height: 78vh;
   overflow: auto;
 }
@@ -1479,10 +1489,6 @@ button:not(:disabled),
   width: min(24rem, 42vw);
   max-width: 100%;
   max-height: min(68vh, 38rem);
-}
-
-.outfit-detail-body {
-  max-height: min(78vh, 46rem);
 }
 
 .outfit-detail-header {
@@ -1885,6 +1891,59 @@ pre {
     width: fit-content;
   }
 
+  .item-catalog-table-wrap {
+    overflow: auto;
+    border: 1px solid rgba(179, 151, 126, 0.14);
+    border-radius: 1.25rem;
+    background: rgba(255, 252, 247, 0.82);
+  }
+
+  .item-catalog-table {
+    display: table;
+    min-width: 40rem;
+  }
+
+  .item-catalog-table thead {
+    display: table-header-group;
+  }
+
+  .item-catalog-table tbody {
+    display: table-row-group;
+  }
+
+  .item-catalog-table tr {
+    display: table-row;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .item-catalog-table td,
+  .item-catalog-table th {
+    display: table-cell;
+    padding: 0.95rem 1rem;
+    border-bottom: 1px solid rgba(179, 151, 126, 0.14);
+    vertical-align: middle;
+  }
+
+  .item-catalog-table td::before {
+    content: none;
+  }
+
+  .item-catalog-table td[data-label="Image"] {
+    width: 4.5rem;
+  }
+
+  .item-catalog-table td[data-label="Image"] .item-thumb {
+    margin: 0 auto 0 0;
+  }
+
+  .item-catalog-table .item-catalog-name {
+    white-space: nowrap;
+  }
+
   .o-list--split > li,
   .analysis-item,
   .similar-meta,
@@ -1898,10 +1957,6 @@ pre {
   .outfit-detail-image {
     flex-basis: auto;
     width: 100%;
-  }
-
-  .outfit-detail-body {
-    max-height: calc(100dvh - 10rem);
   }
 
   .outfit-detail-panel {

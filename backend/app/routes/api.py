@@ -25,7 +25,6 @@ from app.services.supabase_service import (
     update_wardrobe_outfit_style_label,
     get_dashboard_stats,
     get_analysis_job_for_user,
-    get_photo_storage_path_for_user,
     get_signed_image_url,
     list_analysis_history,
     get_wardrobe_photo_details,
@@ -411,7 +410,79 @@ def compose_outfit():
                 }
             ), 429
 
+        user_settings = get_user_model_settings(user_id)
+        if not bool(user_settings.get("enable_outfit_image_generation")):
+            return jsonify(
+                {
+                    "error": (
+                        "Outfit image generation is off. Enable it in "
+                        "Settings > Features after confirming Google billing is enabled."
+                    )
+                }
+            ), 400
+
+        profile_photo_path = str(user_settings.get("profile_photo_path") or "").strip()
+        if not profile_photo_path:
+            return jsonify({"error": "Profile photo is required to create a custom outfit preview."}), 400
+
+        if not settings.GEMINI_API_KEY:
+            return jsonify({"error": "OutfitsMe generation is temporarily unavailable."}), 503
+
+        reference_photo_bytes = download_photo_bytes(profile_photo_path)
+        if not reference_photo_bytes:
+            return jsonify({"error": "Profile photo could not be loaded. Please upload it again."}), 400
+        reference_mime_type = mimetypes.guess_type(profile_photo_path)[0] or "image/jpeg"
+
         result = compose_outfit_from_items(user_id, item_ids=item_ids, style_label=style_label)
+        item_reference_images: list[tuple[bytes, str]] = []
+        seen_item_paths: set[str] = set()
+        for item in (result.get("items") or []):
+            if len(item_reference_images) >= max(0, settings.ITEM_IMAGE_MAX):
+                break
+            if not isinstance(item, dict):
+                continue
+            image_path = str(item.get("image_path") or "").strip()
+            if not image_path or image_path in seen_item_paths:
+                continue
+            seen_item_paths.add(image_path)
+            item_image_bytes = download_photo_bytes(image_path)
+            if not item_image_bytes:
+                continue
+            item_reference_images.append(
+                (
+                    item_image_bytes,
+                    mimetypes.guess_type(image_path)[0] or "image/jpeg",
+                )
+            )
+
+        generated_data_uri, usage_summary = generate_outfitsme_image_with_gemini(
+            reference_image_bytes=reference_photo_bytes,
+            reference_mime_type=reference_mime_type,
+            outfit_style=result.get("style_label") or style_label or "Composed outfit",
+            outfit_items=result.get("items") or [],
+            outfit_item_reference_images=item_reference_images,
+            profile_gender=user_settings.get("profile_gender"),
+            profile_age=user_settings.get("profile_age"),
+            return_usage=True
+        )
+        if not generated_data_uri:
+            return jsonify({"error": "Custom outfit preview generation returned no image."}), 502
+
+        if generated_data_uri and result.get("outfit_id"):
+            stored = save_generated_outfit_image(
+                user_id,
+                str(result.get("outfit_id")),
+                generated_data_uri
+            )
+            attach_generated_image_to_outfit(
+                user_id,
+                str(result.get("outfit_id")),
+                stored.get("storage_path") or ""
+            )
+            result["image_url"] = stored.get("image_url")
+            result["image_storage_path"] = stored.get("storage_path")
+            result["ai_usage"] = usage_summary
+
         return jsonify({"user_id": user_id, **result}), 200
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
@@ -617,12 +688,6 @@ def generate_outfitsme_preview(photo_id: str):
             payload, status_code = _trial_limit_response(usage)
             return jsonify(payload), status_code
 
-        source_outfit_image_bytes = None
-        source_outfit_mime_type = "image/jpeg"
-        storage_path = get_photo_storage_path_for_user(user_id, photo_id)
-        if storage_path and not str(storage_path).startswith("virtual/"):
-            source_outfit_image_bytes = download_photo_bytes(storage_path)
-            source_outfit_mime_type = mimetypes.guess_type(storage_path)[0] or "image/jpeg"
         item_reference_images: list[tuple[bytes, str]] = []
         seen_item_paths: set[str] = set()
         for item in (selected_outfit.get("items") or []):
@@ -656,8 +721,6 @@ def generate_outfitsme_preview(photo_id: str):
             outfit_style=selected_outfit.get("style") or "Outfit",
             outfit_items=selected_outfit.get("items") or [],
             outfit_item_reference_images=item_reference_images,
-            source_outfit_image_bytes=source_outfit_image_bytes,
-            source_outfit_mime_type=source_outfit_mime_type,
             profile_gender=user_settings.get("profile_gender"),
             profile_age=user_settings.get("profile_age"),
             return_usage=True

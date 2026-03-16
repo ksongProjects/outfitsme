@@ -3,7 +3,7 @@
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 
-import { useItemsContext } from "@/components/app/DashboardContext";
+import { useItemsContext, useWardrobeContext } from "@/components/app/DashboardContext";
 import AppImage from "@/components/app/ui/AppImage";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -59,6 +59,7 @@ export default function ItemsTab() {
     selectedItems,
     resetItemsState,
   } = useItemsContext();
+  const { openOutfitDetails } = useWardrobeContext();
   const [categoryFilter, setCategoryFilter] = useState("all");
   const [colorFilter, setColorFilter] = useState("all");
   const [styleFilter, setStyleFilter] = useState("all");
@@ -95,8 +96,14 @@ export default function ItemsTab() {
 
   const handleConfirmSelectedItems = async () => {
     try {
-      await composeOutfitFromSelected();
+      const result = await composeOutfitFromSelected();
       setConfirmModalOpen(false);
+      if (result?.photo_id) {
+        openOutfitDetails(
+          String(result.photo_id),
+          typeof result.outfit_index === "number" ? result.outfit_index : 0
+        );
+      }
     } catch (error) {
       toast.error((error as Error).message || "Could not create outfit from selected items.");
     }
@@ -204,12 +211,13 @@ export default function ItemsTab() {
           <p className="subtext">{emptyStateMessage}</p>
         </div>
       ) : (
-        <div className="table-scroll-wrap">
-          <table className="data-table">
+        <div className="table-scroll-wrap item-catalog-table-wrap">
+          <table className="data-table item-catalog-table">
             <thead>
               <tr>
                 <th>Select</th>
                 <th>Category</th>
+                <th>Image</th>
                 <th>Name</th>
                 <th>Color</th>
                 <th>Style</th>
@@ -228,17 +236,21 @@ export default function ItemsTab() {
                     </span>
                   </td>
                   <td data-label="Category">{item.category || "Item"}</td>
+                  <td data-label="Image">
+                    {item.image_url ? (
+                      <AppImage
+                        src={item.image_url}
+                        alt={item.name || "Item"}
+                        className="item-thumb"
+                        width={48}
+                        height={48}
+                      />
+                    ) : (
+                      <span className="subtext">-</span>
+                    )}
+                  </td>
                   <td data-label="Name">
-                    <span className="o-media o-media--stack-sm">
-                      {item.image_url ? (
-                        <AppImage
-                          src={item.image_url}
-                          alt={item.name || "Item"}
-                          className="item-thumb"
-                          width={48}
-                          height={48}
-                        />
-                      ) : null}
+                    <span className="item-catalog-name">
                       <span className="item-icon" aria-hidden="true">{getItemIcon(item)}</span>
                       <span>{item.name || "Unknown"}</span>
                     </span>
@@ -281,21 +293,10 @@ export default function ItemsTab() {
           <DialogHeader className="modal-header o-split o-split--start">
             <DialogTitle className="modal-title">Confirm new outfit</DialogTitle>
           </DialogHeader>
-          <div className="modal-body o-detail-layout o-detail-layout--stack-sm">
+          <div className="modal-body">
             <div className="o-stack o-stack--tight">
-              <h4>Preview</h4>
-              <p className="subtext">{selectedItems.length} item{selectedItems.length === 1 ? "" : "s"} selected</p>
-              <div className="o-cluster o-cluster--wrap o-cluster--stack-sm">
-                {selectedItems.map((item) => (
-                  <div key={`preview-${item.id}`} className="selection-preview-pill">
-                    <span className="item-icon" aria-hidden="true">{getItemIcon(item)}</span>
-                    <span>{item.name || "Unknown"}</span>
-                  </div>
-                ))}
-              </div>
-            </div>
-            <div>
               <h4>Selected items</h4>
+              <p className="subtext">{selectedItems.length} item{selectedItems.length === 1 ? "" : "s"} selected</p>
               <ul className="o-list">
                 {selectedItems.map((item) => (
                   <li key={`selected-${item.id}`} className="analysis-item">
@@ -309,7 +310,12 @@ export default function ItemsTab() {
                   Cancel
                 </Button>
                 <Button type="button" onClick={handleConfirmSelectedItems} disabled={composeOutfitLoading}>
-                  {composeOutfitLoading ? "Creating..." : "Confirm outfit"}
+                  {composeOutfitLoading ? (
+                    <>
+                      <span className="loading-spinner" aria-hidden="true" />
+                      Creating...
+                    </>
+                  ) : "Confirm outfit"}
                 </Button>
               </div>
             </div>
@@ -357,8 +363,6 @@ export default function ItemsTab() {
     </section>
   );
 }
-
-
 
 
 

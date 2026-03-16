@@ -434,93 +434,6 @@ def analyze_outfit_with_gemini(
     return {**parsed, "_usage": usage}
 
 
-def generate_item_image_with_gemini(
-    item: dict,
-    api_key: str | None = None,
-    model: str | None = None,
-    reference_image_bytes: bytes | None = None,
-    reference_mime_type: str | None = None
-) -> str | None:
-    effective_api_key = (api_key or settings.GEMINI_API_KEY or "").strip()
-    if not effective_api_key:
-        raise GeminiNotConfiguredError("GEMINI_API_KEY is required.")
-
-    category = str(item.get("category", "clothing item")).strip() or "clothing item"
-    name = str(item.get("name", "fashion item")).strip() or "fashion item"
-    color = str(item.get("color", "neutral")).strip() or "neutral"
-    use_reference = bool(reference_image_bytes)
-    if use_reference:
-        reference_image_bytes, reference_mime_type = _resize_image_for_model(
-            reference_image_bytes,
-            reference_mime_type or "image/jpeg",
-            max_side=settings.GEMINI_SOURCE_IMAGE_MAX_SIDE
-        )
-
-    prompt = (
-        "Create a clean product-style image on a plain light background with one centered garment item. "
-        f"Item category: {category}. Item name: {name}. Dominant color: {color}. "
-        "Show the full garment in an unfolded, natural full silhouette (not folded, crumpled, or stacked). "
-        "No text, no watermark. "
-    )
-    if use_reference:
-        prompt += (
-            "Use the provided reference photo to preserve the clothing style, silhouette, fabric cues, and overall aesthetic, "
-            "while isolating only the requested item."
-        )
-    else:
-        prompt += "Infer style from item metadata."
-
-    parts = [{"text": prompt}]
-    if use_reference:
-        parts.append(
-            {
-                "inline_data": {
-                    "mime_type": reference_mime_type or "image/jpeg",
-                    "data": base64.b64encode(reference_image_bytes).decode("utf-8")
-                }
-            }
-        )
-
-    payload = {
-        "contents": [
-            {
-                "parts": parts
-            }
-        ],
-        "generationConfig": {
-            "responseModalities": ["TEXT", "IMAGE"],
-            "imageConfig": {
-                "aspectRatio": "1:1",
-                "imageSize": "1K"
-            }
-        }
-    }
-
-    response_json = _post_to_gemini(
-        payload,
-        model=(model or settings.GEMINI_IMAGE_MODEL).strip(),
-        api_key=effective_api_key,
-        timeout_seconds=30
-    )
-
-    candidates = response_json.get("candidates", [])
-    if not candidates:
-        return None
-
-    parts = candidates[0].get("content", {}).get("parts", [])
-    for part in parts:
-        inline = part.get("inline_data") or part.get("inlineData")
-        if not isinstance(inline, dict):
-            continue
-        data = inline.get("data")
-        if not data:
-            continue
-        mime = inline.get("mime_type") or inline.get("mimeType") or "image/png"
-        return f"data:{mime};base64,{data}"
-
-    return None
-
-
 def generate_outfitsme_image_with_gemini(
     *,
     reference_image_bytes: bytes,
@@ -583,14 +496,19 @@ def generate_outfitsme_image_with_gemini(
         profile_parts.append(f"age: {profile_age}")
 
     prompt = (
-        "Create a photorealistic outfit try-on image. "
-        "Use the first input image as the person's identity reference and preserve facial identity and body proportions. "
-        "Dress the person in the requested outfit items. "
+        "Task: create a photorealistic try-on preview of the user from the profile photo. "
+        "The first input image is the user's profile photo and is the only identity reference. "
+        "Preserve that person's face, hairstyle, skin tone, approximate age, and body proportions as closely as possible. "
+        "The output person must look like the person in the profile photo, not like any person who may appear in other reference images. "
+        "Dress that same person in the requested outfit. "
         f"Outfit style: {str(outfit_style or 'Outfit').strip()}. "
-        f"Items: {'; '.join(cleaned_items) if cleaned_items else 'best effort from available data'}. "
+        f"Requested clothing items: {'; '.join(cleaned_items) if cleaned_items else 'best effort from available data'}. "
         f"Profile hints: {'; '.join(profile_parts) if profile_parts else 'none'}. "
-        "If additional clothing or item images are provided, use them only as garment/style references. "
-        "Return a single generated image, no text, no watermark."
+        "If additional images are provided, treat them as clothing item reference images only. "
+        "Use them only for clothing design, color, texture, fit, silhouette, and styling. "
+        "Do not copy any face, head, hair, body, skin tone, or identity traits from those additional images. "
+        "Priority order: 1) preserve the profile photo identity, 2) match the requested outfit, 3) create a realistic full-body fashion image. "
+        "Return exactly one photorealistic image with no text and no watermark."
     )
 
     parts = [
@@ -627,7 +545,7 @@ def generate_outfitsme_image_with_gemini(
             "responseModalities": ["TEXT", "IMAGE"],
             "imageConfig": {
                 "aspectRatio": "1:1",
-                "imageSize": "1K"
+                "imageSize": "1k"
             }
         }
     }
@@ -676,4 +594,3 @@ def generate_outfitsme_image_with_gemini(
     if return_usage:
         return data_uri, usage
     return data_uri
-

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Trash2, XIcon } from "lucide-react";
 import { toast } from "sonner";
 
@@ -56,8 +56,13 @@ export default function OutfitsTab() {
   const [isEditingName, setIsEditingName] = useState(false);
   const [editedName, setEditedName] = useState("");
   const [itemPreview, setItemPreview] = useState<{ image_url: string; name: string } | null>(null);
+  const [pendingGeneratedPreview, setPendingGeneratedPreview] = useState<{
+    photoId: string;
+    outfitIndex: number | null;
+  } | null>(null);
   const [sourceFilter, setSourceFilter] = useState("all");
   const imageGenerationEnabled = Boolean(settingsForm?.enable_outfit_image_generation);
+  const selectedOutfitSourceType = String(outfitDetails?.selected_outfit?.source_type || "").trim().toLowerCase();
 
   const filteredWardrobe = useMemo(
     () => wardrobe.filter((entry) => sourceFilter === "all" || (entry.source_type || "photo_analysis") === sourceFilter),
@@ -112,6 +117,28 @@ export default function OutfitsTab() {
     }
   };
 
+  useEffect(() => {
+    if (!pendingGeneratedPreview || outfitDetails || outfitDetailsLoading) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      openOutfitDetails(
+        pendingGeneratedPreview.photoId,
+        pendingGeneratedPreview.outfitIndex
+      );
+      setPendingGeneratedPreview(null);
+    }, 0);
+
+    return () => window.clearTimeout(timer);
+  }, [
+    closeOutfitDetails,
+    openOutfitDetails,
+    outfitDetails,
+    outfitDetailsLoading,
+    pendingGeneratedPreview,
+  ]);
+
   const handleGenerateOutfitsMe = async () => {
     const details = outfitDetails || {};
     const selected = details.selected_outfit || null;
@@ -126,7 +153,25 @@ export default function OutfitsTab() {
       toast.error("Profile photo is required for OutfitsMe. Upload one in Settings > Profile.");
       return;
     }
-    await generateOutfitsMe(details.photo_id, selected.outfit_index);
+    const result = await generateOutfitsMe(details.photo_id, selected.outfit_index);
+    const savedOutfit =
+      result && typeof result === "object" && "saved_outfit" in result
+        ? result.saved_outfit
+        : null;
+    const generatedPhotoId = String(savedOutfit?.photo_id || "").trim();
+    if (!generatedPhotoId) {
+      return;
+    }
+
+    setIsEditingName(false);
+    setPendingGeneratedPreview({
+      photoId: generatedPhotoId,
+      outfitIndex:
+        typeof savedOutfit?.outfit_index === "number"
+          ? savedOutfit.outfit_index
+          : null,
+    });
+    closeOutfitDetails();
   };
 
   return (
@@ -264,21 +309,23 @@ export default function OutfitsTab() {
             </div>
             {!outfitDetailsLoading && outfitDetails?.selected_outfit ? (
               <div className="modal-header-actions o-cluster o-cluster--wrap o-cluster--stack-sm outfit-detail-header-actions">
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={handleGenerateOutfitsMe}
-                  disabled={outfitMeLoading || !imageGenerationEnabled}
-                  title={
-                    !imageGenerationEnabled
-                      ? "Enable outfit image generation in Settings > Features"
-                      : profilePhotoUrl
-                        ? "Generate OutfitsMe preview"
-                        : "Profile photo required for OutfitsMe"
-                  }
-                >
-                  {outfitMeLoading ? "OutfitsMe..." : "OutfitsMe"}
-                </Button>
+                {selectedOutfitSourceType === "photo_analysis" ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={handleGenerateOutfitsMe}
+                    disabled={outfitMeLoading || !imageGenerationEnabled}
+                    title={
+                      !imageGenerationEnabled
+                        ? "Enable outfit image generation in Settings > Features"
+                        : profilePhotoUrl
+                          ? "Generate a try-on preview"
+                          : "Profile photo required for try-on previews"
+                    }
+                  >
+                    {outfitMeLoading ? "Generating..." : "Try it on"}
+                  </Button>
+                ) : null}
                 {!isEditingName ? (
                   <Button
                     type="button"
@@ -294,7 +341,7 @@ export default function OutfitsTab() {
               </div>
             ) : null}
           </DialogHeader>
-          <div className="modal-body outfit-detail-body">
+          <div className="modal-body">
             {outfitDetailsLoading ? (
               <p className="subtext">Loading outfit details...</p>
             ) : (

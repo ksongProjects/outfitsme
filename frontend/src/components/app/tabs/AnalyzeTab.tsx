@@ -263,7 +263,7 @@ export default function AnalyzeTab() {
 
   const handleGenerateOutfitsMe = async (outfitIndex: number) => {
     if (!activePhotoId) {
-      toast.error("Analyze a photo first before using OutfitsMe.");
+      toast.error("Analyze a photo first before trying it on.");
       return;
     }
     if (!imageGenerationEnabled) {
@@ -508,16 +508,16 @@ export default function AnalyzeTab() {
                           disabled={outfitMeLoading || !imageGenerationEnabled || !trialActive}
                           title={
                             !trialActive
-                              ? "Trial required for OutfitsMe"
+                              ? "Trial required for try-on previews"
                               : !imageGenerationEnabled
                                 ? "Enable outfit image generation in Settings"
                                 : profilePhotoUrl
-                                  ? "Generate OutfitsMe preview"
-                                  : "Profile photo required for OutfitsMe"
+                                  ? "Generate a try-on preview"
+                                  : "Profile photo required for try-on previews"
                           }
                         >
                           <Wand2 size={16} />
-                          {outfitMeLoading ? "Generating..." : "OutfitsMe"}
+                          {outfitMeLoading ? "Generating..." : "Try it on"}
                         </Button>
                       </div>
 
@@ -563,4 +563,3 @@ export default function AnalyzeTab() {
     </section>
   );
 }
-
