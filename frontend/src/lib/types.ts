@@ -55,6 +55,7 @@ export type CompletedAnalysisEntry = {
 export type HistoryEntry = {
   job_id: string;
   photo_id?: string;
+  job_type?: string;
   analysis_model?: string;
   status?: string;
   error_message?: string;
@@ -64,6 +65,7 @@ export type HistoryEntry = {
   updated_at?: string;
   image_url?: string;
   outfit_count?: number;
+  style_label?: string;
 };
 
 export type WardrobeEntry = {

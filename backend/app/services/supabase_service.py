@@ -15,6 +15,10 @@ from supabase import Client, create_client
 
 from app.config import settings
 from app.services.access_control import normalize_user_role
+from app.services.gemini_service import (
+    estimate_gemini_usage_cost_usd,
+    normalize_gemini_usage_record,
+)
 from app.services.better_auth_service import (
     get_database_connection,
     get_user_created_at_from_better_auth_token,
@@ -75,6 +79,9 @@ ACCESSORY_ITEM_TYPES = {
 OUTFIT_SOURCE_PHOTO_ANALYSIS = "photo_analysis"
 OUTFIT_SOURCE_CUSTOM = "custom_outfit"
 OUTFIT_SOURCE_OUTFITSME = "outfitsme_generated"
+HISTORY_JOB_TYPE_PHOTO_ANALYSIS = "photo_analysis"
+HISTORY_JOB_TYPE_CUSTOM_OUTFIT = "custom_outfit"
+HISTORY_JOB_TYPE_TRY_ON = "try_on"
 
 _SUPABASE_CLIENT: Client | None = None
 _SIGNED_URL_CACHE: dict[tuple[str, int], tuple[str | None, float]] = {}
@@ -248,50 +255,131 @@ def _resize_profile_photo_content(
 
 
 def _normalize_ai_usage(value) -> dict:
-    usage = _coerce_dict(value)
-    input_tokens = _safe_outfit_index(usage.get("input_tokens"))
-    output_tokens = _safe_outfit_index(usage.get("output_tokens"))
-    input_images = _safe_outfit_index(usage.get("input_images"))
-    output_images = _safe_outfit_index(usage.get("output_images"))
-    total_tokens = _safe_outfit_index(usage.get("total_tokens"))
-    if total_tokens <= 0:
-        total_tokens = input_tokens + output_tokens
-    return {
-        "input_tokens": input_tokens,
-        "output_tokens": output_tokens,
-        "total_tokens": total_tokens,
-        "input_images": input_images,
-        "output_images": output_images
-    }
+    return normalize_gemini_usage_record(_coerce_dict(value))
+
+
+def _has_meaningful_ai_usage(usage: dict) -> bool:
+    return any(
+        [
+            _safe_outfit_index(usage.get("input_tokens")),
+            _safe_outfit_index(usage.get("output_tokens")),
+            _safe_outfit_index(usage.get("input_images")),
+            _safe_outfit_index(usage.get("output_images")),
+            bool(str(usage.get("model") or "").strip()),
+        ]
+    )
 
 
 def _sum_ai_usage(entries: list[dict]) -> dict:
-    totals = {"input_tokens": 0, "output_tokens": 0, "total_tokens": 0, "input_images": 0, "output_images": 0}
+    totals = {
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "total_tokens": 0,
+        "input_images": 0,
+        "output_images": 0,
+        "call_count": 0,
+        "estimated_call_count": 0,
+        "models": {},
+    }
     for entry in entries:
         usage = _normalize_ai_usage(entry)
+        if not _has_meaningful_ai_usage(usage):
+            continue
         totals["input_tokens"] += usage["input_tokens"]
         totals["output_tokens"] += usage["output_tokens"]
         totals["total_tokens"] += usage["total_tokens"]
         totals["input_images"] += usage["input_images"]
         totals["output_images"] += usage["output_images"]
+        totals["call_count"] += 1
+        if bool(usage.get("estimated_input_tokens")) or bool(usage.get("estimated_output_tokens")):
+            totals["estimated_call_count"] += 1
+
+        model_key = str(usage.get("model") or "").strip()
+        if model_key:
+            model_totals = totals["models"].setdefault(
+                model_key,
+                {
+                    "input_tokens": 0,
+                    "output_tokens": 0,
+                    "total_tokens": 0,
+                    "input_images": 0,
+                    "output_images": 0,
+                    "call_count": 0,
+                    "estimated_call_count": 0,
+                },
+            )
+            model_totals["input_tokens"] += usage["input_tokens"]
+            model_totals["output_tokens"] += usage["output_tokens"]
+            model_totals["total_tokens"] += usage["total_tokens"]
+            model_totals["input_images"] += usage["input_images"]
+            model_totals["output_images"] += usage["output_images"]
+            model_totals["call_count"] += 1
+            if bool(usage.get("estimated_input_tokens")) or bool(usage.get("estimated_output_tokens")):
+                model_totals["estimated_call_count"] += 1
     return totals
 
 
 def _estimate_token_cost_usd(usage: dict) -> dict:
     normalized = _normalize_ai_usage(usage)
-    input_cost = round(
-        (normalized["input_tokens"] / 1_000_000.0) * settings.GEMINI_INPUT_COST_PER_1M_TOKENS_USD,
-        6
-    )
-    output_cost = round(
-        (normalized["output_tokens"] / 1_000_000.0) * settings.GEMINI_OUTPUT_COST_PER_1M_TOKENS_USD,
-        6
-    )
-    return {
-        "input": input_cost,
-        "output": output_cost,
-        "total": round(input_cost + output_cost, 6)
+    return estimate_gemini_usage_cost_usd(normalized)
+
+
+def _sum_ai_costs(entries: list[dict]) -> dict:
+    totals = {
+        "input": 0.0,
+        "output": 0.0,
+        "total": 0.0,
+        "input_tokens": 0.0,
+        "output_text_tokens": 0.0,
+        "output_image": 0.0,
+        "models": {},
     }
+    for entry in entries:
+        usage = _normalize_ai_usage(entry)
+        if not _has_meaningful_ai_usage(usage):
+            continue
+        cost = usage.get("cost_usd") if isinstance(usage.get("cost_usd"), dict) else _estimate_token_cost_usd(usage)
+        totals["input"] += float(cost.get("input") or 0)
+        totals["output"] += float(cost.get("output") or 0)
+        totals["total"] += float(cost.get("total") or 0)
+        totals["input_tokens"] += float(cost.get("input_tokens") or 0)
+        totals["output_text_tokens"] += float(cost.get("output_text_tokens") or 0)
+        totals["output_image"] += float(cost.get("output_image") or 0)
+
+        model_key = str(usage.get("model") or "").strip()
+        if model_key:
+            model_totals = totals["models"].setdefault(
+                model_key,
+                {
+                    "input": 0.0,
+                    "output": 0.0,
+                    "total": 0.0,
+                    "input_tokens": 0.0,
+                    "output_text_tokens": 0.0,
+                    "output_image": 0.0,
+                },
+            )
+            model_totals["input"] += float(cost.get("input") or 0)
+            model_totals["output"] += float(cost.get("output") or 0)
+            model_totals["total"] += float(cost.get("total") or 0)
+            model_totals["input_tokens"] += float(cost.get("input_tokens") or 0)
+            model_totals["output_text_tokens"] += float(cost.get("output_text_tokens") or 0)
+            model_totals["output_image"] += float(cost.get("output_image") or 0)
+
+    totals["input"] = round(totals["input"], 6)
+    totals["output"] = round(totals["output"], 6)
+    totals["total"] = round(totals["total"], 6)
+    totals["input_tokens"] = round(totals["input_tokens"], 6)
+    totals["output_text_tokens"] = round(totals["output_text_tokens"], 6)
+    totals["output_image"] = round(totals["output_image"], 6)
+    for model_totals in totals["models"].values():
+        model_totals["input"] = round(model_totals["input"], 6)
+        model_totals["output"] = round(model_totals["output"], 6)
+        model_totals["total"] = round(model_totals["total"], 6)
+        model_totals["input_tokens"] = round(model_totals["input_tokens"], 6)
+        model_totals["output_text_tokens"] = round(model_totals["output_text_tokens"], 6)
+        model_totals["output_image"] = round(model_totals["output_image"], 6)
+    return totals
 
 
 def _merge_token_costs(*entries: dict | None) -> dict:
@@ -328,7 +416,7 @@ def build_analysis_job_cost_summary(
     analysis_estimated_cost = analysis_unit_cost
     item_image_estimated_cost = round(max(_safe_outfit_index(generated_item_image_count), 0) * item_image_unit_cost, 4)
     return {
-        "version": 1,
+        "version": 2,
         "analysis": {
             "usage": normalized_analysis_usage,
             "estimated_cost_usd": analysis_estimated_cost,
@@ -360,8 +448,14 @@ def build_analysis_job_cost_summary(
             "total": total_token_costs
         },
         "pricing_snapshot": {
-            "gemini_input_cost_per_1m_tokens_usd": settings.GEMINI_INPUT_COST_PER_1M_TOKENS_USD,
-            "gemini_output_cost_per_1m_tokens_usd": settings.GEMINI_OUTPUT_COST_PER_1M_TOKENS_USD,
+            "analysis_model": normalized_analysis_usage.get("model"),
+            "item_image_model": normalized_item_image_usage.get("model"),
+            "analysis_pricing": _coerce_dict(normalized_analysis_usage.get("pricing") or {}),
+            "item_image_pricing": _coerce_dict(normalized_item_image_usage.get("pricing") or {}),
+            "legacy_fallback_token_pricing": {
+                "input": settings.GEMINI_INPUT_COST_PER_1M_TOKENS_USD,
+                "output": settings.GEMINI_OUTPUT_COST_PER_1M_TOKENS_USD,
+            },
             "analysis_input_cost_usd": settings.ANALYSIS_INPUT_COST_USD,
             "analysis_output_image_cost_usd": settings.ANALYSIS_OUTPUT_IMAGE_COST_USD,
             "item_image_cost_usd": settings.ITEM_IMAGE_COST_USD
@@ -1413,10 +1507,30 @@ def list_analysis_history(user_id: str, limit: int = 50) -> list[dict]:
         .execute()
     )
     jobs = jobs_response.data or []
-    if not jobs:
+
+    generated_analyses_response = (
+        client.table("outfit_analyses")
+        .select("id,photo_id,style_label,raw_json,created_at")
+        .eq("user_id", user_id)
+        .order("created_at", desc=True)
+        .limit(limit)
+        .execute()
+    )
+    generated_analyses = generated_analyses_response.data or []
+
+    if not jobs and not generated_analyses:
         return []
 
-    photo_ids = list({job.get("photo_id") for job in jobs if job.get("photo_id")})
+    photo_ids = list(
+        {
+            photo_id
+            for photo_id in [
+                *[job.get("photo_id") for job in jobs],
+                *[analysis.get("photo_id") for analysis in generated_analyses],
+            ]
+            if photo_id
+        }
+    )
     photos_by_id = {}
     if photo_ids:
         photos_response = (
@@ -1438,6 +1552,7 @@ def list_analysis_history(user_id: str, limit: int = 50) -> list[dict]:
             {
                 "job_id": job.get("id"),
                 "photo_id": photo_id,
+                "job_type": HISTORY_JOB_TYPE_PHOTO_ANALYSIS,
                 "analysis_model": job.get("analysis_model"),
                 "status": job.get("status"),
                 "error_message": job.get("error_message"),
@@ -1450,7 +1565,56 @@ def list_analysis_history(user_id: str, limit: int = 50) -> list[dict]:
                 "image_url": image_url,
             }
         )
-    return history
+
+    for analysis in generated_analyses:
+        raw_json = _coerce_dict(analysis.get("raw_json") or {})
+        is_try_on = bool(raw_json.get("outfitsme_generated"))
+        is_custom_outfit = bool(raw_json.get("custom_outfit_generated"))
+        if not is_try_on and not is_custom_outfit:
+            continue
+
+        photo_id = analysis.get("photo_id")
+        photo = photos_by_id.get(photo_id) or {}
+        storage_path = str(
+            raw_json.get("generated_image_path") or photo.get("storage_path") or ""
+        ).strip()
+        completed_at = (
+            raw_json.get("generated_image_created_at")
+            or analysis.get("created_at")
+        )
+        history.append(
+            {
+                "job_id": analysis.get("id"),
+                "photo_id": photo_id,
+                "job_type": (
+                    HISTORY_JOB_TYPE_TRY_ON
+                    if is_try_on
+                    else HISTORY_JOB_TYPE_CUSTOM_OUTFIT
+                ),
+                "analysis_model": _coerce_dict(raw_json.get("ai_usage") or {}).get("model") or "",
+                "status": analysis.get("status"),
+                "error_message": "",
+                "created_at": analysis.get("created_at"),
+                "started_at": analysis.get("created_at"),
+                "completed_at": completed_at,
+                "updated_at": completed_at,
+                "photo_created_at": photo.get("created_at"),
+                "storage_path": storage_path,
+                "image_url": resolve_signed_url(storage_path),
+                "style_label": analysis.get("style_label"),
+            }
+        )
+
+    history.sort(
+        key=lambda entry: (
+            entry.get("completed_at")
+            or entry.get("updated_at")
+            or entry.get("created_at")
+            or ""
+        ),
+        reverse=True,
+    )
+    return history[:limit]
 
 
 def list_user_items(user_id: str, limit: int = 20, offset: int = 0) -> list[dict]:
@@ -2879,27 +3043,14 @@ def get_user_cost_summary(user_id: str, month_start_iso: str) -> dict:
     item_token_usage = _sum_ai_usage(item_usages)
 
     token_costs = {
-        "analysis": _estimate_token_cost_usd(analysis_token_usage),
-        "outfit_image_generation": _estimate_token_cost_usd(outfit_token_usage),
-        "item_image_generation": _estimate_token_cost_usd(item_token_usage)
+        "analysis": _sum_ai_costs(analysis_usages),
+        "outfit_image_generation": _sum_ai_costs(outfit_usages),
+        "item_image_generation": _sum_ai_costs(item_usages)
     }
-    token_costs["total"] = {
-        "input": round(
-            token_costs["analysis"]["input"]
-            + token_costs["outfit_image_generation"]["input"]
-            + token_costs["item_image_generation"]["input"],
-            6
-        ),
-        "output": round(
-            token_costs["analysis"]["output"]
-            + token_costs["outfit_image_generation"]["output"]
-            + token_costs["item_image_generation"]["output"],
-            6
-        )
-    }
-    token_costs["total"]["total"] = round(
-        token_costs["total"]["input"] + token_costs["total"]["output"],
-        6
+    token_costs["total"] = _merge_token_costs(
+        token_costs["analysis"],
+        token_costs["outfit_image_generation"],
+        token_costs["item_image_generation"]
     )
     return {
         "month_start_utc": month_start_iso,
@@ -2933,12 +3084,21 @@ def get_user_cost_summary(user_id: str, month_start_iso: str) -> dict:
             "analysis": analysis_token_usage,
             "outfit_image_generation": outfit_token_usage,
             "item_image_generation": item_token_usage,
-            "total": _sum_ai_usage([analysis_token_usage, outfit_token_usage, item_token_usage]),
-            "source": "Saved per-job Gemini usage when available; estimator fallback otherwise."
+            "total": _sum_ai_usage(analysis_usages + outfit_usages + item_usages),
+            "source": "Saved per-call Gemini usage metadata when available; countTokens and estimator fallback otherwise."
         },
         "token_pricing_usd_per_1m": {
-            "input": settings.GEMINI_INPUT_COST_PER_1M_TOKENS_USD,
-            "output": settings.GEMINI_OUTPUT_COST_PER_1M_TOKENS_USD
+            "legacy_fallback_input": settings.GEMINI_INPUT_COST_PER_1M_TOKENS_USD,
+            "legacy_fallback_output": settings.GEMINI_OUTPUT_COST_PER_1M_TOKENS_USD,
+            "gemini_2_5_flash_input": settings.GEMINI_25_FLASH_INPUT_COST_PER_1M_TOKENS_USD,
+            "gemini_2_5_flash_output": settings.GEMINI_25_FLASH_OUTPUT_COST_PER_1M_TOKENS_USD,
+            "gemini_2_5_flash_image_input": settings.GEMINI_25_FLASH_IMAGE_INPUT_COST_PER_1M_TOKENS_USD,
+            "gemini_2_5_flash_image_output_text": settings.GEMINI_25_FLASH_IMAGE_OUTPUT_TEXT_COST_PER_1M_TOKENS_USD,
+            "gemini_2_5_flash_image_output_image": settings.GEMINI_25_FLASH_IMAGE_OUTPUT_IMAGE_COST_PER_1M_TOKENS_USD
+        },
+        "image_pricing_usd": {
+            "gemini_2_5_flash_image_output_per_image": settings.GEMINI_25_FLASH_IMAGE_OUTPUT_COST_PER_IMAGE_USD,
+            "gemini_2_5_flash_image_output_tokens_per_image": settings.GEMINI_25_FLASH_IMAGE_OUTPUT_TOKENS_PER_IMAGE
         },
         "estimated_token_costs_usd": token_costs,
         "limits": {

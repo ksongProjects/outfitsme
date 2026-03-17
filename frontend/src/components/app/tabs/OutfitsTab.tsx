@@ -26,6 +26,7 @@ import {
 import { formatItemLabel, getItemIcon } from "@/lib/formatters";
 
 const OUTFIT_SOURCE_LABELS: Record<string, string> = {
+  all: "All outfit types",
   photo_analysis: "Photo analysis",
   custom_outfit: "Custom outfit",
   outfitsme_generated: "OutfitsMe generated",
@@ -289,13 +290,18 @@ export default function OutfitsTab() {
           }}
         >
           <SelectTrigger className="w-full sm:w-48">
-            <SelectValue placeholder="All outfit types" />
+            <SelectValue placeholder="All outfit types">
+              {(value) =>
+                OUTFIT_SOURCE_LABELS[String(value || "all")] || "All outfit types"
+              }
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">All outfit types</SelectItem>
-            <SelectItem value="photo_analysis">Photo analysis</SelectItem>
-            <SelectItem value="custom_outfit">Custom outfit</SelectItem>
-            <SelectItem value="outfitsme_generated">OutfitsMe generated</SelectItem>
+            {Object.entries(OUTFIT_SOURCE_LABELS).map(([value, label]) => (
+              <SelectItem key={value} value={value}>
+                {label}
+              </SelectItem>
+            ))}
           </SelectContent>
         </Select>
         <Button type="button" variant="outline" onClick={() => setSourceFilter("all")}>

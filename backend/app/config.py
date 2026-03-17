@@ -103,6 +103,35 @@ class Settings:
     GEMINI_OUTPUT_COST_PER_1M_TOKENS_USD = float(
         _clean_env(os.getenv("GEMINI_OUTPUT_COST_PER_1M_TOKENS_USD", "0"), "0") or "0"
     )
+    GEMINI_25_FLASH_INPUT_COST_PER_1M_TOKENS_USD = float(
+        _clean_env(os.getenv("GEMINI_25_FLASH_INPUT_COST_PER_1M_TOKENS_USD", "0.30"), "0.30") or "0.30"
+    )
+    GEMINI_25_FLASH_OUTPUT_COST_PER_1M_TOKENS_USD = float(
+        _clean_env(os.getenv("GEMINI_25_FLASH_OUTPUT_COST_PER_1M_TOKENS_USD", "2.50"), "2.50") or "2.50"
+    )
+    GEMINI_25_FLASH_IMAGE_INPUT_COST_PER_1M_TOKENS_USD = float(
+        _clean_env(os.getenv("GEMINI_25_FLASH_IMAGE_INPUT_COST_PER_1M_TOKENS_USD", "0.30"), "0.30") or "0.30"
+    )
+    GEMINI_25_FLASH_IMAGE_OUTPUT_TEXT_COST_PER_1M_TOKENS_USD = float(
+        _clean_env(
+            os.getenv("GEMINI_25_FLASH_IMAGE_OUTPUT_TEXT_COST_PER_1M_TOKENS_USD", "2.50"),
+            "2.50"
+        )
+        or "2.50"
+    )
+    GEMINI_25_FLASH_IMAGE_OUTPUT_IMAGE_COST_PER_1M_TOKENS_USD = float(
+        _clean_env(
+            os.getenv("GEMINI_25_FLASH_IMAGE_OUTPUT_IMAGE_COST_PER_1M_TOKENS_USD", "30.0"),
+            "30.0"
+        )
+        or "30.0"
+    )
+    GEMINI_25_FLASH_IMAGE_OUTPUT_COST_PER_IMAGE_USD = float(
+        _clean_env(os.getenv("GEMINI_25_FLASH_IMAGE_OUTPUT_COST_PER_IMAGE_USD", "0.039"), "0.039") or "0.039"
+    )
+    GEMINI_25_FLASH_IMAGE_OUTPUT_TOKENS_PER_IMAGE = int(
+        _clean_env(os.getenv("GEMINI_25_FLASH_IMAGE_OUTPUT_TOKENS_PER_IMAGE", "1290"), "1290") or "1290"
+    )
     GEMINI_TOKEN_ESTIMATOR_CHARS_PER_TOKEN = float(
         _clean_env(os.getenv("GEMINI_TOKEN_ESTIMATOR_CHARS_PER_TOKEN", "4"), "4") or "4"
     )

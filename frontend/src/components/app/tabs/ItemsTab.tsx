@@ -71,6 +71,18 @@ export default function ItemsTab() {
   const categoryOptions = useMemo(() => buildUniqueOptions(items.map((item) => item.category)), [items]);
   const colorOptions = useMemo(() => buildUniqueOptions(items.map((item) => item.color)), [items]);
   const styleOptions = useMemo(() => buildUniqueOptions(items.map((item) => item.style_label)), [items]);
+  const categoryFilterOptions = useMemo(
+    () => [{ value: "all", label: "All types" }, ...categoryOptions],
+    [categoryOptions]
+  );
+  const colorFilterOptions = useMemo(
+    () => [{ value: "all", label: "All colors" }, ...colorOptions],
+    [colorOptions]
+  );
+  const styleFilterOptions = useMemo(
+    () => [{ value: "all", label: "All styles" }, ...styleOptions],
+    [styleOptions]
+  );
 
   const filteredItems = useMemo(
     () =>
@@ -137,10 +149,12 @@ export default function ItemsTab() {
           }}
         >
           <SelectTrigger className="w-full sm:w-40">
-            <SelectValue placeholder="All types" />
+            <SelectValue placeholder="All types">
+              {(value) => getOptionLabel(categoryFilterOptions, String(value || "all"))}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
-            {[{ value: "all", label: "All types" }, ...categoryOptions].map((option) => (
+            {categoryFilterOptions.map((option) => (
               <SelectItem key={option.value} value={option.value}>
                 {option.label}
               </SelectItem>
@@ -157,10 +171,12 @@ export default function ItemsTab() {
           }}
         >
           <SelectTrigger className="w-full sm:w-40">
-            <SelectValue placeholder="All colors" />
+            <SelectValue placeholder="All colors">
+              {(value) => getOptionLabel(colorFilterOptions, String(value || "all"))}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
-            {[{ value: "all", label: "All colors" }, ...colorOptions].map((option) => (
+            {colorFilterOptions.map((option) => (
               <SelectItem key={option.value} value={option.value}>
                 {option.label}
               </SelectItem>
@@ -177,10 +193,12 @@ export default function ItemsTab() {
           }}
         >
           <SelectTrigger className="w-full sm:w-40">
-            <SelectValue placeholder="All styles" />
+            <SelectValue placeholder="All styles">
+              {(value) => getOptionLabel(styleFilterOptions, String(value || "all"))}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
-            {[{ value: "all", label: "All styles" }, ...styleOptions].map((option) => (
+            {styleFilterOptions.map((option) => (
               <SelectItem key={option.value} value={option.value}>
                 {option.label}
               </SelectItem>

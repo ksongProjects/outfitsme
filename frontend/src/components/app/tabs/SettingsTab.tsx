@@ -25,6 +25,13 @@ const SETTINGS_SECTIONS = [
   { id: "costs", label: "Cost usage" },
 ];
 
+const GENDER_LABELS: Record<string, string> = {
+  unspecified: "Prefer not to say",
+  female: "Female",
+  male: "Male",
+  "non-binary": "Non-binary",
+};
+
 export default function SettingsTab() {
   const {
     profileName,
@@ -146,13 +153,18 @@ export default function SettingsTab() {
             }}
           >
             <SelectTrigger id="settings-gender" className="w-full">
-              <SelectValue placeholder="Select gender" />
+              <SelectValue placeholder="Select gender">
+                {(value) =>
+                  GENDER_LABELS[String(value || "unspecified")] || "Select gender"
+                }
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="unspecified">Prefer not to say</SelectItem>
-              <SelectItem value="female">Female</SelectItem>
-              <SelectItem value="male">Male</SelectItem>
-              <SelectItem value="non-binary">Non-binary</SelectItem>
+              {Object.entries(GENDER_LABELS).map(([value, label]) => (
+                <SelectItem key={value} value={value}>
+                  {label}
+                </SelectItem>
+              ))}
             </SelectContent>
           </Select>
           <label htmlFor="settings-age">Age</label>

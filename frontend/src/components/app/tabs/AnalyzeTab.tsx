@@ -408,7 +408,20 @@ export default function AnalyzeTab() {
                 }}
               >
                 <SelectTrigger id="analysis-model" className="w-full">
-                  <SelectValue placeholder="Select model" />
+                  <SelectValue placeholder="Select model">
+                    {(value) => {
+                      const selectedValue = String(value || "");
+                      const selectedOption = (modelOptions || []).find(
+                        (model) => model.id === selectedValue,
+                      );
+                      if (!selectedOption) {
+                        return "Select model";
+                      }
+                      return `${selectedOption.label}${
+                        selectedOption.available ? "" : " (Unavailable)"
+                      }`;
+                    }}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {(modelOptions || [])

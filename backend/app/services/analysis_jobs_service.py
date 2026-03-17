@@ -468,12 +468,37 @@ def _generate_item_images_for_analysis(
                 per_item_usage = {}
                 if isinstance(sprite_usage, dict):
                     per_item_usage = {
+                        "provider": sprite_usage.get("provider"),
+                        "api": sprite_usage.get("api"),
+                        "operation": "item_sprite_generation_allocated",
+                        "request_kind": sprite_usage.get("request_kind"),
+                        "model": sprite_usage.get("model"),
+                        "model_version": sprite_usage.get("model_version"),
+                        "usage_source": "allocated_from_sprite_generation",
                         "input_tokens": int(sprite_usage.get("input_tokens", 0) / token_divisor),
                         "output_tokens": int(sprite_usage.get("output_tokens", 0) / token_divisor),
                         "input_images": int(sprite_usage.get("input_images", 0) / token_divisor),
                         "output_images": int(sprite_usage.get("output_images", 0) / token_divisor)
                     }
                     per_item_usage["total_tokens"] = per_item_usage["input_tokens"] + per_item_usage["output_tokens"]
+                    if isinstance(sprite_usage.get("cost_usd"), dict):
+                        per_item_usage["cost_usd"] = {
+                            "input": round(float(sprite_usage["cost_usd"].get("input") or 0) / token_divisor, 6),
+                            "output": round(float(sprite_usage["cost_usd"].get("output") or 0) / token_divisor, 6),
+                            "total": round(float(sprite_usage["cost_usd"].get("total") or 0) / token_divisor, 6),
+                            "input_tokens": round(
+                                float(sprite_usage["cost_usd"].get("input_tokens") or 0) / token_divisor,
+                                6
+                            ),
+                            "output_text_tokens": round(
+                                float(sprite_usage["cost_usd"].get("output_text_tokens") or 0) / token_divisor,
+                                6
+                            ),
+                            "output_image": round(
+                                float(sprite_usage["cost_usd"].get("output_image") or 0) / token_divisor,
+                                6
+                            ),
+                        }
                 save_generated_item_image(user_id, item["id"], image_data_uri, usage_summary=per_item_usage)
                 summary["processed_items"] += 1
                 summary["generated_items"] += 1
