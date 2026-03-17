@@ -2082,14 +2082,6 @@ pre {
     align-items: center;
   }
 
-  .data-table td[data-label="Action"] {
-    grid-template-columns: 1fr;
-  }
-
-  .data-table td[data-label="Action"] [data-slot="button"] {
-    width: fit-content;
-  }
-
   .analysis-item,
   .similar-meta,
   .o-split--stack-sm,

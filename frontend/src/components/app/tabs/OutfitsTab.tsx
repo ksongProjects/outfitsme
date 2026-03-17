@@ -426,7 +426,7 @@ export default function OutfitsTab() {
                     ) : (
                       <>
                         <Wand2 size={16} />
-                        Try it on
+                        Try this on
                       </>
                     )}
                   </Button>

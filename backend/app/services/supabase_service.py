@@ -3019,7 +3019,7 @@ def get_user_cost_summary(user_id: str, month_start_iso: str) -> dict:
         "generated_outfit_images": generated_outfit_image_count,
         "cost_formula": {
             "analysis": "1 text/image input call + 1 image output call per completed analysis",
-            "outfit_image_generation": "1 text/image input call + 1 image output call per custom outfit or Try It On image",
+            "outfit_image_generation": "1 text/image input call + 1 image output call per custom outfit or Try This On image",
             "item_image_generation": "1 generated item image counted per stored item image output"
         },
         "unit_costs_usd": {

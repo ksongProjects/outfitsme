@@ -11,6 +11,7 @@ import {
 
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { getHistoryJobTypeLabel } from "@/lib/history";
 import type { AnalysisLimits, HistoryEntry, StatsPayload } from "@/lib/types";
 
 type DashboardTabProps = {
@@ -174,7 +175,7 @@ export default function DashboardTab({
                     <CircleXIcon size={14} className="text-red-600" />
                   )}
                   <span className="subtext">
-                    {entry.job_type} -
+                    {getHistoryJobTypeLabel(entry.job_type)} -
                     {entry.created_at
                       ? new Date(entry.created_at).toLocaleString()
                       : "-"}

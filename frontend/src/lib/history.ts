@@ -3,12 +3,16 @@ import type { HistoryEntry } from "@/lib/types";
 const HISTORY_JOB_TYPE_LABELS: Record<string, string> = {
   photo_analysis: "Photo analysis",
   custom_outfit: "Custom outfit",
-  try_on: "Try it on",
-  outfitsme_generated: "Try it on",
+  try_on: "Try this on",
+  outfitsme_generated: "Try this on",
 };
 
 export function getHistoryJobTypeLabel(jobType?: string) {
-  const normalized = String(jobType || "").trim().toLowerCase();
+  const normalized = String(jobType || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[-\s]+/g, "_");
+
   return HISTORY_JOB_TYPE_LABELS[normalized] || "Unknown AI job";
 }
 

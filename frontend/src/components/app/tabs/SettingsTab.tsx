@@ -256,7 +256,7 @@ export default function SettingsTab() {
               <ul className="o-list o-list--split">
                 <li>Analysis runs: <strong>{costSummary.analysis_runs ?? 0}</strong></li>
                 <li>Custom outfit generations: <strong>{costSummary.custom_outfit_generations ?? 0}</strong></li>
-                <li>Try it on generations: <strong>{costSummary.try_on_generations ?? 0}</strong></li>
+                <li>Try this on generations: <strong>{costSummary.try_on_generations ?? 0}</strong></li>
               </ul>
               <h4>Estimated costs (USD)</h4>
               <ul className="o-list o-list--split">
