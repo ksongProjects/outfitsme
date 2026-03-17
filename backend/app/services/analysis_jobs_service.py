@@ -244,6 +244,18 @@ def _build_sprite_grid(item_count: int) -> tuple[int, int]:
     return cols, rows
 
 
+def _build_sprite_axis_bounds(axis_length: int, segment_count: int) -> list[int]:
+    safe_axis_length = max(1, int(axis_length))
+    safe_segment_count = max(1, int(segment_count))
+    return [
+        min(
+            safe_axis_length,
+            max(0, int(round((index * safe_axis_length) / safe_segment_count)))
+        )
+        for index in range(safe_segment_count + 1)
+    ]
+
+
 def _slice_sprite_to_item_data_uris(
     sprite_data_uri: str,
     item_count: int,
@@ -260,16 +272,18 @@ def _slice_sprite_to_item_data_uris(
             width, height = image.size
             if width <= 0 or height <= 0:
                 return []
-            cell_width = max(1, width // max(1, grid_cols))
-            cell_height = max(1, height // max(1, grid_rows))
+            x_bounds = _build_sprite_axis_bounds(width, grid_cols)
+            y_bounds = _build_sprite_axis_bounds(height, grid_rows)
             result = []
             for index in range(item_count):
                 row = index // grid_cols
                 col = index % grid_cols
-                left = col * cell_width
-                top = row * cell_height
-                right = width if col == grid_cols - 1 else min(width, left + cell_width)
-                bottom = height if row == grid_rows - 1 else min(height, top + cell_height)
+                if row >= len(y_bounds) - 1 or col >= len(x_bounds) - 1:
+                    continue
+                left = x_bounds[col]
+                top = y_bounds[row]
+                right = x_bounds[col + 1]
+                bottom = y_bounds[row + 1]
                 if right <= left or bottom <= top:
                     continue
                 crop = image.crop((left, top, right, bottom))

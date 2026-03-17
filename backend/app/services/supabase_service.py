@@ -1322,7 +1322,7 @@ def save_generated_item_image(user_id: str, item_id: str, data_uri: str, usage_s
 
     attributes = _coerce_dict(item_row.get("attributes_json") or {})
     attributes["generated_item_image_path"] = storage_path
-    attributes["generated_item_image_size_limit"] = "1K square requested from generation API"
+    attributes["generated_item_image_size_limit"] = "Derived from a 1K generated sprite image"
     attributes["generated_item_image_created_at"] = datetime.now(timezone.utc).isoformat()
     if usage_summary:
         attributes["generated_item_image_ai_usage"] = _normalize_ai_usage(usage_summary)

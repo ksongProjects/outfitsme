@@ -15,12 +15,41 @@ class GeminiNotConfiguredError(RuntimeError):
     pass
 
 
+_SUPPORTED_IMAGE_ASPECT_RATIOS = (
+    "1:1",
+    "2:3",
+    "3:2",
+    "3:4",
+    "4:3",
+    "4:5",
+    "5:4",
+    "9:16",
+    "16:9",
+    "21:9",
+)
+
+
 def _safe_int(value, default: int = 0) -> int:
     try:
         parsed = int(value)
         return parsed if parsed >= 0 else default
     except (TypeError, ValueError):
         return default
+
+
+def _aspect_ratio_to_float(aspect_ratio: str) -> float:
+    width, height = str(aspect_ratio or "1:1").split(":", 1)
+    return max(1.0, float(width)) / max(1.0, float(height))
+
+
+def _select_image_aspect_ratio(grid_cols: int, grid_rows: int) -> str:
+    safe_cols = max(1, int(grid_cols))
+    safe_rows = max(1, int(grid_rows))
+    target_ratio = safe_cols / safe_rows
+    return min(
+        _SUPPORTED_IMAGE_ASPECT_RATIOS,
+        key=lambda aspect_ratio: abs(_aspect_ratio_to_float(aspect_ratio) - target_ratio)
+    )
 
 
 def _normalize_usage(usage: dict | None = None) -> dict:
@@ -296,9 +325,11 @@ def generate_item_sprite_with_gemini(
         color = str(item.get("color", "Unknown")).strip() or "Unknown"
         item_lines.append(f"{idx}. {category} | {name} | {color}")
 
+    sprite_aspect_ratio = _select_image_aspect_ratio(grid_cols, grid_rows)
     prompt = (
         "Create one composite product sprite image with separate items in a strict grid. "
         f"Grid: {grid_cols} columns x {grid_rows} rows. "
+        f"Match the overall canvas aspect ratio to approximately {sprite_aspect_ratio}. "
         "Use plain light background. Put exactly one item per cell, centered, no overlap, no cropping off edges, "
         "consistent scale, and show each garment fully visible in an unfolded, natural full silhouette (not folded, crumpled, or stacked), "
         "Render the garments as realistic, photorealistic product photography with true-to-life fabric texture, lighting, and material detail. "
@@ -333,7 +364,7 @@ def generate_item_sprite_with_gemini(
         "generationConfig": {
             "responseModalities": ["TEXT", "IMAGE"],
             "imageConfig": {
-                "aspectRatio": "1:1",
+                "aspectRatio": sprite_aspect_ratio,
                 "imageSize": "1K"
             }
         }
