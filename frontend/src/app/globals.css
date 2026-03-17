@@ -329,7 +329,6 @@
   display: flex;
   align-items: flex-start;
   gap: var(--section-gap);
-  flex-wrap: wrap;
 }
 
 .c-surface {
@@ -1303,7 +1302,6 @@ button:not(:disabled),
   width: auto;
   max-width: 100%;
   max-height: min(70vh, 40rem);
-  margin: 0 auto;
   border-radius: 1.2rem;
   object-fit: contain;
   background: rgba(247, 240, 232, 0.78);
@@ -1538,7 +1536,7 @@ button:not(:disabled),
 }
 
 .outfit-detail-image {
-  flex: 0 1 min(24rem, 42vw);
+  flex: 1 1 min(24rem, 42vw);
   width: min(24rem, 42vw);
   max-width: 100%;
   max-height: min(68vh, 38rem);
@@ -1553,7 +1551,7 @@ button:not(:disabled),
 }
 
 .outfit-detail-panel {
-  min-width: 0;
+  flex: 1 1 min(24rem, 42vw);
   padding: 1rem;
   border: 1px solid rgba(179, 151, 126, 0.16);
   border-radius: 1.25rem;

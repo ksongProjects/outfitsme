@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Trash2, XIcon } from "lucide-react";
+import { Download, Trash2, Wand2, XIcon } from "lucide-react";
 import { toast } from "sonner";
 
 import { useSettingsContext, useWardrobeContext } from "@/components/app/DashboardContext";
@@ -15,6 +15,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Spinner } from "@/components/ui/spinner";
 import {
   Select,
   SelectContent,
@@ -28,6 +29,38 @@ const OUTFIT_SOURCE_LABELS: Record<string, string> = {
   photo_analysis: "Photo analysis",
   custom_outfit: "Custom outfit",
   outfitsme_generated: "OutfitsMe generated",
+};
+
+const getItemDetailDescription = (item: {
+  description?: string;
+  material?: string;
+  pattern?: string;
+  fit?: string;
+  silhouette?: string;
+  length?: string;
+  details?: string;
+}) => {
+  const savedDescription = String(item.description || "").trim();
+  if (savedDescription) {
+    return savedDescription;
+  }
+
+  const detailParts = [
+    item.material,
+    item.pattern,
+    item.fit,
+    item.silhouette,
+    item.length,
+  ]
+    .map((value) => String(value || "").trim())
+    .filter(Boolean);
+
+  const detailSummary = detailParts.join(", ");
+  const extraDetails = String(item.details || "").trim();
+  if (detailSummary && extraDetails) {
+    return `${detailSummary}; ${extraDetails}`;
+  }
+  return detailSummary || extraDetails;
 };
 
 export default function OutfitsTab() {
@@ -60,6 +93,7 @@ export default function OutfitsTab() {
     photoId: string;
     outfitIndex: number | null;
   } | null>(null);
+  const [downloadingImage, setDownloadingImage] = useState(false);
   const [sourceFilter, setSourceFilter] = useState("all");
   const imageGenerationEnabled = Boolean(settingsForm?.enable_outfit_image_generation);
   const selectedOutfitSourceType = String(outfitDetails?.selected_outfit?.source_type || "").trim().toLowerCase();
@@ -172,6 +206,46 @@ export default function OutfitsTab() {
           : null,
     });
     closeOutfitDetails();
+  };
+
+  const handleDownloadOutfitImage = async () => {
+    const primaryImageUrl =
+      String(outfitDetails?.outfitsme_image_url || "").trim() ||
+      String(outfitDetails?.image_url || "").trim() ||
+      String(outfitDetails?.source_outfit_image_url || "").trim();
+
+    if (!primaryImageUrl) {
+      toast.error("No downloadable image is available for this outfit.");
+      return;
+    }
+
+    setDownloadingImage(true);
+    try {
+      const response = await fetch(primaryImageUrl);
+      if (!response.ok) {
+        throw new Error("Failed to download image.");
+      }
+
+      const blob = await response.blob();
+      const blobUrl = window.URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      const styleLabel = String(outfitDetails?.selected_outfit?.style || "outfit").trim().toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "") || "outfit";
+      const extension =
+        blob.type === "image/png" ? "png" : blob.type === "image/webp" ? "webp" : "jpg";
+
+      anchor.href = blobUrl;
+      anchor.download = `${styleLabel}.${extension}`;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.URL.revokeObjectURL(blobUrl);
+    } catch (error) {
+      toast.error((error as Error).message || "Failed to download image.");
+    } finally {
+      setDownloadingImage(false);
+    }
   };
 
   return (
@@ -323,9 +397,38 @@ export default function OutfitsTab() {
                           : "Profile photo required for try-on previews"
                     }
                   >
-                    {outfitMeLoading ? "Generating..." : "Try it on"}
+                    {outfitMeLoading ? (
+                      <>
+                        <Spinner />
+                        Generating...
+                      </>
+                    ) : (
+                      <>
+                        <Wand2 size={16} />
+                        Try it on
+                      </>
+                    )}
                   </Button>
                 ) : null}
+                <Button
+                  type="button"
+                  variant="outline"
+                  onClick={handleDownloadOutfitImage}
+                  disabled={downloadingImage}
+                  title="Download the current outfit image"
+                >
+                  {downloadingImage ? (
+                    <>
+                      <Spinner />
+                      Downloading...
+                    </>
+                  ) : (
+                    <>
+                      <Download size={16} />
+                      Download image
+                    </>
+                  )}
+                </Button>
                 {!isEditingName ? (
                   <Button
                     type="button"
@@ -417,38 +520,46 @@ export default function OutfitsTab() {
                       </p>
                       {(outfitDetails.selected_outfit.items || []).length ? (
                         <ul className="o-list outfit-detail-items">
-                          {outfitDetails.selected_outfit.items?.map((item, index) => (
-                            <li key={`detail-item-${index}`} className="analysis-item outfit-detail-item">
-                              <span className="o-media outfit-detail-item-media">
-                                {item.image_url ? (
-                                  <Button
-                                    type="button"
-                                    variant="outline"
-                                    className="history-thumb-btn"
-                                    onClick={(event) => {
-                                      event.stopPropagation();
-                                      setItemPreview({
-                                        image_url: item.image_url || "",
-                                        name: item.name || "Outfit item",
-                                      });
-                                    }}
-                                    aria-label="Open item image preview"
-                                    title="Open item image preview"
-                                  >
-                                    <AppImage
-                                      src={item.image_url}
-                                      alt={item.name || "Outfit item"}
-                                      className="item-thumb"
-                                      width={48}
-                                      height={48}
-                                    />
-                                  </Button>
-                                ) : null}
-                                <span className="item-icon" aria-hidden="true">{getItemIcon(item)}</span>
-                                <span>{formatItemLabel(item)}</span>
-                              </span>
-                            </li>
-                          ))}
+                          {outfitDetails.selected_outfit.items?.map((item, index) => {
+                            const itemDescription = getItemDetailDescription(item);
+                            return (
+                              <li key={`detail-item-${index}`} className="analysis-item outfit-detail-item">
+                                <span className="o-media outfit-detail-item-media">
+                                  {item.image_url ? (
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      className="history-thumb-btn"
+                                      onClick={(event) => {
+                                        event.stopPropagation();
+                                        setItemPreview({
+                                          image_url: item.image_url || "",
+                                          name: item.name || "Outfit item",
+                                        });
+                                      }}
+                                      aria-label="Open item image preview"
+                                      title="Open item image preview"
+                                    >
+                                      <AppImage
+                                        src={item.image_url}
+                                        alt={item.name || "Outfit item"}
+                                        className="item-thumb"
+                                        width={48}
+                                        height={48}
+                                      />
+                                    </Button>
+                                  ) : null}
+                                  <span className="item-icon" aria-hidden="true">{getItemIcon(item)}</span>
+                                  <span className="analysis-item-copy">
+                                    <span>{formatItemLabel(item)}</span>
+                                    {itemDescription ? (
+                                      <span className="subtext">{itemDescription}</span>
+                                    ) : null}
+                                  </span>
+                                </span>
+                              </li>
+                            );
+                          })}
                         </ul>
                       ) : (
                         <p className="subtext">No items were stored for this outfit.</p>

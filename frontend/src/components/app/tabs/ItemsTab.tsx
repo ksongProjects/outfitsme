@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
+import { Wand2 } from "lucide-react";
 import { toast } from "sonner";
 
 import { useItemsContext, useWardrobeContext } from "@/components/app/DashboardContext";
@@ -13,6 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Spinner } from "@/components/ui/spinner";
 import {
   Select,
   SelectContent,
@@ -282,8 +284,22 @@ export default function ItemsTab() {
           <Button type="button" variant="outline" onClick={resetItemsState} disabled={selectedItems.length === 0}>
             Unselect all
           </Button>
-          <Button type="button" disabled={selectedItems.length === 0} onClick={() => setConfirmModalOpen(true)}>
-            Create new outfit
+          <Button
+            type="button"
+            disabled={selectedItems.length === 0 || composeOutfitLoading}
+            onClick={() => setConfirmModalOpen(true)}
+          >
+            {composeOutfitLoading ? (
+              <>
+                <Spinner />
+                Creating...
+              </>
+            ) : (
+              <>
+                <Wand2 size={16} />
+                Create new outfit
+              </>
+            )}
           </Button>
         </div>
       </div>
@@ -312,10 +328,15 @@ export default function ItemsTab() {
                 <Button type="button" onClick={handleConfirmSelectedItems} disabled={composeOutfitLoading}>
                   {composeOutfitLoading ? (
                     <>
-                      <span className="loading-spinner" aria-hidden="true" />
+                      <Spinner />
                       Creating...
                     </>
-                  ) : "Confirm outfit"}
+                  ) : (
+                    <>
+                      <Wand2 size={16} />
+                      Confirm outfit
+                    </>
+                  )}
                 </Button>
               </div>
             </div>
