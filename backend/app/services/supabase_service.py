@@ -93,14 +93,61 @@ def _normalize_label(value: str, fallback: str) -> str:
     return cleaned.title()
 
 
+def _normalize_free_text(value, fallback: str = "") -> str:
+    cleaned = " ".join(str(value or "").strip().split())
+    return cleaned or fallback
+
+
+def _build_item_description(item: dict) -> str:
+    color = _normalize_free_text(item.get("color"), "")
+    material = _normalize_free_text(item.get("material"), "")
+    pattern = _normalize_free_text(item.get("pattern"), "")
+    fit = _normalize_free_text(item.get("fit"), "")
+    silhouette = _normalize_free_text(item.get("silhouette"), "")
+    length = _normalize_free_text(item.get("length"), "")
+    details = _normalize_free_text(item.get("details"), "")
+    name = _normalize_free_text(item.get("name"), _normalize_free_text(item.get("category"), "item")).lower()
+    pieces = [value for value in [color, material, pattern, fit, silhouette, length] if value]
+    summary = " ".join(pieces).strip()
+    if summary:
+        description = f"{summary} {name}".strip()
+    else:
+        description = name
+    if details:
+        description = f"{description} with {details}".strip()
+    return description
+
+
 def _normalize_item_fields(item: dict) -> dict:
     if not isinstance(item, dict):
-        return {"category": "Item", "name": "Unknown Item", "color": "Unknown"}
-    return {
+        return {
+            "category": "Item",
+            "name": "Unknown Item",
+            "color": "Unknown",
+            "material": "",
+            "pattern": "",
+            "fit": "",
+            "silhouette": "",
+            "length": "",
+            "details": "",
+            "description": "",
+        }
+    attributes = _coerce_dict(item.get("attributes_json") or {})
+    normalized = {
         "category": _normalize_label(item.get("category"), "Item"),
         "name": _normalize_label(item.get("name"), "Unknown Item"),
-        "color": _normalize_label(item.get("color"), "Unknown")
+        "color": _normalize_label(item.get("color"), "Unknown"),
+        "material": _normalize_free_text(item.get("material") or attributes.get("material"), ""),
+        "pattern": _normalize_free_text(item.get("pattern") or attributes.get("pattern"), ""),
+        "fit": _normalize_free_text(item.get("fit") or attributes.get("fit"), ""),
+        "silhouette": _normalize_free_text(item.get("silhouette") or attributes.get("silhouette"), ""),
+        "length": _normalize_free_text(item.get("length") or attributes.get("length"), ""),
+        "details": _normalize_free_text(item.get("details") or attributes.get("details"), ""),
+        "description": _normalize_free_text(item.get("description") or attributes.get("description"), ""),
     }
+    if not normalized["description"]:
+        normalized["description"] = _build_item_description(normalized)
+    return normalized
 
 
 def _coerce_dict(value) -> dict:
@@ -113,6 +160,31 @@ def _coerce_dict(value) -> dict:
         except ValueError:
             return {}
     return {}
+
+
+def _build_item_attributes(
+    normalized_item: dict,
+    *,
+    outfit_index: int,
+    outfit_style: str,
+    existing_attributes: dict | None = None
+) -> dict:
+    attributes = dict(existing_attributes or {})
+    attributes.update(
+        {
+            "captured_at": datetime.now(timezone.utc).isoformat(),
+            "outfit_index": outfit_index,
+            "outfit_style": _normalize_label(outfit_style, "Unknown"),
+            "material": _normalize_free_text(normalized_item.get("material"), ""),
+            "pattern": _normalize_free_text(normalized_item.get("pattern"), ""),
+            "fit": _normalize_free_text(normalized_item.get("fit"), ""),
+            "silhouette": _normalize_free_text(normalized_item.get("silhouette"), ""),
+            "length": _normalize_free_text(normalized_item.get("length"), ""),
+            "details": _normalize_free_text(normalized_item.get("details"), ""),
+            "description": _normalize_free_text(normalized_item.get("description"), ""),
+        }
+    )
+    return attributes
 
 
 def _normalize_upload_image_target(mime_type: str | None) -> tuple[str, str]:
@@ -399,10 +471,12 @@ def _insert_outfits_and_items(
                         "category": normalized_item["category"],
                         "name": normalized_item["name"],
                         "color": normalized_item["color"],
-                        "attributes_json": {
-                            "captured_at": datetime.now(timezone.utc).isoformat(),
-                            "outfit_index": outfit_index
-                        }
+                        "attributes_json": _build_item_attributes(
+                            normalized_item,
+                            outfit_index=outfit_index,
+                            outfit_style=outfit.get("style") or analysis.get("style") or "Unknown",
+                            existing_attributes=_coerce_dict(item.get("attributes_json") or {}),
+                        )
                     }
                 )
     else:
@@ -419,10 +493,12 @@ def _insert_outfits_and_items(
                         "category": normalized_item["category"],
                         "name": normalized_item["name"],
                         "color": normalized_item["color"],
-                        "attributes_json": {
-                            "captured_at": datetime.now(timezone.utc).isoformat(),
-                            "outfit_index": 0
-                        }
+                        "attributes_json": _build_item_attributes(
+                            normalized_item,
+                            outfit_index=0,
+                            outfit_style=analysis.get("style") or "Unknown",
+                            existing_attributes=_coerce_dict(item.get("attributes_json") or {}),
+                        )
                     }
                 )
 
@@ -873,11 +949,12 @@ def _persist_analysis_for_photo(client: Client, user_id: str, photo_row: dict, a
                         "category": normalized_item["category"],
                         "name": normalized_item["name"],
                         "color": normalized_item["color"],
-                        "attributes_json": {
-                            "captured_at": datetime.now(timezone.utc).isoformat(),
-                            "outfit_index": outfit_index,
-                            "outfit_style": _normalize_label(outfit_style, "Unknown")
-                        }
+                        "attributes_json": _build_item_attributes(
+                            normalized_item,
+                            outfit_index=outfit_index,
+                            outfit_style=outfit_style,
+                            existing_attributes=_coerce_dict(item.get("attributes_json") or {}),
+                        )
                     }
                 )
     else:
@@ -890,11 +967,12 @@ def _persist_analysis_for_photo(client: Client, user_id: str, photo_row: dict, a
                     "category": normalized_item["category"],
                     "name": normalized_item["name"],
                     "color": normalized_item["color"],
-                    "attributes_json": {
-                        "captured_at": datetime.now(timezone.utc).isoformat(),
-                        "outfit_index": 0,
-                        "outfit_style": _normalize_label(analysis.get("style"), "Unknown")
-                    }
+                    "attributes_json": _build_item_attributes(
+                        normalized_item,
+                        outfit_index=0,
+                        outfit_style=analysis.get("style") or "Unknown",
+                        existing_attributes=_coerce_dict(item.get("attributes_json") or {}),
+                    )
                 }
             )
 

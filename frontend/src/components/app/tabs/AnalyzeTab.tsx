@@ -625,7 +625,12 @@ export default function AnalyzeTab() {
                                           </Button>
                                         ) : null}
                                         <span className="item-icon" aria-hidden="true">{getItemIcon(item)}</span>
-                                        <span>{formatItemLabel(item)}</span>
+                                        <span className="analysis-item-copy">
+                                          <span>{formatItemLabel(item)}</span>
+                                          {item.description ? (
+                                            <span className="subtext">{item.description}</span>
+                                          ) : null}
+                                        </span>
                                       </li>
                                     ))}
                                   </ul>

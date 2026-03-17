@@ -16,6 +16,13 @@ export type ItemRecord = {
   category?: string;
   name?: string;
   color?: string;
+  material?: string;
+  pattern?: string;
+  fit?: string;
+  silhouette?: string;
+  length?: string;
+  details?: string;
+  description?: string;
   style_label?: string;
   image_url?: string | null;
   analysis_id?: string | null;

@@ -1244,6 +1244,12 @@ button:not(:disabled),
   background: rgba(250, 243, 236, 0.72);
 }
 
+.analysis-item-copy {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+}
+
 .analysis-item-thumb,
 .item-thumb,
 .history-thumb {
