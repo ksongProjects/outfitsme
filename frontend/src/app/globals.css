@@ -1299,7 +1299,6 @@ button:not(:disabled),
 
 .modal-image {
   display: block;
-  width: auto;
   max-width: 100%;
   max-height: min(70vh, 40rem);
   border-radius: 1.2rem;
@@ -1496,7 +1495,7 @@ button:not(:disabled),
 }
 
 .modal-panel {
-  width: min(70rem, calc(100vw - 2rem)) !important;
+  width: min(50rem, calc(100vw - 2rem)) !important;
   max-width: none !important;
   max-height: calc(100dvh - 2rem) !important;
   border-radius: 1.5rem !important;
@@ -1511,10 +1510,6 @@ button:not(:disabled),
 
 .modal-panel-fit {
   width: min(36rem, calc(100vw - 2rem)) !important;
-}
-
-.modal-panel-image {
-  width: min(54rem, calc(100vw - 2rem)) !important;
 }
 
 .modal-panel-no-scroll .modal-body {
@@ -1977,6 +1972,7 @@ pre {
 
   .outfit-detail-panel {
     padding: 0.85rem;
+    margin-bottom: 2.5rem;
   }
 
   .outfit-detail-items .analysis-item,
