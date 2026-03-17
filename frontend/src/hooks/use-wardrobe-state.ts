@@ -47,7 +47,8 @@ export function useWardrobeState({
 
   type WardrobePagePayload = { wardrobe: WardrobeEntry[]; has_more: boolean };
 
-  const buildDetailsQueryKey = (photoId: string) => ["wardrobeDetails", accessToken, photoId] as const;
+  const buildDetailsQueryKey = (photoId: string, outfitIndex: number | null = null) =>
+    ["wardrobeDetails", accessToken, photoId, outfitIndex ?? "all"] as const;
 
   const selectOutfitFromDetails = (
     details: WardrobeDetails | null,
@@ -76,8 +77,9 @@ export function useWardrobeState({
     };
   };
 
-  const fetchOutfitDetailsByPhoto = async (photoId: string) => {
-    const response = await fetch(`${API_BASE}/api/wardrobe/${photoId}/details`, {
+  const fetchOutfitDetailsByPhoto = async (photoId: string, outfitIndex: number | null = null) => {
+    const query = typeof outfitIndex === "number" ? `?outfit_index=${outfitIndex}` : "";
+    const response = await fetch(`${API_BASE}/api/wardrobe/${photoId}/details${query}`, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -122,9 +124,10 @@ export function useWardrobeState({
   });
 
   const detailsPhotoId = selectedDetailsRequest?.photoId || "";
+  const detailsOutfitIndex = selectedDetailsRequest?.outfitIndex ?? null;
   const outfitDetailsQuery = useQuery({
-    queryKey: buildDetailsQueryKey(detailsPhotoId),
-    queryFn: () => fetchOutfitDetailsByPhoto(detailsPhotoId),
+    queryKey: buildDetailsQueryKey(detailsPhotoId, detailsOutfitIndex),
+    queryFn: () => fetchOutfitDetailsByPhoto(detailsPhotoId, detailsOutfitIndex),
     enabled: Boolean(accessToken && detailsPhotoId),
     staleTime: DETAILS_CACHE_STALE_MS,
   });
@@ -296,7 +299,7 @@ export function useWardrobeState({
 
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["wardrobe", accessToken] }),
-        queryClient.invalidateQueries({ queryKey: buildDetailsQueryKey(photoId) }),
+        queryClient.invalidateQueries({ queryKey: buildDetailsQueryKey(photoId, outfitIndex) }),
         queryClient.invalidateQueries({ queryKey: ["stats", accessToken] }),
       ]);
 

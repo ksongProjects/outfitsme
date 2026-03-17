@@ -103,6 +103,13 @@ export default function OutfitsTab() {
       : selectedOutfitSourceType === "outfitsme_generated"
         ? "Try-on preview"
         : "Original outfit";
+  const detailSourceImageUrl = String(outfitDetails?.source_outfit_image_url || "").trim();
+  const primaryDetailImageUrl =
+    selectedOutfitSourceType === "outfitsme_generated"
+      ? String(outfitDetails?.outfitsme_image_url || outfitDetails?.image_url || "").trim()
+      : String(outfitDetails?.image_url || outfitDetails?.outfitsme_image_url || "").trim();
+  const shouldShowSourceDetailImage =
+    Boolean(detailSourceImageUrl) && selectedOutfitSourceType !== "outfitsme_generated";
 
   const filteredWardrobe = useMemo(
     () => wardrobe.filter((entry) => sourceFilter === "all" || (entry.source_type || "photo_analysis") === sourceFilter),
@@ -216,9 +223,11 @@ export default function OutfitsTab() {
 
   const handleDownloadOutfitImage = async () => {
     const primaryImageUrl =
-      String(outfitDetails?.outfitsme_image_url || "").trim() ||
-      String(outfitDetails?.image_url || "").trim() ||
-      String(outfitDetails?.source_outfit_image_url || "").trim();
+      selectedOutfitSourceType === "outfitsme_generated"
+        ? String(outfitDetails?.outfitsme_image_url || outfitDetails?.image_url || "").trim()
+        : String(outfitDetails?.outfitsme_image_url || "").trim() ||
+          String(outfitDetails?.image_url || "").trim() ||
+          String(outfitDetails?.source_outfit_image_url || "").trim();
 
     if (!primaryImageUrl) {
       toast.error("No downloadable image is available for this outfit.");
@@ -455,18 +464,18 @@ export default function OutfitsTab() {
               <p className="subtext">Loading outfit details...</p>
             ) : (
               <div className="o-detail-layout o-detail-layout--stack-sm">
-                {outfitDetails?.source_outfit_image_url ? (
+                {shouldShowSourceDetailImage ? (
                   <AppImage
-                    src={outfitDetails.source_outfit_image_url}
+                    src={detailSourceImageUrl}
                     alt="Source outfit"
                     className="modal-image outfit-detail-image"
                     width={1600}
                     height={2000}
                   />
                 ) : null}
-                {outfitDetails?.image_url ? (
+                {primaryDetailImageUrl ? (
                   <AppImage
-                    src={outfitDetails.image_url}
+                    src={primaryDetailImageUrl}
                     alt={primaryDetailImageLabel}
                     className="modal-image outfit-detail-image"
                     width={1600}
@@ -475,15 +484,6 @@ export default function OutfitsTab() {
                 ) : (
                   <p className="subtext">{primaryDetailImageLabel} is unavailable for this outfit.</p>
                 )}
-                {outfitDetails?.outfitsme_image_url ? (
-                  <AppImage
-                    src={outfitDetails.outfitsme_image_url}
-                    alt="OutfitsMe preview"
-                    className="modal-image outfit-detail-image"
-                    width={1600}
-                    height={2000}
-                  />
-                ) : null}
                 <div className="outfit-detail-panel">
                   {outfitDetails?.selected_outfit ? (
                     <div className="outfit-detail-content o-stack o-stack--tight">
