@@ -10,6 +10,7 @@ import AppImage from "@/components/app/ui/AppImage";
 import ImageUploadField from "@/components/app/ui/ImageUploadField";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -27,13 +28,9 @@ export default function AnalyzeTab() {
     startCrop: { x: number; y: number; width: number; height: number } | null;
     handle: "nw" | "ne" | "sw" | "se" | null;
   } | null>(null);
-  const [outfitMePreviewState, setOutfitsMePreviewState] = useState<{
-    photoId: string | null;
-    previews: Record<number, string>;
-  }>({
-    photoId: null,
-    previews: {},
-  });
+  const [outfitMePreviewState, setOutfitsMePreviewState] = useState<Record<string, string>>({});
+  const [expandedAnalysisKeys, setExpandedAnalysisKeys] = useState<Record<string, boolean>>({});
+  const [itemPreview, setItemPreview] = useState<{ image_url: string; name: string } | null>(null);
   const {
     previewUrl,
     onFileDrop,
@@ -44,7 +41,7 @@ export default function AnalyzeTab() {
     runAnalysis,
     disabled,
     loading,
-    analysis,
+    completedAnalyses,
     selectedModel,
     setSelectedModel,
     modelOptions,
@@ -58,10 +55,6 @@ export default function AnalyzeTab() {
   } = useAnalysisContext();
   const { profilePhotoUrl, settingsForm } = useSettingsContext();
   const { generateOutfitsMe, outfitMeLoading } = useWardrobeContext();
-  const activePhotoId = analysis?.photo_id || null;
-  const outfitMePreviewByIndex =
-    outfitMePreviewState.photoId === activePhotoId ? outfitMePreviewState.previews : {};
-  const detectedOutfits = analysis?.outfits || [];
   const dailyLimit = analysisLimits?.daily_limit ?? 0;
   const usedToday = analysisLimits?.used_today ?? 0;
   const remainingToday = analysisLimits?.remaining_today;
@@ -101,8 +94,46 @@ export default function AnalyzeTab() {
     setResultsExpanded(activeAnalysisCount <= 1);
   }, [activeAnalysisCount]);
 
+  useEffect(() => {
+    const latestEntry = completedAnalyses[0];
+    if (!latestEntry) {
+      return;
+    }
+
+    const latestKey = String(latestEntry.job_id || latestEntry.result.photo_id || "latest-analysis");
+    setExpandedAnalysisKeys((current) => (
+      latestKey in current ? current : { ...current, [latestKey]: true }
+    ));
+  }, [completedAnalyses]);
+
   const clamp01 = (value: number) => Math.min(1, Math.max(0, value));
   const minCropSize = 0.01;
+  const hasGenerationAccess = accessMode === "unlimited" || trialActive;
+
+  const buildAnalysisKey = (
+    jobId: string | null | undefined,
+    photoId: string | undefined,
+    index: number
+  ) => String(jobId || photoId || `analysis-${index}`);
+
+  const buildOutfitsMePreviewKey = (
+    photoId: string | null | undefined,
+    outfitIndex: number
+  ) => `${String(photoId || "unknown-photo")}:${outfitIndex}`;
+
+  const formatCompletedAt = (value: string | null | undefined) => {
+    if (!value) {
+      return "Recently completed";
+    }
+    const parsed = new Date(value);
+    if (Number.isNaN(parsed.getTime())) {
+      return "Recently completed";
+    }
+    return parsed.toLocaleString([], {
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
+  };
 
   const getRelativePoint = (event: React.PointerEvent<HTMLDivElement>) => {
     const bounds = event.currentTarget.getBoundingClientRect();
@@ -261,8 +292,9 @@ export default function AnalyzeTab() {
     }
   };
 
-  const handleGenerateOutfitsMe = async (outfitIndex: number) => {
-    if (!activePhotoId) {
+  const handleGenerateOutfitsMe = async (photoId: string | null | undefined, outfitIndex: number) => {
+    const safePhotoId = String(photoId || "").trim();
+    if (!safePhotoId) {
       toast.error("Analyze a photo first before trying it on.");
       return;
     }
@@ -274,14 +306,12 @@ export default function AnalyzeTab() {
       toast.error("Profile photo is required for OutfitsMe. Upload one in Settings > Profile.");
       return;
     }
-    const result = await generateOutfitsMe(activePhotoId, outfitIndex);
+    const result = await generateOutfitsMe(safePhotoId, outfitIndex);
     if (result && typeof result === "object" && "outfitsme_image_url" in result) {
+      const previewKey = buildOutfitsMePreviewKey(safePhotoId, outfitIndex);
       setOutfitsMePreviewState((current) => ({
-        photoId: activePhotoId,
-        previews: {
-          ...(current.photoId === activePhotoId ? current.previews : {}),
-          [outfitIndex]: String(result.outfitsme_image_url || ""),
-        },
+        ...current,
+        [previewKey]: String(result.outfitsme_image_url || ""),
       }));
     }
   };
@@ -455,7 +485,7 @@ export default function AnalyzeTab() {
           <div className="o-split o-split--start o-split--stack-sm analysis-results-head">
             <div className="c-section-head o-stack o-stack--tight">
               <h3>Results</h3>
-              <p className="subtext">Detected outfits and wardrobe-ready item breakdowns from your latest completed analysis.</p>
+              <p className="subtext">Completed analyses stay here for this session, with each outfit grouped into an expandable result card.</p>
             </div>
             {shouldCollapseResults ? (
               <Button
@@ -488,68 +518,135 @@ export default function AnalyzeTab() {
                 </div>
               ) : null}
 
-              {!analysis && !loading ? (
+              {!completedAnalyses.length && !loading ? (
                 <p className="subtext">Analyze a photo to view detected outfits and reusable item breakdowns.</p>
               ) : null}
 
-              {analysis ? (
-                <div className="o-stack">
-                  {(detectedOutfits.length > 0 ? detectedOutfits : [{ style: analysis.style, items: analysis.items }]).map((outfit, index) => (
-                    <Card as="article" key={`analysis-outfit-${index}`} className="c-surface c-surface--stack">
-                      <div className="o-split o-split--start o-split--stack-sm">
-                        <div>
-                          <p className="result-label">Outfit {index + 1}</p>
-                          <h4>{outfit.style || "Unlabeled style"}</h4>
-                        </div>
-                        <Button
+              {completedAnalyses.length ? (
+                <div className="analysis-results-accordion">
+                  {completedAnalyses.map((entry, analysisIndex) => {
+                    const result = entry.result;
+                    const outfits = result.outfits?.length ? result.outfits : [{ style: result.style, items: result.items }];
+                    const analysisKey = buildAnalysisKey(entry.job_id, result.photo_id, analysisIndex);
+                    const isExpanded = expandedAnalysisKeys[analysisKey] ?? analysisIndex === 0;
+                    const itemCount = outfits.reduce((total, outfit) => total + (outfit.items?.length || 0), 0);
+                    const summaryStyle =
+                      outfits.find((outfit) => String(outfit.style || "").trim())?.style ||
+                      result.style ||
+                      "Unlabeled style";
+
+                    return (
+                      <Card as="article" key={analysisKey} className="c-surface c-surface--stack">
+                        <button
                           type="button"
-                          variant="outline"
-                          onClick={() => handleGenerateOutfitsMe(index)}
-                          disabled={outfitMeLoading || !imageGenerationEnabled || !trialActive}
-                          title={
-                            !trialActive
-                              ? "Trial required for try-on previews"
-                              : !imageGenerationEnabled
-                                ? "Enable outfit image generation in Settings"
-                                : profilePhotoUrl
-                                  ? "Generate a try-on preview"
-                                  : "Profile photo required for try-on previews"
+                          className="analysis-result-group-toggle"
+                          aria-expanded={isExpanded}
+                          aria-controls={`${analysisKey}-body`}
+                          onClick={() =>
+                            setExpandedAnalysisKeys((current) => ({
+                              ...current,
+                              [analysisKey]: !isExpanded,
+                            }))
                           }
                         >
-                          <Wand2 size={16} />
-                          {outfitMeLoading ? "Generating..." : "Try it on"}
-                        </Button>
-                      </div>
+                          <span className="analysis-result-group-summary">
+                            <span className="result-label">Analysis {completedAnalyses.length - analysisIndex}</span>
+                            <span>
+                              <strong>{summaryStyle}</strong>
+                            </span>
+                            <span className="analysis-result-group-meta">
+                              <span>{outfits.length} outfit{outfits.length === 1 ? "" : "s"}</span>
+                              <span>{itemCount} item{itemCount === 1 ? "" : "s"}</span>
+                              <span>{formatCompletedAt(entry.completed_at || entry.updated_at)}</span>
+                              {entry.job_id ? <span>Job {entry.job_id.slice(0, 8)}</span> : null}
+                            </span>
+                          </span>
+                          {isExpanded ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+                        </button>
 
-                      <ul className="o-list">
-                        {(outfit.items || []).map((item, itemIndex) => (
-                          <li key={`analysis-item-${index}-${itemIndex}`} className="analysis-item">
-                            {item.image_url ? (
-                              <AppImage
-                                src={item.image_url}
-                                alt={item.name || "Detected item"}
-                                className="analysis-item-thumb"
-                                width={64}
-                                height={64}
-                              />
-                            ) : null}
-                            <span className="item-icon" aria-hidden="true">{getItemIcon(item)}</span>
-                            <span>{formatItemLabel(item)}</span>
-                          </li>
-                        ))}
-                      </ul>
+                        {isExpanded ? (
+                          <div id={`${analysisKey}-body`} className="analysis-result-group-body">
+                            {outfits.map((outfit, outfitIndex) => {
+                              const previewKey = buildOutfitsMePreviewKey(result.photo_id, outfitIndex);
+                              const outfitPreviewUrl = outfitMePreviewState[previewKey] || "";
 
-                      {outfitMePreviewByIndex[index] ? (
-                        <AppImage
-                          src={outfitMePreviewByIndex[index]}
-                          alt={`OutfitsMe preview for outfit ${index + 1}`}
-                          className="analysis-outfitsme-preview"
-                          width={1600}
-                          height={2000}
-                        />
-                      ) : null}
-                    </Card>
-                  ))}
+                              return (
+                                <Card as="article" key={`${analysisKey}-outfit-${outfitIndex}`} className="c-surface c-surface--stack">
+                                  <div className="o-split o-split--start o-split--stack-sm">
+                                    <div>
+                                      <p className="result-label">Outfit {outfitIndex + 1}</p>
+                                      <h4>{outfit.style || "Unlabeled style"}</h4>
+                                    </div>
+                                    <Button
+                                      type="button"
+                                      variant="outline"
+                                      onClick={() => handleGenerateOutfitsMe(result.photo_id, outfitIndex)}
+                                      disabled={outfitMeLoading || !imageGenerationEnabled || !hasGenerationAccess}
+                                      title={
+                                        !hasGenerationAccess
+                                          ? "Trial or paid access required for try-on previews"
+                                          : !imageGenerationEnabled
+                                            ? "Enable outfit image generation in Settings"
+                                            : profilePhotoUrl
+                                              ? "Generate a try-on preview"
+                                              : "Profile photo required for try-on previews"
+                                      }
+                                    >
+                                      <Wand2 size={16} />
+                                      {outfitMeLoading ? "Generating..." : "Try it on"}
+                                    </Button>
+                                  </div>
+
+                                  <ul className="o-list">
+                                    {(outfit.items || []).map((item, itemIndex) => (
+                                      <li key={`${analysisKey}-item-${outfitIndex}-${itemIndex}`} className="analysis-item">
+                                        {item.image_url ? (
+                                          <Button
+                                            type="button"
+                                            variant="outline"
+                                            className="history-thumb-btn"
+                                            onClick={(event) => {
+                                              event.stopPropagation();
+                                              setItemPreview({
+                                                image_url: item.image_url || "",
+                                                name: item.name || "Detected item",
+                                              });
+                                            }}
+                                            aria-label="Open item image preview"
+                                            title="Open item image preview"
+                                          >
+                                            <AppImage
+                                              src={item.image_url}
+                                              alt={item.name || "Detected item"}
+                                              className="analysis-item-thumb"
+                                              width={64}
+                                              height={64}
+                                            />
+                                          </Button>
+                                        ) : null}
+                                        <span className="item-icon" aria-hidden="true">{getItemIcon(item)}</span>
+                                        <span>{formatItemLabel(item)}</span>
+                                      </li>
+                                    ))}
+                                  </ul>
+
+                                  {outfitPreviewUrl ? (
+                                    <AppImage
+                                      src={outfitPreviewUrl}
+                                      alt={`OutfitsMe preview for outfit ${outfitIndex + 1}`}
+                                      className="analysis-outfitsme-preview"
+                                      width={1600}
+                                      height={2000}
+                                    />
+                                  ) : null}
+                                </Card>
+                              );
+                            })}
+                          </div>
+                        ) : null}
+                      </Card>
+                    );
+                  })}
                 </div>
               ) : null}
             </div>
@@ -560,6 +657,30 @@ export default function AnalyzeTab() {
       <Card className="c-surface c-surface--stack">
         <HistoryTab />
       </Card>
+
+      <Dialog
+        open={Boolean(itemPreview)}
+        onOpenChange={(open) => setItemPreview(open ? itemPreview : null)}
+      >
+        <DialogContent className="modal-panel modal-panel-image modal-panel-no-scroll">
+          <DialogHeader className="modal-header o-split o-split--start">
+            <DialogTitle className="modal-title">{itemPreview?.name || "Item preview"}</DialogTitle>
+          </DialogHeader>
+          <div className="modal-body">
+            {itemPreview?.image_url ? (
+              <AppImage
+                src={itemPreview.image_url}
+                alt={itemPreview.name || "Item preview"}
+                className="modal-image item-preview-image"
+                width={1600}
+                height={2000}
+              />
+            ) : (
+              <p className="subtext">Preview unavailable for this item.</p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </section>
   );
 }

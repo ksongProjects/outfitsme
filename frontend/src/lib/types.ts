@@ -37,6 +37,14 @@ export type AnalysisResult = {
   outfits?: OutfitAnalysis[];
 };
 
+export type CompletedAnalysisEntry = {
+  job_id?: string | null;
+  status?: string;
+  completed_at?: string | null;
+  updated_at?: string | null;
+  result: AnalysisResult;
+};
+
 export type HistoryEntry = {
   job_id: string;
   photo_id?: string;

@@ -1139,6 +1139,46 @@ button:not(:disabled),
   align-self: start;
 }
 
+.analysis-results-accordion {
+  display: grid;
+  gap: 1rem;
+}
+
+.analysis-result-group-toggle {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.analysis-result-group-summary {
+  display: grid;
+  gap: 0.35rem;
+  min-width: 0;
+}
+
+.analysis-result-group-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.85rem;
+  color: rgba(104, 79, 58, 0.82);
+  font-size: 0.95rem;
+}
+
+.analysis-result-group-body {
+  display: grid;
+  gap: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(179, 151, 126, 0.16);
+}
+
 .analysis-layout > * {
   min-width: 0;
   height: auto;
@@ -1734,6 +1774,11 @@ pre {
   .analysis-results-toggle {
     width: 100%;
     justify-content: center;
+  }
+
+  .analysis-result-group-meta {
+    flex-direction: column;
+    align-items: flex-start;
   }
 
   .masonry-stage {

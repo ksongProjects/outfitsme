@@ -27,6 +27,7 @@ from app.services.supabase_service import (
     mark_analysis_job_progress,
     persist_analysis_for_photo,
     save_generated_item_image,
+    save_generated_item_sprite,
 )
 
 _JOB_EXECUTOR = ThreadPoolExecutor(max_workers=4, thread_name_prefix="analysis-job")
@@ -61,6 +62,8 @@ def _build_response_payload(
     cost_summary: dict | None = None
 ) -> dict:
     usage = analysis.get("_usage") if isinstance(analysis, dict) else None
+    generated_item_sprite_path = analysis.get("generated_item_sprite_path") if isinstance(analysis, dict) else None
+    generated_item_sprite_url = analysis.get("generated_item_sprite_url") if isinstance(analysis, dict) else None
     return {
         "style": analysis.get("style"),
         "items": [dict(item) for item in (analysis.get("items") or [])],
@@ -68,6 +71,8 @@ def _build_response_payload(
         "analysis_model": chosen_model_id,
         "ai_usage": usage if isinstance(usage, dict) else {},
         "cost_summary": cost_summary if isinstance(cost_summary, dict) else {},
+        **({"generated_item_sprite_path": generated_item_sprite_path} if generated_item_sprite_path else {}),
+        **({"generated_item_sprite_url": generated_item_sprite_url} if generated_item_sprite_url else {}),
         **persistence
     }
 
@@ -350,6 +355,8 @@ def _generate_item_images_for_analysis(
         "failed_items": 0,
         "skipped_items": 0,
         "ai_usage": {},
+        "sprite_storage_path": None,
+        "sprite_image_url": None,
         "disabled": False
     }
     _mark_job_progress(
@@ -392,6 +399,18 @@ def _generate_item_images_for_analysis(
                 return_usage=True
             )
             summary["ai_usage"] = sprite_usage if isinstance(sprite_usage, dict) else {}
+            if sprite_data_uri:
+                stored_sprite = save_generated_item_sprite(
+                    user_id,
+                    analysis_id,
+                    sprite_data_uri,
+                    grid_cols=grid_cols,
+                    grid_rows=grid_rows,
+                    item_count=len(pending_items),
+                    usage_summary=sprite_usage if isinstance(sprite_usage, dict) else None
+                )
+                summary["sprite_storage_path"] = stored_sprite.get("storage_path")
+                summary["sprite_image_url"] = stored_sprite.get("image_url")
             cropped_data_uris = _slice_sprite_to_item_data_uris(
                 sprite_data_uri or "",
                 len(pending_items),
@@ -497,6 +516,11 @@ def process_analysis_job(job_id: str) -> None:
             )
             persisted_items = list_items_for_analysis(user_id, persistence["analysis_id"])
             analysis_for_response = _attach_item_images_to_analysis(analysis, persisted_items)
+        if isinstance(analysis_for_response, dict) and isinstance(item_image_summary, dict):
+            if item_image_summary.get("sprite_storage_path"):
+                analysis_for_response["generated_item_sprite_path"] = item_image_summary.get("sprite_storage_path")
+            if item_image_summary.get("sprite_image_url"):
+                analysis_for_response["generated_item_sprite_url"] = item_image_summary.get("sprite_image_url")
         if isinstance(analysis_for_response, dict):
             analysis_for_response["_usage"] = analysis_usage
         cost_summary = build_analysis_job_cost_summary(

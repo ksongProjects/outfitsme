@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { API_BASE } from "@/lib/api-base";
 import type {
   AnalysisLimits,
+  CompletedAnalysisEntry,
   AnalysisResult,
   CropArea,
   JobStatus,
@@ -44,6 +45,7 @@ type AnalyzeJobPayload = {
   status?: string;
   error_message?: string | null;
   result?: (AnalysisResult & { progress?: JobStatus["progress"] }) | null;
+  completed_at?: string | null;
   created_at?: string | null;
   updated_at?: string | null;
 };
@@ -61,6 +63,7 @@ export function useAnalysisState({
   const [previewUrl, setPreviewUrl] = useState("");
   const [cropArea, setCropArea] = useState<CropArea | null>(null);
   const [analysis, setAnalysis] = useState<AnalysisResult | null>(null);
+  const [completedAnalyses, setCompletedAnalyses] = useState<CompletedAnalysisEntry[]>([]);
   const [similarResults, setSimilarResults] = useState<
     Array<{
       item: string;
@@ -204,6 +207,23 @@ export function useAnalysisState({
       status: "completed",
     });
     setAnalysis(analyzeJson);
+    setCompletedAnalyses((current) => [
+      {
+        job_id: payload.job_id || null,
+        status: "completed",
+        completed_at: "completed_at" in payload ? payload.completed_at || payload.updated_at || null : payload.updated_at || null,
+        updated_at: payload.updated_at || payload.created_at || null,
+        result: analyzeJson,
+      },
+      ...current.filter((entry) => {
+        const currentJobId = String(entry.job_id || "").trim();
+        const nextJobId = String(payload.job_id || "").trim();
+        if (currentJobId && nextJobId) {
+          return currentJobId !== nextJobId;
+        }
+        return String(entry.result.photo_id || "").trim() !== String(analyzeJson.photo_id || "").trim();
+      }),
+    ]);
     setSimilarResults(similarJson.results || []);
     setError("");
     setInfo("Analysis complete and saved to your wardrobe.");
@@ -649,6 +669,7 @@ export function useAnalysisState({
     disabled,
     loading,
     analysis,
+    completedAnalyses,
     similarResults,
     selectedModel,
     setSelectedModel,
@@ -664,6 +685,7 @@ export function useAnalysisState({
         URL.revokeObjectURL(previewUrl);
       }
       setAnalysis(null);
+      setCompletedAnalyses([]);
       setSimilarResults([]);
       setFile(null);
       setPreviewUrl("");

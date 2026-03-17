@@ -1379,6 +1379,66 @@ def save_generated_item_image(user_id: str, item_id: str, data_uri: str, usage_s
     }
 
 
+def save_generated_item_sprite(
+    user_id: str,
+    analysis_id: str,
+    data_uri: str,
+    *,
+    grid_cols: int | None = None,
+    grid_rows: int | None = None,
+    item_count: int | None = None,
+    usage_summary: dict | None = None
+) -> dict:
+    client = get_supabase_client()
+    image_bytes, content_type = _decode_image_data_uri(data_uri)
+    extension = ".png" if content_type == "image/png" else ".jpg"
+    storage_path = f"{user_id}/generated/item-sprites/{analysis_id}-{uuid4().hex}{extension}"
+    client.storage.from_(settings.SUPABASE_BUCKET).upload(
+        path=storage_path,
+        file=image_bytes,
+        file_options={"content-type": content_type}
+    )
+
+    analysis_response = (
+        client.table("outfit_analyses")
+        .select("id,raw_json")
+        .eq("id", analysis_id)
+        .eq("user_id", user_id)
+        .limit(1)
+        .execute()
+    )
+    analysis_row = (analysis_response.data or [None])[0]
+    if not analysis_row:
+        raise ValueError("Analysis not found while saving generated item sprite.")
+
+    raw_json = _coerce_dict(analysis_row.get("raw_json") or {})
+    raw_json["generated_item_sprite_path"] = storage_path
+    raw_json["generated_item_sprite_created_at"] = datetime.now(timezone.utc).isoformat()
+    raw_json["generated_item_sprite_content_type"] = content_type
+    if grid_cols and grid_rows:
+        raw_json["generated_item_sprite_grid"] = {
+            "cols": int(grid_cols),
+            "rows": int(grid_rows),
+            "item_count": max(0, int(item_count or 0))
+        }
+    if usage_summary:
+        raw_json["generated_item_sprite_ai_usage"] = _normalize_ai_usage(usage_summary)
+
+    (
+        client.table("outfit_analyses")
+        .update({"raw_json": raw_json})
+        .eq("id", analysis_id)
+        .eq("user_id", user_id)
+        .execute()
+    )
+
+    return {
+        "storage_path": storage_path,
+        "content_type": content_type,
+        "image_url": _get_signed_image_url_with_client(client, storage_path, expires_in_seconds=3600)
+    }
+
+
 def get_photo_storage_path_for_user(user_id: str, photo_id: str) -> str | None:
     client = get_supabase_client()
     response = (
