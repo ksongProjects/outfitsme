@@ -321,7 +321,6 @@
 
 .o-list--split > li {
   display: flex;
-  justify-content: space-between;
   gap: 0.8rem;
 }
 
@@ -2091,7 +2090,6 @@ pre {
     width: fit-content;
   }
 
-  .o-list--split > li,
   .analysis-item,
   .similar-meta,
   .o-split--stack-sm,
