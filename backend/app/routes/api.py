@@ -39,6 +39,7 @@ from app.services.supabase_service import (
     get_user_cost_summary,
     get_user_generated_image_count_since,
     save_user_profile_photo,
+    attach_ai_usage_to_outfit_analysis,
     attach_generated_image_to_outfit,
     save_generated_outfit_image,
     list_wardrobe,
@@ -437,8 +438,6 @@ def compose_outfit():
         item_reference_images: list[tuple[bytes, str]] = []
         seen_item_paths: set[str] = set()
         for item in (result.get("items") or []):
-            if len(item_reference_images) >= max(0, settings.ITEM_IMAGE_MAX):
-                break
             if not isinstance(item, dict):
                 continue
             image_path = str(item.get("image_path") or "").strip()
@@ -479,6 +478,13 @@ def compose_outfit():
                 str(result.get("outfit_id")),
                 stored.get("storage_path") or ""
             )
+            if result.get("analysis_id"):
+                attach_ai_usage_to_outfit_analysis(
+                    user_id,
+                    str(result.get("analysis_id") or ""),
+                    usage_summary=usage_summary,
+                    generated_storage_path=stored.get("storage_path") or ""
+                )
             result["image_url"] = stored.get("image_url")
             result["image_storage_path"] = stored.get("storage_path")
             result["ai_usage"] = usage_summary
@@ -691,8 +697,6 @@ def generate_outfitsme_preview(photo_id: str):
         item_reference_images: list[tuple[bytes, str]] = []
         seen_item_paths: set[str] = set()
         for item in (selected_outfit.get("items") or []):
-            if len(item_reference_images) >= max(0, settings.ITEM_IMAGE_MAX):
-                break
             if not isinstance(item, dict):
                 continue
             image_path = str(item.get("image_path") or "").strip()

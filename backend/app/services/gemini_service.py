@@ -507,18 +507,18 @@ def generate_outfitsme_image_with_gemini(
         normalized_item_reference_images.append((resized_bytes, resized_mime_type))
 
     cleaned_items = []
-    for item in (outfit_items or []):
+    for index, item in enumerate((outfit_items or []), start=1):
         if not isinstance(item, dict):
             continue
-        label = ", ".join(
-            [
-                str(item.get("category", "")).strip(),
-                str(item.get("name", "")).strip(),
-                str(item.get("color", "")).strip()
-            ]
-        ).strip(", ").strip()
-        if label:
-            cleaned_items.append(label)
+        category = str(item.get("category", "")).strip() or "garment"
+        name = str(item.get("name", "")).strip()
+        color = str(item.get("color", "")).strip()
+        label_parts = [f"type: {category}"]
+        if name and name.casefold() != category.casefold():
+            label_parts.append(f"name: {name}")
+        if color:
+            label_parts.append(f"color: {color}")
+        cleaned_items.append(f"{index}. " + "; ".join(label_parts))
 
     profile_parts = []
     if str(profile_gender or "").strip():
@@ -526,6 +526,7 @@ def generate_outfitsme_image_with_gemini(
     if isinstance(profile_age, int) and profile_age > 0:
         profile_parts.append(f"age: {profile_age}")
 
+    requested_items_text = "\n".join(cleaned_items) if cleaned_items else "best effort from available data"
     prompt = (
         "Task: create a photorealistic try-on preview of the user from the profile photo. "
         "The first input image is the user's profile photo and is the only identity reference. "
@@ -533,10 +534,16 @@ def generate_outfitsme_image_with_gemini(
         "The output person must look like the person in the profile photo, not like any person who may appear in other reference images. "
         "Dress that same person in the requested outfit. "
         f"Outfit style: {str(outfit_style or 'Outfit').strip()}. "
-        f"Requested clothing items: {'; '.join(cleaned_items) if cleaned_items else 'best effort from available data'}. "
+        "Requested clothing items in order:\n"
+        f"{requested_items_text}\n"
         f"Profile hints: {'; '.join(profile_parts) if profile_parts else 'none'}. "
         "If additional images are provided, treat them as clothing item reference images only. "
+        "Those clothing reference images follow the same order as the requested clothing items list. "
         "Use them only for clothing design, color, texture, fit, silhouette, and styling. "
+        "Dress the person in the correct garment type and place each piece naturally on the body: "
+        "outerwear over tops, tops on the torso and arms, bottoms on the hips and legs, dresses as a full-body garment, "
+        "shoes on the feet, hats on the head, and accessories in the appropriate worn position. "
+        "Do not swap clothing types or place a garment on the wrong part of the body. "
         "Do not copy any face, head, hair, body, skin tone, or identity traits from those additional images. "
         "Priority order: 1) preserve the profile photo identity, 2) match the requested outfit, 3) create a realistic full-body fashion image. "
         "Return exactly one photorealistic image with no text and no watermark."

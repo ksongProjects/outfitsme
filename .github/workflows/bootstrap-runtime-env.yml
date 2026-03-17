@@ -87,7 +87,6 @@ jobs:
           RATE_LIMIT_STORAGE_URI: memory://
           MONTHLY_ANALYSIS_LIMIT: "5"
           ENABLE_BEDROCK_ANALYSIS: "false"
-          ITEM_IMAGE_MAX: "3"
           DOMAIN: ${{ secrets.DOMAIN }}
           WWW_DOMAIN: ${{ secrets.WWW_DOMAIN }}
           APP_URL: ${{ secrets.APP_URL }}
@@ -147,7 +146,6 @@ jobs:
             printf 'RATE_LIMIT_STORAGE_URI=%s\n' "$RATE_LIMIT_STORAGE_URI"
             printf 'MONTHLY_ANALYSIS_LIMIT=%s\n' "$MONTHLY_ANALYSIS_LIMIT"
             printf 'ENABLE_BEDROCK_ANALYSIS=%s\n' "$ENABLE_BEDROCK_ANALYSIS"
-            printf 'ITEM_IMAGE_MAX=%s\n' "$ITEM_IMAGE_MAX"
             printf 'DOMAIN=%s\n' "$DOMAIN"
             printf 'WWW_DOMAIN=%s\n' "$WWW_DOMAIN"
             printf 'APP_URL=%s\n' "$APP_URL"

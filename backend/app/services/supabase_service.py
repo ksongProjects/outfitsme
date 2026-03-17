@@ -555,13 +555,23 @@ def _query_dashboard_snapshot(user_id: str) -> dict | None:
                         select count(*)
                         from public.items i
                         where i.user_id = %s
-                      ) as items_count
+                      ) as items_count,
+                      (
+                        select count(*)
+                        from public.outfit_analyses oa
+                        where oa.user_id = %s
+                          and (
+                            oa.raw_json ->> 'outfitsme_generated' = 'true'
+                            or oa.raw_json ->> 'custom_outfit_generated' = 'true'
+                          )
+                      ) as generated_outfit_images_count
                     """,
                     (
                         user_id,
                         user_id,
                         user_id,
                         OUTFIT_SOURCE_OUTFITSME,
+                        user_id,
                         user_id,
                     )
                 )
@@ -586,7 +596,16 @@ def _query_trial_usage_snapshot(user_id: str, since_iso: str) -> dict | None:
                           and aj.status = 'completed'
                           and coalesce(aj.completed_at, aj.created_at) >= %s::timestamptz
                       ) as analysis_actions_today,
-                      0 as outfit_generations_today
+                      (
+                        select count(*)
+                        from public.outfit_analyses oa
+                        where oa.user_id = %s
+                          and oa.created_at >= %s::timestamptz
+                          and (
+                            oa.raw_json ->> 'outfitsme_generated' = 'true'
+                            or oa.raw_json ->> 'custom_outfit_generated' = 'true'
+                          )
+                      ) as outfit_generations_today
                     from public.users u
                     left join public.user_settings us
                       on us.user_id = u.id
@@ -594,6 +613,8 @@ def _query_trial_usage_snapshot(user_id: str, since_iso: str) -> dict | None:
                     limit 1
                     """,
                     (
+                        user_id,
+                        since_iso,
                         user_id,
                         since_iso,
                         user_id,
@@ -638,10 +659,27 @@ def _query_cost_snapshot(user_id: str, month_start_iso: str) -> dict | None:
                       ) as generated_item_image_count,
                       (
                         select count(*)
-                        from public.outfits o
-                        where o.user_id = %s
-                          and o.source_type = %s
-                          and o.created_at >= %s::timestamptz
+                        from public.outfit_analyses oa
+                        where oa.user_id = %s
+                          and oa.created_at >= %s::timestamptz
+                          and oa.raw_json ->> 'custom_outfit_generated' = 'true'
+                      ) as custom_outfit_generation_count,
+                      (
+                        select count(*)
+                        from public.outfit_analyses oa
+                        where oa.user_id = %s
+                          and oa.created_at >= %s::timestamptz
+                          and oa.raw_json ->> 'outfitsme_generated' = 'true'
+                      ) as try_on_generation_count,
+                      (
+                        select count(*)
+                        from public.outfit_analyses oa
+                        where oa.user_id = %s
+                          and oa.created_at >= %s::timestamptz
+                          and (
+                            oa.raw_json ->> 'outfitsme_generated' = 'true'
+                            or oa.raw_json ->> 'custom_outfit_generated' = 'true'
+                          )
                       ) as generated_outfit_image_count,
                       0 as reserved
                     """,
@@ -653,7 +691,10 @@ def _query_cost_snapshot(user_id: str, month_start_iso: str) -> dict | None:
                         user_id,
                         month_start_iso,
                         user_id,
-                        OUTFIT_SOURCE_OUTFITSME,
+                        month_start_iso,
+                        user_id,
+                        month_start_iso,
+                        user_id,
                         month_start_iso,
                     )
                 )
@@ -1472,6 +1513,50 @@ def attach_generated_image_to_outfit(user_id: str, outfit_id: str, generated_sto
     }
 
 
+def attach_ai_usage_to_outfit_analysis(
+    user_id: str,
+    analysis_id: str,
+    *,
+    usage_summary: dict | None = None,
+    generated_storage_path: str | None = None
+) -> dict | None:
+    client = get_supabase_client()
+    response = (
+        client.table("outfit_analyses")
+        .select("id,raw_json")
+        .eq("id", analysis_id)
+        .eq("user_id", user_id)
+        .limit(1)
+        .execute()
+    )
+    analysis_row = (response.data or [None])[0]
+    if not analysis_row:
+        return None
+
+    raw_json = _coerce_dict(analysis_row.get("raw_json") or {})
+    if usage_summary:
+        raw_json["ai_usage"] = _normalize_ai_usage(usage_summary)
+    if generated_storage_path:
+        raw_json["generated_image_path"] = generated_storage_path
+        raw_json["generated_image_created_at"] = datetime.now(timezone.utc).isoformat()
+    if bool(raw_json.get("composed")):
+        raw_json["custom_outfit_generated"] = True
+
+    (
+        client.table("outfit_analyses")
+        .update({"raw_json": raw_json})
+        .eq("id", analysis_id)
+        .eq("user_id", user_id)
+        .execute()
+    )
+    return {
+        "analysis_id": analysis_row.get("id"),
+        "ai_usage": _coerce_dict(raw_json.get("ai_usage") or {}),
+        "generated_image_path": raw_json.get("generated_image_path"),
+        "custom_outfit_generated": bool(raw_json.get("custom_outfit_generated"))
+    }
+
+
 def get_user_monthly_analysis_count(user_id: str, month_start_iso: str) -> int:
     snapshot = _query_cost_snapshot(user_id, month_start_iso)
     if snapshot:
@@ -1554,14 +1639,18 @@ def get_user_monthly_generated_image_count(user_id: str, month_start_iso: str, k
             )
 
         response = (
-            client.table("outfits")
-            .select("id")
+            client.table("outfit_analyses")
+            .select("raw_json")
             .eq("user_id", user_id)
-            .eq("source_type", OUTFIT_SOURCE_OUTFITSME)
             .gte("created_at", month_start_iso)
             .execute()
         )
-        return len(response.data or [])
+        return sum(
+            1
+            for row in (response.data or [])
+            if _coerce_dict((row or {}).get("raw_json") or {}).get("outfitsme_generated")
+            or _coerce_dict((row or {}).get("raw_json") or {}).get("custom_outfit_generated")
+        )
     except Exception:  # noqa: BLE001
         # Keep costs endpoint resilient even if storage.objects query fails.
         return 0
@@ -1592,14 +1681,19 @@ def get_user_generated_image_count_since(user_id: str, since_iso: str, kind: str
             )
         else:
             response = (
-                client.table("outfits")
-                .select("id")
+                client.table("outfit_analyses")
+                .select("raw_json")
                 .eq("user_id", user_id)
-                .eq("source_type", OUTFIT_SOURCE_OUTFITSME)
                 .gte("created_at", since_iso)
                 .execute()
             )
-        return len(response.data or [])
+            return sum(
+                1
+                for row in (response.data or [])
+                if _coerce_dict((row or {}).get("raw_json") or {}).get("outfitsme_generated")
+                or _coerce_dict((row or {}).get("raw_json") or {}).get("custom_outfit_generated")
+            )
+        return 0
     except Exception:  # noqa: BLE001
         return 0
 
@@ -2021,6 +2115,7 @@ def get_dashboard_stats(user_id: str) -> dict:
         analyses_count = _to_int(snapshot.get("analyses_count"))
         outfits_count = _to_int(snapshot.get("outfits_count"))
         items_count = _to_int(snapshot.get("items_count"))
+        generated_outfit_images_count = _to_int(snapshot.get("generated_outfit_images_count"))
     else:
         client = get_supabase_client()
         photos = (
@@ -2043,6 +2138,12 @@ def get_dashboard_stats(user_id: str) -> dict:
             .eq("source_type", OUTFIT_SOURCE_OUTFITSME)
             .execute()
         ).data or []
+        generated_outfit_analyses = (
+            client.table("outfit_analyses")
+            .select("raw_json")
+            .eq("user_id", user_id)
+            .execute()
+        ).data or []
         items = (
             client.table("items")
             .select("id")
@@ -2055,13 +2156,19 @@ def get_dashboard_stats(user_id: str) -> dict:
         analyses_count = len(analyses)
         outfits_count = len(outfits)
         items_count = len(items)
+        generated_outfit_images_count = sum(
+            1
+            for row in generated_outfit_analyses
+            if _coerce_dict((row or {}).get("raw_json") or {}).get("outfitsme_generated")
+            or _coerce_dict((row or {}).get("raw_json") or {}).get("custom_outfit_generated")
+        )
 
     return {
         "photos_count": photos_count,
         "outfits_count": outfits_count,
         "analyses_count": analyses_count,
         "items_count": items_count,
-        "generated_outfit_images_count": outfits_count,
+        "generated_outfit_images_count": generated_outfit_images_count,
     }
 
 
@@ -2357,6 +2464,8 @@ def get_user_cost_summary(user_id: str, month_start_iso: str) -> dict:
     snapshot = _query_cost_snapshot(user_id, month_start_iso)
     analysis_count = _to_int((snapshot or {}).get("analysis_count"))
     composed_outfit_count = _to_int((snapshot or {}).get("composed_outfit_count"))
+    custom_outfit_generation_count = _to_int((snapshot or {}).get("custom_outfit_generation_count"))
+    try_on_generation_count = _to_int((snapshot or {}).get("try_on_generation_count"))
     generated_item_image_count = _to_int((snapshot or {}).get("generated_item_image_count"))
     generated_outfit_image_count = _to_int((snapshot or {}).get("generated_outfit_image_count"))
     analysis_unit_cost = round(
@@ -2405,7 +2514,7 @@ def get_user_cost_summary(user_id: str, month_start_iso: str) -> dict:
     outfit_usages = []
     for row in outfit_analysis_rows:
         raw_json = _coerce_dict((row or {}).get("raw_json") or {})
-        if not bool(raw_json.get("outfitsme_generated")):
+        if not bool(raw_json.get("outfitsme_generated")) and not bool(raw_json.get("custom_outfit_generated")):
             continue
         outfit_usages.append(_coerce_dict(raw_json.get("ai_usage") or {}))
     outfit_token_usage = _sum_ai_usage(outfit_usages)
@@ -2437,12 +2546,14 @@ def get_user_cost_summary(user_id: str, month_start_iso: str) -> dict:
     return {
         "month_start_utc": month_start_iso,
         "analysis_runs": analysis_count,
-        "custom_outfit_generations": composed_outfit_count,
+        "custom_outfit_generations": custom_outfit_generation_count,
+        "try_on_generations": try_on_generation_count,
+        "composed_outfits_created": composed_outfit_count,
         "generated_item_images": generated_item_image_count,
         "generated_outfit_images": generated_outfit_image_count,
         "cost_formula": {
             "analysis": "1 text/image input call + 1 image output call per completed analysis",
-            "outfit_image_generation": "1 text/image input call + 1 image output call per generated outfit image",
+            "outfit_image_generation": "1 text/image input call + 1 image output call per custom outfit or Try It On image",
             "item_image_generation": "1 generated item image counted per stored item image output"
         },
         "unit_costs_usd": {
