@@ -62,6 +62,7 @@ fi
 
 "${compose_cmd[@]}" pull
 "${compose_cmd[@]}" up -d --remove-orphans
+"${compose_cmd[@]}" exec -T proxy nginx -s reload
 
 if [ ! -f "letsencrypt/live/${DOMAIN}/fullchain.pem" ] || [ ! -f "letsencrypt/live/${DOMAIN}/privkey.pem" ]; then
   "${compose_cmd[@]}" --profile certbot run --rm certbot certonly \
