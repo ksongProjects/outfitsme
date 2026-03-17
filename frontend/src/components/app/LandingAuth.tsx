@@ -57,6 +57,28 @@ export default function LandingAuth() {
     router.replace("/");
   }, [router, searchParams]);
 
+  useEffect(() => {
+    const resetAuthFlow = () => {
+      setActiveAuthFlow(null);
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        resetAuthFlow();
+      }
+    };
+
+    window.addEventListener("pageshow", resetAuthFlow);
+    window.addEventListener("focus", resetAuthFlow);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener("pageshow", resetAuthFlow);
+      window.removeEventListener("focus", resetAuthFlow);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, []);
+
   const handleGoogleAuth = async (mode: "signin" | "signup") => {
     if (!acceptedTerms && mode === "signup") {
       toast.error("You must accept the Terms of Service to create an account.");
