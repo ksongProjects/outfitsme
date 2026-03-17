@@ -1500,7 +1500,7 @@ def list_analysis_history(user_id: str, limit: int = 50) -> list[dict]:
 
     jobs_response = (
         client.table("analysis_jobs")
-        .select("id,photo_id,analysis_model,status,error_message,created_at,started_at,completed_at,updated_at")
+        .select("id,photo_id,storage_path,mime_type,analysis_model,status,error_message,result_json,created_at,started_at,completed_at,updated_at")
         .eq("user_id", user_id)
         .order("created_at", desc=True)
         .limit(limit)
@@ -1508,51 +1508,21 @@ def list_analysis_history(user_id: str, limit: int = 50) -> list[dict]:
     )
     jobs = jobs_response.data or []
 
-    generated_analyses_response = (
-        client.table("outfit_analyses")
-        .select("id,photo_id,style_label,raw_json,created_at")
-        .eq("user_id", user_id)
-        .order("created_at", desc=True)
-        .limit(limit)
-        .execute()
-    )
-    generated_analyses = generated_analyses_response.data or []
-
-    if not jobs and not generated_analyses:
+    if not jobs:
         return []
-
-    photo_ids = list(
-        {
-            photo_id
-            for photo_id in [
-                *[job.get("photo_id") for job in jobs],
-                *[analysis.get("photo_id") for analysis in generated_analyses],
-            ]
-            if photo_id
-        }
-    )
-    photos_by_id = {}
-    if photo_ids:
-        photos_response = (
-            client.table("photos")
-            .select("id,storage_path,created_at")
-            .in_("id", photo_ids)
-            .eq("user_id", user_id)
-            .execute()
-        )
-        photos_by_id = {photo.get("id"): photo for photo in (photos_response.data or []) if photo.get("id")}
 
     history = []
     for job in jobs:
-        photo_id = job.get("photo_id")
-        photo = photos_by_id.get(photo_id) or {}
-        storage_path = photo.get("storage_path") or ""
-        image_url = resolve_signed_url(storage_path)
+        result_json = _coerce_dict(job.get("result_json") or {})
+        storage_path = str(job.get("storage_path") or "").strip()
         history.append(
             {
                 "job_id": job.get("id"),
-                "photo_id": photo_id,
-                "job_type": HISTORY_JOB_TYPE_PHOTO_ANALYSIS,
+                "photo_id": job.get("photo_id"),
+                "job_type": (
+                    str(result_json.get("job_type") or "").strip().lower()
+                    or HISTORY_JOB_TYPE_PHOTO_ANALYSIS
+                ),
                 "analysis_model": job.get("analysis_model"),
                 "status": job.get("status"),
                 "error_message": job.get("error_message"),
@@ -1560,61 +1530,12 @@ def list_analysis_history(user_id: str, limit: int = 50) -> list[dict]:
                 "started_at": job.get("started_at"),
                 "completed_at": job.get("completed_at"),
                 "updated_at": job.get("updated_at"),
-                "photo_created_at": photo.get("created_at"),
-                "storage_path": storage_path,
-                "image_url": image_url,
-            }
-        )
-
-    for analysis in generated_analyses:
-        raw_json = _coerce_dict(analysis.get("raw_json") or {})
-        is_try_on = bool(raw_json.get("outfitsme_generated"))
-        is_custom_outfit = bool(raw_json.get("custom_outfit_generated"))
-        if not is_try_on and not is_custom_outfit:
-            continue
-
-        photo_id = analysis.get("photo_id")
-        photo = photos_by_id.get(photo_id) or {}
-        storage_path = str(
-            raw_json.get("generated_image_path") or photo.get("storage_path") or ""
-        ).strip()
-        completed_at = (
-            raw_json.get("generated_image_created_at")
-            or analysis.get("created_at")
-        )
-        history.append(
-            {
-                "job_id": analysis.get("id"),
-                "photo_id": photo_id,
-                "job_type": (
-                    HISTORY_JOB_TYPE_TRY_ON
-                    if is_try_on
-                    else HISTORY_JOB_TYPE_CUSTOM_OUTFIT
-                ),
-                "analysis_model": _coerce_dict(raw_json.get("ai_usage") or {}).get("model") or "",
-                "status": analysis.get("status"),
-                "error_message": "",
-                "created_at": analysis.get("created_at"),
-                "started_at": analysis.get("created_at"),
-                "completed_at": completed_at,
-                "updated_at": completed_at,
-                "photo_created_at": photo.get("created_at"),
                 "storage_path": storage_path,
                 "image_url": resolve_signed_url(storage_path),
-                "style_label": analysis.get("style_label"),
+                "style_label": result_json.get("style_label"),
             }
         )
-
-    history.sort(
-        key=lambda entry: (
-            entry.get("completed_at")
-            or entry.get("updated_at")
-            or entry.get("created_at")
-            or ""
-        ),
-        reverse=True,
-    )
-    return history[:limit]
+    return history
 
 
 def list_user_items(user_id: str, limit: int = 20, offset: int = 0) -> list[dict]:
@@ -2145,6 +2066,42 @@ def create_analysis_job(
                 "analysis_model": analysis_model,
                 "status": "queued",
                 "updated_at": datetime.now(timezone.utc).isoformat()
+            }
+        )
+        .execute()
+    )
+    return (response.data or [None])[0]
+
+
+def create_completed_ai_job(
+    user_id: str,
+    *,
+    photo_id: str,
+    storage_path: str,
+    mime_type: str,
+    analysis_model: str,
+    job_type: str,
+    result_json: dict | None = None
+) -> dict:
+    client = get_supabase_client()
+    now_iso = datetime.now(timezone.utc).isoformat()
+    normalized_result = _coerce_dict(result_json or {})
+    normalized_result["job_type"] = str(job_type or HISTORY_JOB_TYPE_PHOTO_ANALYSIS).strip().lower()
+    response = (
+        client.table("analysis_jobs")
+        .insert(
+            {
+                "user_id": user_id,
+                "photo_id": photo_id,
+                "storage_path": storage_path,
+                "mime_type": mime_type,
+                "analysis_model": analysis_model,
+                "status": "completed",
+                "result_json": normalized_result,
+                "error_message": None,
+                "started_at": now_iso,
+                "completed_at": now_iso,
+                "updated_at": now_iso
             }
         )
         .execute()

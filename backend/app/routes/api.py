@@ -18,6 +18,7 @@ from app.services.secrets_service import SettingsEncryptionError
 from app.services.supabase_service import (
     compose_outfit_from_items,
     create_analysis_job,
+    create_completed_ai_job,
     create_outfitsme_generated_outfit,
     create_photo_record,
     delete_wardrobe_outfit,
@@ -488,6 +489,28 @@ def compose_outfit():
             result["image_url"] = stored.get("image_url")
             result["image_storage_path"] = stored.get("storage_path")
             result["ai_usage"] = usage_summary
+            usage_model = (
+                usage_summary.get("model")
+                if isinstance(usage_summary, dict)
+                else ""
+            )
+            create_completed_ai_job(
+                user_id,
+                photo_id=str(result.get("photo_id") or ""),
+                storage_path=str(stored.get("storage_path") or ""),
+                mime_type=str(stored.get("content_type") or "image/png"),
+                analysis_model=str(
+                    usage_model
+                    or settings.GEMINI_IMAGE_MODEL
+                    or settings.DEFAULT_ANALYSIS_MODEL
+                ),
+                job_type="custom_outfit",
+                result_json={
+                    "style_label": result.get("style_label") or style_label or "Composed outfit",
+                    "analysis_id": result.get("analysis_id"),
+                    "outfit_id": result.get("outfit_id"),
+                },
+            )
 
         return jsonify({"user_id": user_id, **result}), 200
     except ValueError as exc:
@@ -750,6 +773,29 @@ def generate_outfitsme_preview(photo_id: str):
             items=selected_outfit.get("items") or [],
             generated_storage_path=stored.get("storage_path") or "",
             usage_summary=usage_summary
+        )
+        usage_model = (
+            usage_summary.get("model")
+            if isinstance(usage_summary, dict)
+            else ""
+        )
+        create_completed_ai_job(
+            user_id,
+            photo_id=str(generated_entry.get("photo_id") or photo_id),
+            storage_path=str(stored.get("storage_path") or ""),
+            mime_type=str(stored.get("content_type") or "image/png"),
+            analysis_model=str(
+                usage_model
+                or settings.GEMINI_IMAGE_MODEL
+                or settings.DEFAULT_ANALYSIS_MODEL
+            ),
+            job_type="try_on",
+            result_json={
+                "style_label": selected_outfit.get("style") or "Outfit",
+                "source_photo_id": photo_id,
+                "source_outfit_id": source_outfit_id,
+                "outfit_index": selected_outfit.get("outfit_index"),
+            },
         )
         return jsonify(
             {
