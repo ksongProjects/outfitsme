@@ -2488,7 +2488,7 @@ def compose_outfit_from_items(
 
     source_items_response = (
         client.table("items")
-        .select("id,category,name,color,attributes_json")
+        .select("id,analysis_id,category,name,color,attributes_json")
         .eq("user_id", user_id)
         .in_("id", unique_item_ids)
         .execute()
@@ -2502,19 +2502,81 @@ def compose_outfit_from_items(
     if not source_items:
         raise ValueError("No matching items found for this user.")
 
-    style = _normalize_label(style_label, "Composed Outfit")
-    composed_items = []
-    for item in source_items:
-        normalized_item = _normalize_item_fields(item)
-        attributes = _coerce_dict(item.get("attributes_json") or {})
-        image_path = str(attributes.get("generated_item_image_path") or "").strip()
-        composed_items.append(
-            {
-                **normalized_item,
-                "source_item_id": item.get("id"),
-                **({"image_path": image_path} if image_path else {})
-            }
+    matched_source_analysis_id = str(source_items[0].get("analysis_id") or "").strip()
+    matched_source_outfit_index = _safe_outfit_index(
+        _coerce_dict(source_items[0].get("attributes_json") or {}).get("outfit_index")
+    )
+    exact_source_outfit_match = None
+    if matched_source_analysis_id and all(
+        str(item.get("analysis_id") or "").strip() == matched_source_analysis_id
+        and _safe_outfit_index(_coerce_dict(item.get("attributes_json") or {}).get("outfit_index")) == matched_source_outfit_index
+        for item in source_items
+    ):
+        analysis_response = (
+            client.table("outfit_analyses")
+            .select("raw_json,style_label")
+            .eq("id", matched_source_analysis_id)
+            .eq("user_id", user_id)
+            .limit(1)
+            .execute()
         )
+        analysis_row = (analysis_response.data or [None])[0] or {}
+        raw_json = _coerce_dict(analysis_row.get("raw_json") or {})
+        raw_outfits = raw_json.get("outfits")
+        if isinstance(raw_outfits, list) and 0 <= matched_source_outfit_index < len(raw_outfits):
+            candidate_outfit = raw_outfits[matched_source_outfit_index]
+            if isinstance(candidate_outfit, dict):
+                candidate_items = [item for item in (candidate_outfit.get("items") or []) if isinstance(item, dict)]
+                selected_counts: dict[tuple[str, str, str], int] = {}
+                selected_ids_by_signature: dict[tuple[str, str, str], list[str]] = {}
+                for item in source_items:
+                    signature = _build_item_signature(item)
+                    selected_counts[signature] = selected_counts.get(signature, 0) + 1
+                    selected_ids_by_signature.setdefault(signature, []).append(str(item.get("id") or "").strip())
+
+                candidate_counts: dict[tuple[str, str, str], int] = {}
+                for item in candidate_items:
+                    signature = _build_item_signature(item)
+                    candidate_counts[signature] = candidate_counts.get(signature, 0) + 1
+
+                if candidate_counts == selected_counts:
+                    ordered_items = []
+                    remaining_ids_by_signature = {
+                        signature: list(item_ids_for_signature)
+                        for signature, item_ids_for_signature in selected_ids_by_signature.items()
+                    }
+                    for item in candidate_items:
+                        copied_item = dict(item)
+                        signature = _build_item_signature(copied_item)
+                        remaining_ids = remaining_ids_by_signature.get(signature) or []
+                        if remaining_ids:
+                            copied_item["source_item_id"] = remaining_ids.pop(0)
+                        ordered_items.append(copied_item)
+                    exact_source_outfit_match = {
+                        "style": _normalize_label(
+                            candidate_outfit.get("style") or analysis_row.get("style_label"),
+                            "Composed Outfit"
+                        ),
+                        "items": ordered_items,
+                    }
+
+    if exact_source_outfit_match:
+        style = exact_source_outfit_match["style"]
+        composed_items = exact_source_outfit_match["items"]
+    else:
+        style = _normalize_label(style_label, "Composed Outfit")
+        composed_items = []
+        for item in source_items:
+            normalized_item = _normalize_item_fields(item)
+            attributes = _coerce_dict(item.get("attributes_json") or {})
+            image_path = str(attributes.get("generated_item_image_path") or "").strip()
+            composed_items.append(
+                {
+                    **normalized_item,
+                    "source_item_id": item.get("id"),
+                    **({"image_path": image_path} if image_path else {})
+                }
+            )
 
     photo_insert = (
         client.table("photos")
