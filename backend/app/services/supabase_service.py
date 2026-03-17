@@ -1177,9 +1177,121 @@ def _build_generated_item_image_lookup(
     return images_by_signature
 
 
+def _build_source_item_image_lookup(
+    client: Client,
+    *,
+    user_id: str,
+    source_item_ids: list[str],
+    resolve_signed_url
+) -> dict[str, str]:
+    unique_item_ids = []
+    seen: set[str] = set()
+    for raw_item_id in source_item_ids:
+        item_id = str(raw_item_id or "").strip()
+        if not item_id or item_id in seen:
+            continue
+        seen.add(item_id)
+        unique_item_ids.append(item_id)
+
+    if not unique_item_ids:
+        return {}
+
+    response = (
+        client.table("items")
+        .select("id,attributes_json")
+        .eq("user_id", user_id)
+        .in_("id", unique_item_ids)
+        .execute()
+    )
+
+    image_urls_by_id: dict[str, str] = {}
+    for row in (response.data or []):
+        if not isinstance(row, dict):
+            continue
+        item_id = str(row.get("id") or "").strip()
+        if not item_id:
+            continue
+        attributes = _coerce_dict(row.get("attributes_json") or {})
+        image_path = str(attributes.get("generated_item_image_path") or "").strip()
+        image_url = resolve_signed_url(image_path) if image_path else None
+        if image_url:
+            image_urls_by_id[item_id] = image_url
+    return image_urls_by_id
+
+
+def _build_source_outfit_generated_item_image_lookup(
+    client: Client,
+    *,
+    user_id: str,
+    source_outfit_id: str,
+    resolve_signed_url
+) -> dict[tuple[str, str, str], list[str]]:
+    source_outfit_response = (
+        client.table("outfits")
+        .select("id,analysis_id,outfit_index")
+        .eq("id", source_outfit_id)
+        .eq("user_id", user_id)
+        .limit(1)
+        .execute()
+    )
+    source_outfit_row = (source_outfit_response.data or [None])[0]
+    if not source_outfit_row:
+        return {}
+
+    analysis_id = str(source_outfit_row.get("analysis_id") or "").strip()
+    if not analysis_id:
+        return {}
+
+    analysis_response = (
+        client.table("outfit_analyses")
+        .select("raw_json")
+        .eq("id", analysis_id)
+        .eq("user_id", user_id)
+        .limit(1)
+        .execute()
+    )
+    analysis_row = (analysis_response.data or [None])[0]
+    raw_json = _coerce_dict((analysis_row or {}).get("raw_json") or {})
+    raw_outfits = raw_json.get("outfits")
+    if not isinstance(raw_outfits, list):
+        return {}
+
+    outfit_index = _safe_outfit_index(source_outfit_row.get("outfit_index"))
+    if outfit_index < 0 or outfit_index >= len(raw_outfits):
+        return {}
+
+    source_outfit = raw_outfits[outfit_index]
+    if not isinstance(source_outfit, dict):
+        return {}
+
+    required_counts_by_signature: dict[tuple[str, str, str], int] = {}
+    for item in (source_outfit.get("items") or []):
+        if not isinstance(item, dict):
+            continue
+        normalized = _normalize_item_fields(item)
+        signature = (
+            normalized["category"].lower(),
+            normalized["name"].lower(),
+            normalized["color"].lower()
+        )
+        required_counts_by_signature[signature] = required_counts_by_signature.get(signature, 0) + 1
+
+    if not required_counts_by_signature:
+        return {}
+
+    return _build_generated_item_image_lookup(
+        client,
+        user_id=user_id,
+        analysis_id=analysis_id,
+        resolve_signed_url=resolve_signed_url,
+        required_counts_by_signature=required_counts_by_signature
+    )
+
+
 def _normalize_items_with_images(
     raw_items: list[dict],
     images_by_signature: dict[tuple[str, str, str], list[str]],
+    source_item_images_by_id: dict[str, str] | None = None,
     resolve_signed_url=None
 ) -> list[dict]:
     remaining_by_signature = {
@@ -1205,6 +1317,8 @@ def _normalize_items_with_images(
         candidates = remaining_by_signature.get(signature) or []
         image_url = direct_image_url or (candidates.pop(0) if candidates else None)
         source_item_id = str(item.get("source_item_id") or "").strip() or None
+        if not image_url and source_item_id and source_item_images_by_id:
+            image_url = source_item_images_by_id.get(source_item_id)
         normalized_items.append(
             {
                 **normalized,
@@ -1563,7 +1677,18 @@ def create_outfitsme_generated_outfit(
 ) -> dict:
     client = get_supabase_client()
     style = _normalize_label(style_label, "Outfit")
-    normalized_items = [_normalize_item_fields(item) for item in (items or []) if isinstance(item, dict)]
+    normalized_items = []
+    for item in (items or []):
+        if not isinstance(item, dict):
+            continue
+        normalized_item = _normalize_item_fields(item)
+        source_item_id = str(item.get("source_item_id") or "").strip()
+        image_path = str(item.get("image_path") or item.get("generated_item_image_path") or "").strip()
+        if source_item_id:
+            normalized_item["source_item_id"] = source_item_id
+        if image_path:
+            normalized_item["image_path"] = image_path
+        normalized_items.append(normalized_item)
     photo_row = create_photo_record(user_id, generated_storage_path, client=client)
     raw_json = {
         "style": style,
@@ -2111,8 +2236,12 @@ def get_wardrobe_photo_details(user_id: str, photo_id: str, outfit_index: int | 
     }
 
     outfits = []
+    raw_generated_image_path = ""
     if analysis_row:
         raw_json = analysis_row.get("raw_json") or {}
+        raw_generated_image_path = str(
+            _coerce_dict(raw_json).get("generated_image_path") or ""
+        ).strip() if isinstance(raw_json, dict) else ""
         raw_outfits = raw_json.get("outfits") if isinstance(raw_json, dict) else None
         selected_indices: list[int] = []
         if outfit_index is not None:
@@ -2172,10 +2301,38 @@ def get_wardrobe_photo_details(user_id: str, photo_id: str, outfit_index: int | 
             if analysis_row.get("id")
             else {}
         )
+        source_outfit_images_cache: dict[str, dict[tuple[str, str, str], list[str]]] = {}
 
         for prepared in prepared_outfits:
             index = _safe_outfit_index(prepared.get("outfit_index"))
             outfit_row = outfits_by_index.get(index) or {}
+            prepared_items = [item for item in (prepared.get("items") or []) if isinstance(item, dict)]
+            source_item_images_by_id = _build_source_item_image_lookup(
+                client,
+                user_id=user_id,
+                source_item_ids=[
+                    str(item.get("source_item_id") or "").strip()
+                    for item in prepared_items
+                    if str(item.get("source_item_id") or "").strip()
+                ],
+                resolve_signed_url=resolve_signed_url
+            )
+            images_for_outfit = {
+                signature: list(candidates)
+                for signature, candidates in images_by_signature.items()
+            }
+            if _normalize_outfit_source_type(outfit_row.get("source_type")) == OUTFIT_SOURCE_OUTFITSME:
+                source_outfit_id = str(outfit_row.get("source_outfit_id") or "").strip()
+                if source_outfit_id:
+                    if source_outfit_id not in source_outfit_images_cache:
+                        source_outfit_images_cache[source_outfit_id] = _build_source_outfit_generated_item_image_lookup(
+                            client,
+                            user_id=user_id,
+                            source_outfit_id=source_outfit_id,
+                            resolve_signed_url=resolve_signed_url
+                        )
+                    for signature, candidates in source_outfit_images_cache[source_outfit_id].items():
+                        images_for_outfit.setdefault(signature, []).extend(candidates)
             outfits.append(
                 {
                     "outfit_id": outfit_row.get("id"),
@@ -2188,8 +2345,9 @@ def get_wardrobe_photo_details(user_id: str, photo_id: str, outfit_index: int | 
                         "Unlabeled"
                     ),
                     "items": _normalize_items_with_images(
-                        [item for item in (prepared.get("items") or []) if isinstance(item, dict)],
-                        images_by_signature,
+                        prepared_items,
+                        images_for_outfit,
+                        source_item_images_by_id,
                         resolve_signed_url
                     )
                 }
@@ -2203,7 +2361,7 @@ def get_wardrobe_photo_details(user_id: str, photo_id: str, outfit_index: int | 
     if outfit_index is not None:
         selected_outfit = next((outfit for outfit in outfits if outfit.get("outfit_index") == outfit_index), None)
         selected_outfit_row = outfits_by_index.get(_safe_outfit_index(outfit_index)) or {}
-        selected_outfit_generated_path = selected_outfit_row.get("generated_image_path") or ""
+        selected_outfit_generated_path = str(selected_outfit_row.get("generated_image_path") or "").strip() or raw_generated_image_path
         selected_outfit_source_type = _normalize_outfit_source_type(selected_outfit_row.get("source_type"))
         if selected_outfit_source_type == OUTFIT_SOURCE_CUSTOM and selected_outfit_generated_path:
             image_url = resolve_signed_url(selected_outfit_generated_path) or image_url

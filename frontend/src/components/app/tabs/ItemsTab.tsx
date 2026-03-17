@@ -316,8 +316,24 @@ export default function ItemsTab() {
               <ul className="o-list">
                 {selectedItems.map((item) => (
                   <li key={`selected-${item.id}`} className="analysis-item">
-                    <span className="item-icon" aria-hidden="true">{getItemIcon(item)}</span>
-                    <span>{formatItemLabel(item)}</span>
+                    <span className="o-media outfit-detail-item-media">
+                      {item.image_url ? (
+                        <AppImage
+                          src={item.image_url}
+                          alt={item.name || "Selected item"}
+                          className="item-thumb"
+                          width={48}
+                          height={48}
+                        />
+                      ) : null}
+                      <span className="item-icon" aria-hidden="true">{getItemIcon(item)}</span>
+                      <span className="analysis-item-copy">
+                        <span>{formatItemLabel(item)}</span>
+                        {item.description ? (
+                          <span className="subtext">{item.description}</span>
+                        ) : null}
+                      </span>
+                    </span>
                   </li>
                 ))}
               </ul>

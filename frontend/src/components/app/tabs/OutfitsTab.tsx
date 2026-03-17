@@ -97,6 +97,12 @@ export default function OutfitsTab() {
   const [sourceFilter, setSourceFilter] = useState("all");
   const imageGenerationEnabled = Boolean(settingsForm?.enable_outfit_image_generation);
   const selectedOutfitSourceType = String(outfitDetails?.selected_outfit?.source_type || "").trim().toLowerCase();
+  const primaryDetailImageLabel =
+    selectedOutfitSourceType === "custom_outfit"
+      ? "Generated outfit preview"
+      : selectedOutfitSourceType === "outfitsme_generated"
+        ? "Try-on preview"
+        : "Original outfit";
 
   const filteredWardrobe = useMemo(
     () => wardrobe.filter((entry) => sourceFilter === "all" || (entry.source_type || "photo_analysis") === sourceFilter),
@@ -461,13 +467,13 @@ export default function OutfitsTab() {
                 {outfitDetails?.image_url ? (
                   <AppImage
                     src={outfitDetails.image_url}
-                    alt="Original outfit"
+                    alt={primaryDetailImageLabel}
                     className="modal-image outfit-detail-image"
                     width={1600}
                     height={2000}
                   />
                 ) : (
-                  <p className="subtext">Original image is unavailable for this outfit.</p>
+                  <p className="subtext">{primaryDetailImageLabel} is unavailable for this outfit.</p>
                 )}
                 {outfitDetails?.outfitsme_image_url ? (
                   <AppImage
