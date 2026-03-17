@@ -1211,8 +1211,15 @@ button:not(:disabled),
 .analysis-item,
 .similar-meta {
   display: flex;
-  justify-content: space-between;
   gap: 0.8rem;
+}
+
+.analysis-item {
+  justify-content: flex-start;
+}
+
+.similar-meta {
+  justify-content: space-between;
 }
 
 .insight-summary {
@@ -1247,6 +1254,9 @@ button:not(:disabled),
   display: grid;
   gap: 0.2rem;
   min-width: 0;
+  flex: 1 1 auto;
+  text-align: left;
+  justify-items: start;
 }
 
 .analysis-item-thumb,
