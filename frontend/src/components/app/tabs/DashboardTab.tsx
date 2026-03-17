@@ -174,7 +174,7 @@ export default function DashboardTab({
                     <CircleXIcon size={14} className="text-red-600" />
                   )}
                   <span className="subtext">
-                    {entry.analysis_model || "Unknown model"} -
+                    {entry.job_type} -
                     {entry.created_at
                       ? new Date(entry.created_at).toLocaleString()
                       : "-"}

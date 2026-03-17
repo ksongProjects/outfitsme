@@ -1520,7 +1520,7 @@ def list_analysis_history(user_id: str, limit: int = 50) -> list[dict]:
                 "job_id": job.get("id"),
                 "photo_id": job.get("photo_id"),
                 "job_type": (
-                    str(result_json.get("job_type") or "").strip().lower()
+                    str(result_json.get("job_type") or "").strip().lower().replace("_", "-")
                     or HISTORY_JOB_TYPE_PHOTO_ANALYSIS
                 ),
                 "analysis_model": job.get("analysis_model"),
