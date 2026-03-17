@@ -252,13 +252,44 @@ def _build_sprite_grid(item_count: int) -> tuple[int, int]:
 def _build_sprite_axis_bounds(axis_length: int, segment_count: int) -> list[int]:
     safe_axis_length = max(1, int(axis_length))
     safe_segment_count = max(1, int(segment_count))
-    return [
+    bounds = [
         min(
             safe_axis_length,
-            max(0, int(round((index * safe_axis_length) / safe_segment_count)))
+            max(0, (index * safe_axis_length) // safe_segment_count)
         )
-        for index in range(safe_segment_count + 1)
+        for index in range(safe_segment_count)
     ]
+    bounds.append(safe_axis_length)
+    return bounds
+
+
+def _build_inset_sprite_cell_bounds(
+    *,
+    left: int,
+    top: int,
+    right: int,
+    bottom: int,
+    col: int,
+    row: int,
+    grid_cols: int,
+    grid_rows: int
+) -> tuple[int, int, int, int]:
+    cell_width = max(1, right - left)
+    cell_height = max(1, bottom - top)
+    inset_x = min(max(1, int(round(cell_width * 0.015))), max(1, cell_width // 10))
+    inset_y = min(max(1, int(round(cell_height * 0.015))), max(1, cell_height // 10))
+
+    next_left = left + (inset_x if col > 0 else 0)
+    next_top = top + (inset_y if row > 0 else 0)
+    next_right = right - (inset_x if col < grid_cols - 1 else 0)
+    next_bottom = bottom - (inset_y if row < grid_rows - 1 else 0)
+
+    if next_right - next_left < max(8, cell_width // 3):
+        next_left, next_right = left, right
+    if next_bottom - next_top < max(8, cell_height // 3):
+        next_top, next_bottom = top, bottom
+
+    return next_left, next_top, next_right, next_bottom
 
 
 def _slice_sprite_to_item_data_uris(
@@ -289,6 +320,16 @@ def _slice_sprite_to_item_data_uris(
                 top = y_bounds[row]
                 right = x_bounds[col + 1]
                 bottom = y_bounds[row + 1]
+                left, top, right, bottom = _build_inset_sprite_cell_bounds(
+                    left=left,
+                    top=top,
+                    right=right,
+                    bottom=bottom,
+                    col=col,
+                    row=row,
+                    grid_cols=grid_cols,
+                    grid_rows=grid_rows
+                )
                 if right <= left or bottom <= top:
                     continue
                 crop = image.crop((left, top, right, bottom))

@@ -380,6 +380,7 @@ def generate_item_sprite_with_gemini(
         "Create one composite product sprite image with separate items in a strict grid. "
         f"Grid: {grid_cols} columns x {grid_rows} rows. "
         f"Match the overall canvas aspect ratio to approximately {sprite_aspect_ratio}. "
+        "The grid is conceptual only: do not draw visible grid lines, divider lines, gutters, seams, borders, panels, or boundary marks between cells. "
         "Use plain light background. Put exactly one item per cell, centered, no overlap, no cropping off edges, "
         "consistent scale, and show each garment fully visible in an unfolded, natural full silhouette (not folded, crumpled, or stacked), "
         "Render the garments as realistic, photorealistic product photography with true-to-life fabric texture, lighting, and material detail. "
