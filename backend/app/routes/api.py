@@ -22,6 +22,7 @@ from app.services.supabase_service import (
     create_outfitsme_generated_outfit,
     create_photo_record,
     delete_wardrobe_outfit,
+    delete_wardrobe_outfits,
     download_photo_bytes,
     update_wardrobe_outfit_style_label,
     get_dashboard_stats,
@@ -575,6 +576,32 @@ def get_history():
         return jsonify({"error": "Invalid or expired token."}), 401
     except Exception as exc:  # noqa: BLE001
         return jsonify({"error": f"History lookup failed: {exc}"}), 500
+
+
+@api_bp.route("/delete-wardrobe", methods=["DELETE"])
+def delete_wardrobe_entries():
+    access_token = _extract_access_token()
+    if not access_token:
+        return jsonify({"error": "Missing bearer token."}), 401
+
+    payload = request.get_json(silent=True) or {}
+    outfit_ids = payload.get("outfit_ids", [])
+    if not isinstance(outfit_ids, list) or not outfit_ids:
+        return jsonify({"error": "outfit_ids must be a non-empty array."}), 400
+
+    try:
+        user_id = get_user_id_from_token(access_token)
+        if not user_id:
+            return jsonify({"error": "Invalid or expired token."}), 401
+
+        result = delete_wardrobe_outfits(user_id, outfit_ids)
+        return jsonify(result), 200
+    except SupabaseNotConfiguredError as exc:
+        return jsonify({"error": str(exc)}), 500
+    except AuthApiError:
+        return jsonify({"error": "Invalid or expired token."}), 401
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"error": f"Bulk wardrobe delete failed: {exc}"}), 500
 
 
 @api_bp.delete("/wardrobe/<outfit_id>")

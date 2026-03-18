@@ -196,6 +196,38 @@ export function useWardrobeState({
     },
   });
 
+  const deleteWardrobeBulkMutation = useMutation({
+    mutationFn: async (outfitIds: string[]) => {
+      const response = await fetch(`${API_BASE}/api/delete-wardrobe`, {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ outfit_ids: outfitIds }),
+      });
+
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => ({}));
+        throw new Error(errorBody.error || "Failed to delete wardrobe items.");
+      }
+
+      return response.json();
+    },
+    onSuccess: async (_data, deletedOutfitIds) => {
+      // Close details if any selected outfit was deleted
+      if (outfitDetails?.selected_outfit?.outfit_id && deletedOutfitIds.includes(outfitDetails.selected_outfit.outfit_id)) {
+        setSelectedDetailsRequest(null);
+      }
+
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["wardrobe", accessToken] }),
+        queryClient.invalidateQueries({ queryKey: ["wardrobeDetails", accessToken] }),
+        queryClient.invalidateQueries({ queryKey: ["stats", accessToken] }),
+      ]);
+    },
+  });
+
   const deleteWardrobeEntry = async (outfitId: string) => {
     if (!accessToken) {
       return false;
@@ -214,6 +246,34 @@ export function useWardrobeState({
       return false;
     } finally {
       setDeletingOutfitId("");
+    }
+  };
+
+  const deleteWardrobeEntries = async (outfitIds: string[]) => {
+    if (!accessToken || !outfitIds.length) {
+      return { deleted: [], not_found: outfitIds };
+    }
+
+    setStatusMessage("");
+    try {
+      const result = await deleteWardrobeBulkMutation.mutateAsync(outfitIds);
+      const deletedCount = result.deleted?.length || 0;
+      const notFoundCount = result.not_found?.length || 0;
+      
+      if (deletedCount > 0) {
+        toast.success(`${deletedCount} outfit${deletedCount === 1 ? "" : "s"} deleted.`);
+        onWardrobeChanged?.();
+      }
+      
+      if (notFoundCount > 0) {
+        toast.warning(`${notFoundCount} outfit${notFoundCount === 1 ? "" : "s"} could not be found.`);
+      }
+      
+      return result;
+    } catch (error) {
+      setStatusMessage("Could not delete outfits right now. Please try again.");
+      toast.error((error as Error).message || "Could not delete outfits right now.");
+      return { deleted: [], not_found: outfitIds };
     }
   };
 
@@ -371,6 +431,7 @@ export function useWardrobeState({
     isAllSelected: wardrobe.length > 0 && selectedOutfitIds.length === wardrobe.length,
     isSomeSelected: selectedOutfitIds.length > 0 && selectedOutfitIds.length < wardrobe.length,
     deleteWardrobeEntry,
+    deleteWardrobeEntries,
     deletingOutfitId,
     renameOutfit,
     updatingOutfitId,

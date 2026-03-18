@@ -714,10 +714,6 @@ export default function AnalyzeTab() {
                             </span>
                             <span className="analysis-result-group-meta">
                               <span>
-                                {outfits.length} outfit
-                                {outfits.length === 1 ? "" : "s"}
-                              </span>
-                              <span>
                                 {itemCount} item{itemCount === 1 ? "" : "s"}
                               </span>
                               <span>
@@ -752,7 +748,7 @@ export default function AnalyzeTab() {
 
                               return (
                                 <>
-                                  <ul className="o-list">
+                                  <ul className="o-list" key={previewKey}>
                                     {(outfit.items || []).map(
                                       (item, itemIndex) => (
                                         <li

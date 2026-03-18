@@ -2276,6 +2276,51 @@ def delete_wardrobe_outfit(user_id: str, outfit_id: str) -> bool:
     return True
 
 
+def delete_wardrobe_outfits(user_id: str, outfit_ids: list[str]) -> dict:
+    """Delete multiple wardrobe outfits and their associated items."""
+    client = get_supabase_client()
+    
+    # Get outfit details for all outfits to be deleted
+    outfit_response = (
+        client.table("outfits")
+        .select("id,analysis_id,outfit_index")
+        .in_("id", outfit_ids)
+        .eq("user_id", user_id)
+        .execute()
+    )
+    outfit_rows = outfit_response.data or []
+    
+    if not outfit_rows:
+        return {"deleted": [], "not_found": outfit_ids}
+    
+    found_outfit_ids = {row["id"] for row in outfit_rows}
+    not_found_ids = [oid for oid in outfit_ids if oid not in found_outfit_ids]
+    
+    # Delete items for each outfit
+    for outfit_row in outfit_rows:
+        analysis_id = outfit_row.get("analysis_id")
+        outfit_index = _safe_outfit_index(outfit_row.get("outfit_index"))
+        (
+            client.table("items")
+            .delete()
+            .eq("user_id", user_id)
+            .eq("analysis_id", analysis_id)
+            .filter("attributes_json->>outfit_index", "eq", str(outfit_index))
+            .execute()
+        )
+    
+    # Delete the outfits
+    (
+        client.table("outfits")
+        .delete()
+        .in_("id", found_outfit_ids)
+        .eq("user_id", user_id)
+        .execute()
+    )
+    
+    return {"deleted": list(found_outfit_ids), "not_found": not_found_ids}
+
+
 def update_wardrobe_outfit_style_label(user_id: str, outfit_id: str, style_label: str) -> dict | None:
     client = get_supabase_client()
     normalized_style_label = _normalize_label(style_label, "Unlabeled")

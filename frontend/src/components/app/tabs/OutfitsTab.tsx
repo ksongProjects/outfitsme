@@ -89,6 +89,7 @@ export default function OutfitsTab() {
     setWardrobePage,
     setWardrobePageSize,
     deleteWardrobeEntry,
+    deleteWardrobeEntries,
     deletingOutfitId,
     renameOutfit,
     updatingOutfitId,
@@ -418,9 +419,9 @@ export default function OutfitsTab() {
                 type="button"
                 variant="destructive"
                 size="sm"
-                onClick={() => {
-                  // TODO: Implement bulk delete
-                  toast.info("Bulk delete not yet implemented");
+                onClick={async () => {
+                  await deleteWardrobeEntries(selectedOutfitIds);
+                  deselectAllOutfits();
                 }}
                 disabled={selectedOutfitIds.length === 0}
               >
