@@ -1042,7 +1042,7 @@ def generate_outfitsme_image_with_gemini(
             "responseModalities": ["TEXT", "IMAGE"],
             "imageConfig": {
                 "aspectRatio": "1:1",
-                "imageSize": "1k"
+                "imageSize": "512"
             }
         }
     }
