@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { useSettingsContext, useWardrobeContext } from "@/components/app/DashboardContext";
 import AppImage from "@/components/app/ui/AppImage";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Dialog,
   DialogClose,
@@ -97,6 +98,12 @@ export default function OutfitsTab() {
     closeOutfitDetails,
     outfitDetails,
     outfitDetailsLoading,
+    toggleSelectOutfit,
+    selectAllOutfits,
+    deselectAllOutfits,
+    selectedOutfitIds,
+    isAllSelected,
+    isSomeSelected,
   } = useWardrobeContext();
   const [pendingDelete, setPendingDelete] = useState<(typeof wardrobe)[number] | null>(null);
   const [isEditingName, setIsEditingName] = useState(false);
@@ -330,6 +337,19 @@ export default function OutfitsTab() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-12">
+                  <Checkbox
+                    checked={isAllSelected}
+                    onCheckedChange={(checked) => {
+                      if (checked) {
+                        selectAllOutfits();
+                      } else {
+                        deselectAllOutfits();
+                      }
+                    }}
+                    aria-label="Select all outfits"
+                  />
+                </TableHead>
                 <TableHead>Photo</TableHead>
                 <TableHead>Name</TableHead>
                 <TableHead>Created</TableHead>
@@ -344,6 +364,13 @@ export default function OutfitsTab() {
                   onClick={() => openOutfitDetails(entry.photo_id, entry.outfit_index ?? null)}
                   className="cursor-pointer"
                 >
+                  <TableCell onClick={(e) => e.stopPropagation()}>
+                    <Checkbox
+                      checked={selectedOutfitIds.includes(entry.outfit_id)}
+                      onCheckedChange={() => toggleSelectOutfit(entry.outfit_id)}
+                      aria-label={`Select ${getOutfitDisplayName(entry)}`}
+                    />
+                  </TableCell>
                   <TableCell>
                     {entry.image_url ? (
                       <AppImage
@@ -381,6 +408,35 @@ export default function OutfitsTab() {
               ))}
             </TableBody>
           </Table>
+
+          {selectedOutfitIds.length > 0 && (
+            <div className="flex items-center gap-2 p-4 bg-muted/50 rounded-lg">
+              <span className="text-sm font-medium">
+                {selectedOutfitIds.length} outfit{selectedOutfitIds.length === 1 ? "" : "s"} selected
+              </span>
+              <Button
+                type="button"
+                variant="destructive"
+                size="sm"
+                onClick={() => {
+                  // TODO: Implement bulk delete
+                  toast.info("Bulk delete not yet implemented");
+                }}
+                disabled={selectedOutfitIds.length === 0}
+              >
+                <Trash2 size={16} className="mr-2" />
+                Delete selected
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={deselectAllOutfits}
+              >
+                Clear selection
+              </Button>
+            </div>
+          )}
 
           <Pagination
             currentPage={wardrobePage}

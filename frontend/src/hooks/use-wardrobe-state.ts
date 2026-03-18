@@ -41,6 +41,7 @@ export function useWardrobeState({
   const [outfitMeLoading, setOutfitsMeLoading] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(initialPageSize);
+  const [selectedOutfitIds, setSelectedOutfitIds] = useState<string[]>([]);
   const [selectedDetailsRequest, setSelectedDetailsRequest] = useState<{
     photoId: string;
     outfitIndex: number | null;
@@ -352,6 +353,23 @@ export function useWardrobeState({
       setPageSize(size);
       setCurrentPage(1); // Reset to first page when changing page size
     },
+    toggleSelectOutfit: (outfitId: string) => {
+      setSelectedOutfitIds(prev =>
+        prev.includes(outfitId)
+          ? prev.filter(id => id !== outfitId)
+          : [...prev, outfitId]
+      );
+    },
+    selectAllOutfits: () => {
+      const allIds = wardrobe.map(outfit => outfit.outfit_id);
+      setSelectedOutfitIds(allIds);
+    },
+    deselectAllOutfits: () => {
+      setSelectedOutfitIds([]);
+    },
+    selectedOutfitIds,
+    isAllSelected: wardrobe.length > 0 && selectedOutfitIds.length === wardrobe.length,
+    isSomeSelected: selectedOutfitIds.length > 0 && selectedOutfitIds.length < wardrobe.length,
     deleteWardrobeEntry,
     deletingOutfitId,
     renameOutfit,
