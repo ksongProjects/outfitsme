@@ -400,18 +400,6 @@ def compose_outfit():
         if not user_id:
             return jsonify({"error": "Invalid or expired token."}), 401
 
-        month_start_iso, _ = _current_month_window_utc()
-        monthly_custom_outfit_count = get_user_monthly_composed_outfit_count(user_id, month_start_iso)
-        if monthly_custom_outfit_count >= settings.MONTHLY_CUSTOM_OUTFIT_LIMIT:
-            return jsonify(
-                {
-                    "error": "Monthly custom outfit generation limit reached.",
-                    "monthly_limit": settings.MONTHLY_CUSTOM_OUTFIT_LIMIT,
-                    "used_this_month": monthly_custom_outfit_count,
-                    "remaining_this_month": 0
-                }
-            ), 429
-
         user_settings = get_user_model_settings(user_id)
         if not bool(user_settings.get("enable_outfit_image_generation")):
             return jsonify(
@@ -422,6 +410,20 @@ def compose_outfit():
                     )
                 }
             ), 400
+
+        # Check monthly limit for non-premium users
+        if not has_unlimited_ai_access(user_settings.get("user_role")):
+            month_start_iso, _ = _current_month_window_utc()
+            monthly_custom_outfit_count = get_user_monthly_composed_outfit_count(user_id, month_start_iso)
+            if monthly_custom_outfit_count >= settings.MONTHLY_CUSTOM_OUTFIT_LIMIT:
+                return jsonify(
+                    {
+                        "error": "Monthly custom outfit generation limit reached.",
+                        "monthly_limit": settings.MONTHLY_CUSTOM_OUTFIT_LIMIT,
+                        "used_this_month": monthly_custom_outfit_count,
+                        "remaining_this_month": 0
+                    }
+                ), 429
 
         profile_photo_path = str(user_settings.get("profile_photo_path") or "").strip()
         if not profile_photo_path:

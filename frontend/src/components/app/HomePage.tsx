@@ -51,9 +51,9 @@ export default function HomePage() {
 
   const statsState = useStatsState({ accessToken });
   const analysisState = useAnalysisState({ accessToken });
-  const wardrobeState = useWardrobeState({ accessToken });
-  const itemsState = useItemsState({ accessToken });
-  const historyState = useHistoryState({ accessToken });
+  const wardrobeState = useWardrobeState({ accessToken, initialPageSize: 20 });
+  const itemsState = useItemsState({ accessToken, initialPageSize: 20 });
+  const historyState = useHistoryState({ accessToken, initialPageSize: 20 });
   const settingsState = useSettingsState({
     session: auth.session,
     accessToken,

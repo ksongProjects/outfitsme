@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { ArrowRight, LogIn } from "lucide-react";
+import { LogIn } from "lucide-react";
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
@@ -10,7 +10,6 @@ import { toast } from "sonner";
 import AppFooter from "@/components/app/AppFooter";
 import AppHeader from "@/components/app/AppHeader";
 import { Card } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { items } from "@/components/custom/items";
 import { signIn } from "@/lib/auth-client";
@@ -20,11 +19,7 @@ const Masonry = dynamic(() => import("@/components/custom/Masonry"), {
 });
 
 export default function LandingAuth() {
-  const termsVersion = "2026-03-05";
-  const [acceptedTerms, setAcceptedTerms] = useState(false);
-  const [activeAuthFlow, setActiveAuthFlow] = useState<
-    "signin" | "signup" | null
-  >(null);
+  const [isAuthenticating, setIsAuthenticating] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
 
@@ -34,7 +29,6 @@ export default function LandingAuth() {
       return;
     }
 
-    const authFlow = (searchParams.get("authFlow") || "").trim().toLowerCase();
     const errorDescription = (
       searchParams.get("error_description") || ""
     ).trim();
@@ -43,9 +37,7 @@ export default function LandingAuth() {
 
     if (authError === "signup_disabled") {
       message =
-        authFlow === "signin"
-          ? "No OutfitsMe account exists for that Google login yet. Accept the terms first if you want to create one."
-          : "Account creation is currently unavailable for that Google login.";
+        "We couldn't finish Google sign-in. Please try again.";
     } else if (authError === "account_not_linked") {
       message =
         "This Google account is not linked to your existing OutfitsMe account.";
@@ -59,7 +51,7 @@ export default function LandingAuth() {
 
   useEffect(() => {
     const resetAuthFlow = () => {
-      setActiveAuthFlow(null);
+      setIsAuthenticating(false);
     };
 
     const handleVisibilityChange = () => {
@@ -79,49 +71,33 @@ export default function LandingAuth() {
     };
   }, []);
 
-  const handleGoogleAuth = async (mode: "signin" | "signup") => {
-    if (!acceptedTerms && mode === "signup") {
-      toast.error("You must accept the Terms of Service to create an account.");
-      return;
-    }
-
+  const handleGoogleAuth = async () => {
     try {
-      setActiveAuthFlow(mode);
+      setIsAuthenticating(true);
       await signIn.social(
         {
           provider: "google",
           callbackURL: "/dashboard",
-          errorCallbackURL:
-            mode === "signin" ? "/?authFlow=signin" : "/?authFlow=signup",
-          ...(mode === "signup"
-            ? {
-                requestSignUp: true,
-                newUserCallbackURL: "/dashboard",
-              }
-            : {}),
+          errorCallbackURL: "/",
+          newUserCallbackURL: "/dashboard",
+          requestSignUp: true,
         },
         {
           onSuccess: () => {
-            toast.success(
-              mode === "signin"
-                ? "Signed in successfully with Google."
-                : "Account created successfully with Google.",
-            );
+            toast.success("Signed in successfully with Google.");
           },
           onError: (ctx) => {
             toast.error(
               ctx.error?.message || "Google sign-in failed. Please try again.",
             );
-            setActiveAuthFlow(null);
+            setIsAuthenticating(false);
           },
         },
       );
     } catch {
       toast.error("Google sign-in failed. Please try again.");
-      setActiveAuthFlow(null);
+      setIsAuthenticating(false);
     }
-
-    void termsVersion;
   };
 
   return (
@@ -203,46 +179,29 @@ export default function LandingAuth() {
                 <span className="section-kicker">Get started</span>
               </div>
 
-              <label className="remember-me-row" htmlFor="accept-terms">
-                <Checkbox
-                  id="accept-terms"
-                  checked={acceptedTerms}
-                  onCheckedChange={(checked) =>
-                    setAcceptedTerms(Boolean(checked))
-                  }
-                />
-                <span>
-                  I agree to the{" "}
-                  <Link href="/terms" className="underline">
-                    Terms of Service
-                  </Link>{" "}
-                  and understand this trial tracks usage while I explore
-                  OutfitsMe.
-                </span>
-              </label>
-              <div className="o-cluster o-cluster--wrap o-cluster--end o-cluster--stack-sm">
+              <div className="o-cluster o-cluster--wrap o-cluster--start o-cluster--stack-sm">
                 <Button
                   type="button"
-                  variant="outline"
-                  disabled={activeAuthFlow !== null}
-                  onClick={() => void handleGoogleAuth("signin")}
+                  disabled={isAuthenticating}
+                  onClick={() => void handleGoogleAuth()}
                 >
-                  {activeAuthFlow === "signin"
-                    ? "Signing in..."
+                  {isAuthenticating
+                    ? "Continuing..."
                     : "Continue with Google"}
                   <LogIn size={16} />
                 </Button>
-                <Button
-                  type="button"
-                  disabled={!acceptedTerms || activeAuthFlow !== null}
-                  onClick={() => void handleGoogleAuth("signup")}
-                >
-                  {activeAuthFlow === "signup"
-                    ? "Creating account..."
-                    : "Create account"}
-                  <ArrowRight size={16} />
-                </Button>
               </div>
+              <p className="subtext">
+                By continuing with Google, you agree to the{" "}
+                <Link href="/terms" className="underline">
+                  Terms of Service
+                </Link>{" "}
+                and{" "}
+                <Link href="/privacy" className="underline">
+                  Privacy Policy
+                </Link>
+                .
+              </p>
             </Card>
           </div>
 

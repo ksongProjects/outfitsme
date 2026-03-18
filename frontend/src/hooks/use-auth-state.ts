@@ -112,20 +112,16 @@ export function useAuthState() {
     };
   }, [session?.user?.id, tokenExpiresAt]);
 
-  const handleGoogleSignIn = async (acceptedTerms = false, termsVersion?: string) => {
-    void termsVersion;
-
-    if (!acceptedTerms) {
-      toast.error("You must accept the Terms of Service to create an account.");
-      return false;
-    }
-
+  const handleGoogleSignIn = async () => {
     try {
       setIsSigningIn(true);
       const result = await signIn.social(
         {
           provider: "google",
           callbackURL: "/dashboard",
+          errorCallbackURL: "/",
+          newUserCallbackURL: "/dashboard",
+          requestSignUp: true,
         },
         {
           onSuccess: () => {

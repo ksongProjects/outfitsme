@@ -6,10 +6,31 @@ import { useHistoryContext } from "@/components/app/DashboardContext";
 import AppImage from "@/components/app/ui/AppImage";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Pagination } from "@/components/ui/pagination";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { getHistoryJobTypeLabel } from "@/lib/history";
 
 export default function HistoryTab() {
-  const { history, historyLoading, historyMessage, refreshHistory } = useHistoryContext();
+  const {
+    history,
+    historyLoading,
+    historyMessage,
+    refreshHistory,
+    historyPage,
+    historyPageSize,
+    historyTotalItems,
+    historyTotalPages,
+    historyHasMore,
+    setHistoryPage,
+    setHistoryPageSize,
+  } = useHistoryContext();
   const [previewEntry, setPreviewEntry] = useState<(typeof history)[number] | null>(null);
   const hasHistory = history.length > 0;
   const shouldShowEmptyState = !historyLoading && !hasHistory;
@@ -34,21 +55,21 @@ export default function HistoryTab() {
           <p className="subtext">{historyMessage || "Analyze a photo to populate this table."}</p>
         </div>
       ) : (
-        <div className="table-scroll-wrap">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Photo</th>
-                <th>AI job</th>
-                <th>Status</th>
-                <th>Created</th>
-                <th>Completed</th>
-              </tr>
-            </thead>
-            <tbody>
+        <div className="space-y-4">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Photo</TableHead>
+                <TableHead>AI job</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead>Created</TableHead>
+                <TableHead>Completed</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {history.map((entry) => (
-                <tr key={entry.job_id}>
-                  <td data-label="Photo">
+                <TableRow key={entry.job_id}>
+                  <TableCell>
                     <div className="o-media o-media--stack-sm">
                       {entry.image_url ? (
                         <Button
@@ -71,15 +92,24 @@ export default function HistoryTab() {
                         <span className="subtext">No preview</span>
                       )}
                     </div>
-                  </td>
-                  <td data-label="AI job">{getHistoryJobTypeLabel(entry.job_type)}</td>
-                  <td data-label="Status">{entry.status || "Unknown"}</td>
-                  <td data-label="Created">{entry.created_at ? new Date(entry.created_at).toLocaleString() : "-"}</td>
-                  <td data-label="Completed">{entry.completed_at ? new Date(entry.completed_at).toLocaleString() : "-"}</td>
-                </tr>
+                  </TableCell>
+                  <TableCell>{getHistoryJobTypeLabel(entry.job_type)}</TableCell>
+                  <TableCell>{entry.status || "Unknown"}</TableCell>
+                  <TableCell>{entry.created_at ? new Date(entry.created_at).toLocaleString() : "-"}</TableCell>
+                  <TableCell>{entry.completed_at ? new Date(entry.completed_at).toLocaleString() : "-"}</TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
+
+          <Pagination
+            currentPage={historyPage}
+            totalPages={historyTotalPages}
+            totalItems={historyTotalItems}
+            pageSize={historyPageSize}
+            onPageChange={setHistoryPage}
+            onPageSizeChange={setHistoryPageSize}
+          />
         </div>
       )}
 

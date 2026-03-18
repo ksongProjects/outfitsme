@@ -34,15 +34,15 @@ const normalizeItemRecord = (item: ItemRecord): ItemRecord => ({
   style_label: getItemStyleLabel(item),
 });
 
-export function useItemsState({ accessToken }: { accessToken: string }) {
-  const PAGE_SIZE = 20;
+export function useItemsState({ accessToken, initialPageSize = 20 }: { accessToken: string; initialPageSize?: number }) {
   const queryClient = useQueryClient();
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(initialPageSize);
   type ItemsPagePayload = { items: ItemRecord[]; has_more: boolean };
 
-  const fetchItemsPage = async (page: number) => {
-    const itemsRes = await fetch(`${API_BASE}/api/items?page=${page}&page_size=${PAGE_SIZE}`, {
+  const fetchItemsPage = async (page: number, size: number) => {
+    const itemsRes = await fetch(`${API_BASE}/api/items?page=${page}&page_size=${size}`, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -62,8 +62,8 @@ export function useItemsState({ accessToken }: { accessToken: string }) {
   };
 
   const itemsQuery = useQuery({
-    queryKey: ["items", accessToken, currentPage],
-    queryFn: () => fetchItemsPage(currentPage),
+    queryKey: ["items", accessToken, currentPage, pageSize],
+    queryFn: () => fetchItemsPage(currentPage, pageSize),
     enabled: Boolean(accessToken),
     staleTime: ITEMS_STALE_MS,
     placeholderData: (previousData) => previousData,
@@ -169,6 +169,7 @@ export function useItemsState({ accessToken }: { accessToken: string }) {
     },
     selectedItems,
     itemsPage: currentPage,
+    itemsPageSize: pageSize,
     itemsHasMore,
     nextItemsPage: () => {
       setSelectedItemIds([]);
@@ -178,9 +179,19 @@ export function useItemsState({ accessToken }: { accessToken: string }) {
       setSelectedItemIds([]);
       setCurrentPage((page) => Math.max(1, page - 1));
     },
+    setItemsPage: (page: number) => {
+      setSelectedItemIds([]);
+      setCurrentPage(page);
+    },
+    setItemsPageSize: (size: number) => {
+      setSelectedItemIds([]);
+      setPageSize(size);
+      setCurrentPage(1); // Reset to first page when changing page size
+    },
     resetItemsState: () => {
       setSelectedItemIds([]);
       setCurrentPage(1);
+      setPageSize(initialPageSize);
     },
   };
 }

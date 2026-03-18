@@ -15,6 +15,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
+import { Pagination } from "@/components/ui/pagination";
 import { Spinner } from "@/components/ui/spinner";
 import {
   Select,
@@ -23,6 +24,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { formatItemLabel, getItemIcon } from "@/lib/formatters";
 
 const OUTFIT_SOURCE_LABELS: Record<string, string> = {
@@ -69,12 +78,15 @@ export default function OutfitsTab() {
   const {
     wardrobe,
     wardrobePage,
+    wardrobePageSize,
     wardrobeHasMore,
     wardrobeLoading,
     wardrobeMessage,
     refreshWardrobe,
     nextWardrobePage,
     prevWardrobePage,
+    setWardrobePage,
+    setWardrobePageSize,
     deleteWardrobeEntry,
     deletingOutfitId,
     renameOutfit,
@@ -314,21 +326,25 @@ export default function OutfitsTab() {
           <p className="subtext">{emptyStateMessage}</p>
         </div>
       ) : (
-        <div className="table-scroll-wrap">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Photo</th>
-                <th>Name</th>
-                <th>Created</th>
-                <th>Type</th>
-                <th>Action</th>
-              </tr>
-            </thead>
-            <tbody>
+        <div className="space-y-4">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Photo</TableHead>
+                <TableHead>Name</TableHead>
+                <TableHead>Created</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Action</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {filteredWardrobe.map((entry) => (
-                <tr key={entry.outfit_id} onClick={() => openOutfitDetails(entry.photo_id, entry.outfit_index ?? null)}>
-                  <td data-label="Photo">
+                <TableRow
+                  key={entry.outfit_id}
+                  onClick={() => openOutfitDetails(entry.photo_id, entry.outfit_index ?? null)}
+                  className="cursor-pointer"
+                >
+                  <TableCell>
                     {entry.image_url ? (
                       <AppImage
                         src={entry.image_url}
@@ -340,11 +356,11 @@ export default function OutfitsTab() {
                     ) : (
                       <span className="subtext">-</span>
                     )}
-                  </td>
-                  <td data-label="Name">{getOutfitDisplayName(entry)}</td>
-                  <td data-label="Created">{entry.created_at ? new Date(entry.created_at).toLocaleString() : "-"}</td>
-                  <td data-label="Type">{OUTFIT_SOURCE_LABELS[entry.source_type || "photo_analysis"] || "Photo analysis"}</td>
-                  <td data-label="Action">
+                  </TableCell>
+                  <TableCell>{getOutfitDisplayName(entry)}</TableCell>
+                  <TableCell>{entry.created_at ? new Date(entry.created_at).toLocaleString() : "-"}</TableCell>
+                  <TableCell>{OUTFIT_SOURCE_LABELS[entry.source_type || "photo_analysis"] || "Photo analysis"}</TableCell>
+                  <TableCell>
                     <Button
                       type="button"
                       variant="ghost"
@@ -360,25 +376,22 @@ export default function OutfitsTab() {
                     >
                       {deletingOutfitId === entry.outfit_id ? "..." : <Trash2 size={16} />}
                     </Button>
-                  </td>
-                </tr>
+                  </TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
+
+          <Pagination
+            currentPage={wardrobePage}
+            totalPages={wardrobeHasMore ? wardrobePage + 1 : wardrobePage}
+            totalItems={wardrobe.length}
+            pageSize={wardrobePageSize}
+            onPageChange={setWardrobePage}
+            onPageSizeChange={setWardrobePageSize}
+          />
         </div>
       )}
-
-      <div className="o-cluster o-cluster--between o-cluster--wrap o-cluster--stack-sm">
-        <p className="subtext">Page {wardrobePage}</p>
-        <div className="o-cluster o-cluster--wrap o-cluster--stack-sm">
-          <Button type="button" variant="outline" onClick={prevWardrobePage} disabled={wardrobeLoading || wardrobePage <= 1}>
-            Previous
-          </Button>
-          <Button type="button" variant="outline" onClick={nextWardrobePage} disabled={wardrobeLoading || !wardrobeHasMore}>
-            Next
-          </Button>
-        </div>
-      </div>
 
       <Dialog
         open={Boolean(outfitDetails || outfitDetailsLoading)}

@@ -29,16 +29,18 @@ const normalizeWardrobeEntry = (entry: WardrobeEntry): WardrobeEntry => ({
 export function useWardrobeState({
   accessToken,
   onWardrobeChanged,
+  initialPageSize = 20,
 }: {
   accessToken: string;
   onWardrobeChanged?: () => void;
+  initialPageSize?: number;
 }) {
-  const PAGE_SIZE = 20;
   const [statusMessage, setStatusMessage] = useState("");
   const [deletingOutfitId, setDeletingOutfitId] = useState("");
   const [updatingOutfitId, setUpdatingOutfitId] = useState("");
   const [outfitMeLoading, setOutfitsMeLoading] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  const [pageSize, setPageSize] = useState(initialPageSize);
   const [selectedDetailsRequest, setSelectedDetailsRequest] = useState<{
     photoId: string;
     outfitIndex: number | null;
@@ -95,8 +97,8 @@ export function useWardrobeState({
     return (payload.details || null) as WardrobeDetails | null;
   };
 
-  const fetchWardrobePage = async (page: number) => {
-    const wardrobeRes = await fetch(`${API_BASE}/api/wardrobe?page=${page}&page_size=${PAGE_SIZE}`, {
+  const fetchWardrobePage = async (page: number, size: number) => {
+    const wardrobeRes = await fetch(`${API_BASE}/api/wardrobe?page=${page}&page_size=${size}`, {
       method: "GET",
       headers: {
         Authorization: `Bearer ${accessToken}`,
@@ -116,8 +118,8 @@ export function useWardrobeState({
   };
 
   const wardrobeQuery = useQuery({
-    queryKey: ["wardrobe", accessToken, currentPage],
-    queryFn: () => fetchWardrobePage(currentPage),
+    queryKey: ["wardrobe", accessToken, currentPage, pageSize],
+    queryFn: () => fetchWardrobePage(currentPage, pageSize),
     enabled: Boolean(accessToken),
     staleTime: WARDROBE_STALE_MS,
     placeholderData: (previousData) => previousData,
@@ -328,6 +330,7 @@ export function useWardrobeState({
   return {
     wardrobe,
     wardrobePage: currentPage,
+    wardrobePageSize: pageSize,
     wardrobeHasMore,
     wardrobeLoading,
     wardrobeMessage,
@@ -339,6 +342,15 @@ export function useWardrobeState({
     prevWardrobePage: () => {
       setStatusMessage("");
       setCurrentPage((page) => Math.max(1, page - 1));
+    },
+    setWardrobePage: (page: number) => {
+      setStatusMessage("");
+      setCurrentPage(page);
+    },
+    setWardrobePageSize: (size: number) => {
+      setStatusMessage("");
+      setPageSize(size);
+      setCurrentPage(1); // Reset to first page when changing page size
     },
     deleteWardrobeEntry,
     deletingOutfitId,
@@ -356,6 +368,7 @@ export function useWardrobeState({
       setUpdatingOutfitId("");
       setOutfitsMeLoading(false);
       setCurrentPage(1);
+      setPageSize(initialPageSize);
       setSelectedDetailsRequest(null);
       queryClient.removeQueries({ queryKey: ["wardrobe", accessToken] });
       queryClient.removeQueries({ queryKey: ["wardrobeDetails", accessToken] });

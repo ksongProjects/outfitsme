@@ -3,12 +3,16 @@ from __future__ import annotations
 import json
 import base64
 import math
+import logging
 from io import BytesIO
 
 import requests
 from PIL import Image, ImageOps
 
 from app.config import settings
+
+
+logger = logging.getLogger(__name__)
 
 
 class GeminiNotConfiguredError(RuntimeError):
@@ -889,6 +893,15 @@ def analyze_outfit_with_gemini(
         }
     }
 
+    # Log the final prompt for debugging
+    if settings.LOG_GEMINI_PROMPTS:
+        logger.info("Gemini outfit analysis prompt: %s", _build_prompt())
+        logger.info("Gemini outfit analysis payload structure: %s", json.dumps({
+            "model": effective_model,
+            "has_image": True,
+            "generation_config": payload["generationConfig"]
+        }, indent=2))
+
     response_json = _post_to_gemini(payload, model=effective_model, api_key=effective_api_key, timeout_seconds=30)
     parsed = _parse_gemini_json(response_json)
     output_text = "\n".join(_extract_response_text_parts(response_json))
@@ -975,39 +988,21 @@ def generate_outfitsme_image_with_gemini(
 
     requested_items_text = "\n".join(cleaned_items) if cleaned_items else "best effort from available data"
     prompt = (
-        "Task: create a photorealistic try-on preview of the user from the profile photo. "
-        "The first input image is the user's profile photo and is the only identity reference. "
-        "Preserve that exact person's identity as closely as possible. "
-        "Match the face from the profile photo: face shape, forehead, eyebrows, eyes, nose, lips, jawline, chin, ears, hairline, hairstyle, skin tone, and approximate age. "
-        "Keep the same ethnicity presentation, expression, and overall body proportions from the profile photo. "
-        "Do not replace the person with a generic fashion model, a lookalike, or an inspired-by person. "
-        "Do not beautify, idealize, age up, age down, slim, widen, masculinize, feminize, westernize, or otherwise reinterpret the person. "
-        "The output person must look like the person in the profile photo, not like any person who may appear in other reference images. "
+        "Task: create a photorealistic try-on preview of the person from the profile photo. "
+        "The first input image is the person's profile photo and is the only identity reference. "
         "Dress that same person in the requested outfit. "
         f"Outfit style: {str(outfit_style or 'Outfit').strip()}. "
         "Requested clothing items in order:\n"
         f"{requested_items_text}\n"
         f"Profile hints: {'; '.join(profile_parts) if profile_parts else 'none'}. "
         "If additional images are provided, treat them as clothing item reference images only. "
-        "Those clothing reference images follow the same order as the requested clothing items list. "
-        "Use them as the authoritative source for the exact garment identity and design. "
-        "Reproduce the same garment from each clothing reference image, not a similar substitute or a restyled version. "
-        "Preserve the exact silhouette, cut, proportions, length, rise, waistband, leg shape, sleeve length, neckline, collar, cuffs, hem, closure, "
-        "stripe layout, color blocking, trim, pocket placement, seam placement, knit/rib details, fabric texture, drape, and exact footwear type visible in the references. "
-        "Do not simplify, redesign, reinterpret, restyle, recolor, re-pattern, crop, taper, roll, cuff, shorten, lengthen, slim, widen, or otherwise alter the garment design unless that feature is clearly visible in the clothing reference image. "
-        "If the clothing reference shows full-length pants, keep them full length; do not make them cropped or rolled. "
-        "If the clothing reference shows long sleeves worn down, keep them long sleeves worn down; do not push, scrunch, or shorten them. "
-        "Use the requested item descriptions only as secondary structured guidance to confirm what is already shown in the reference images or fill in missing details. "
-        "If text conflicts with a clothing reference image, follow the clothing reference image. "
+        "Use them as the authoritative source for clothing design, color, texture, material, fit, silhouette, styling, and exact footwear appearance. "
         "Every requested item must be worn on the body in the final image. "
         "Dress the person in the correct garment type and place each piece naturally on the body: "
         "outerwear over tops, tops on the torso and arms, bottoms on the hips and legs, dresses as a full-body garment, "
         "shoes on the feet, hats on the head, and accessories in the appropriate worn position. "
         "Do not swap clothing types or place a garment on the wrong part of the body. "
-        "Do not omit any requested item, substitute a different item, invent additional garments, or change the selected footwear. "
         "If shoes are provided in the references, the person must wear that exact shoe type on their feet; do not place the shoes on the floor, in the background, or as unworn props. "
-        "Do not leave any requested clothing item unworn, duplicated, dangling, carried, or placed beside the person. "
-        "Do not copy any face, head, hair, body, skin tone, or identity traits from those additional images. "
         "If identity and outfit styling ever conflict, preserve identity first while still keeping the selected garments as exact as possible. "
         "Priority order: 1) preserve the profile photo identity, 2) match the requested outfit, 3) create a realistic full-body fashion image. "
         "Return exactly one photorealistic image with no text and no watermark."
@@ -1051,6 +1046,18 @@ def generate_outfitsme_image_with_gemini(
             }
         }
     }
+
+    # Log the final prompt for debugging
+    if settings.LOG_GEMINI_PROMPTS:
+        logger.info("Gemini outfit image generation prompt: %s", prompt)
+        logger.info("Gemini outfit image generation payload structure: %s", json.dumps({
+            "model": effective_model,
+            "parts_count": len(parts),
+            "has_reference_image": len(parts) > 1,
+            "has_source_outfit": source_outfit_image_bytes is not None,
+            "item_reference_images_count": len(normalized_item_reference_images),
+            "generation_config": payload["generationConfig"]
+        }, indent=2))
 
     response_json = _post_to_gemini(
         payload,

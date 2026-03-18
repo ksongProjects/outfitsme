@@ -63,7 +63,7 @@ function createAuth() {
       google: {
         clientId: googleClientId,
         clientSecret: googleClientSecret,
-        disableImplicitSignUp: true,
+        disableImplicitSignUp: false,
       },
     },
     databaseHooks: {

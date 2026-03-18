@@ -1,5 +1,6 @@
 from flask import Flask
 from flask_cors import CORS
+import logging
 
 from app.config import settings
 from app.extensions import limiter
@@ -11,6 +12,14 @@ def create_app() -> Flask:
     app.config["MAX_CONTENT_LENGTH"] = 10 * 1024 * 1024
     app.config["RATELIMIT_STORAGE_URI"] = settings.RATE_LIMIT_STORAGE_URI
     app.config["RATELIMIT_HEADERS_ENABLED"] = True
+
+    # Configure logging
+    if settings.DEBUG:
+        logging.basicConfig(level=logging.INFO)
+        app.logger.setLevel(logging.INFO)
+    else:
+        logging.basicConfig(level=logging.WARNING)
+        app.logger.setLevel(logging.WARNING)
 
     if settings.IS_PRODUCTION and not settings.CORS_ALLOWED_ORIGINS:
         raise RuntimeError("CORS_ALLOWED_ORIGINS must be configured in production.")

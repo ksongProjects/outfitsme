@@ -14,6 +14,7 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { Pagination } from "@/components/ui/pagination";
 import { Spinner } from "@/components/ui/spinner";
 import {
   Select,
@@ -22,6 +23,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { formatItemLabel, getItemIcon } from "@/lib/formatters";
 
 const normalizeFilterValue = (value: string | undefined) =>
@@ -51,9 +60,12 @@ export default function ItemsTab() {
     itemsMessage,
     refreshItems,
     itemsPage,
+    itemsPageSize,
     itemsHasMore,
     nextItemsPage,
     prevItemsPage,
+    setItemsPage,
+    setItemsPageSize,
     composeOutfitFromSelected,
     composeOutfitLoading,
     selectedItemIds,
@@ -231,32 +243,33 @@ export default function ItemsTab() {
           <p className="subtext">{emptyStateMessage}</p>
         </div>
       ) : (
-        <div className="table-scroll-wrap">
-          <table className="data-table">
-            <thead>
-              <tr>
-                <th>Select</th>
-                <th>Category</th>
-                <th>Image</th>
-                <th>Name</th>
-                <th>Color</th>
-                <th>Style</th>
-              </tr>
-            </thead>
-            <tbody>
+        <div className="space-y-4">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Select</TableHead>
+                <TableHead>Category</TableHead>
+                <TableHead>Image</TableHead>
+                <TableHead>Name</TableHead>
+                <TableHead>Color</TableHead>
+                <TableHead>Style</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
               {filteredItems.map((item) => (
-                <tr
+                <TableRow
                   key={item.id}
-                  className={selectedItemIds.includes(item.id) ? "table-row-selected" : ""}
+                  className={selectedItemIds.includes(item.id) ? "bg-muted" : ""}
                   onClick={() => setActiveItem(item)}
                 >
-                  <td data-label="Select">
-                    <span onPointerDown={(event) => event.stopPropagation()} onClick={(event) => event.stopPropagation()}>
-                      <Checkbox checked={selectedItemIds.includes(item.id)} onCheckedChange={() => toggleSelectItem(item.id)} />
-                    </span>
-                  </td>
-                  <td data-label="Category">{item.category || "Item"}</td>
-                  <td data-label="Image">
+                  <TableCell onClick={(e) => e.stopPropagation()}>
+                    <Checkbox
+                      checked={selectedItemIds.includes(item.id)}
+                      onCheckedChange={() => toggleSelectItem(item.id)}
+                    />
+                  </TableCell>
+                  <TableCell>{item.category || "Item"}</TableCell>
+                  <TableCell>
                     {item.image_url ? (
                       <AppImage
                         src={item.image_url}
@@ -268,33 +281,30 @@ export default function ItemsTab() {
                     ) : (
                       <span className="subtext">-</span>
                     )}
-                  </td>
-                  <td data-label="Name">
+                  </TableCell>
+                  <TableCell>
                     <span className="item-catalog-name">
                       <span className="item-icon" aria-hidden="true">{getItemIcon(item)}</span>
                       <span>{item.name || "Unknown"}</span>
                     </span>
-                  </td>
-                  <td data-label="Color">{item.color || "Unknown"}</td>
-                  <td data-label="Style">{item.style_label || "Unknown"}</td>
-                </tr>
+                  </TableCell>
+                  <TableCell>{item.color || "Unknown"}</TableCell>
+                  <TableCell>{item.style_label || "Unknown"}</TableCell>
+                </TableRow>
               ))}
-            </tbody>
-          </table>
+            </TableBody>
+          </Table>
+
+          <Pagination
+            currentPage={itemsPage}
+            totalPages={itemsHasMore ? itemsPage + 1 : itemsPage}
+            totalItems={items.length}
+            pageSize={itemsPageSize}
+            onPageChange={setItemsPage}
+            onPageSizeChange={setItemsPageSize}
+          />
         </div>
       )}
-
-      <div className="o-cluster o-cluster--between o-cluster--wrap o-cluster--stack-sm">
-        <p className="subtext">Page {itemsPage}</p>
-        <div className="o-cluster o-cluster--wrap o-cluster--stack-sm">
-          <Button type="button" variant="outline" onClick={prevItemsPage} disabled={itemsLoading || itemsPage <= 1}>
-            Previous
-          </Button>
-          <Button type="button" variant="outline" onClick={nextItemsPage} disabled={itemsLoading || !itemsHasMore}>
-            Next
-          </Button>
-        </div>
-      </div>
 
       <div className="o-cluster o-cluster--between o-cluster--wrap o-cluster--stack-sm">
         <p className="subtext">{selectedItems.length} item{selectedItems.length === 1 ? "" : "s"} selected</p>
