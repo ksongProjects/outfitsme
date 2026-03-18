@@ -69,7 +69,7 @@ export default function HistoryTab() {
             <TableBody>
               {history.map((entry) => (
                 <TableRow key={entry.job_id}>
-                  <TableCell>
+                  <TableCell data-label="Photo">
                     <div className="o-media o-media--stack-sm">
                       {entry.image_url ? (
                         <Button
@@ -93,10 +93,10 @@ export default function HistoryTab() {
                       )}
                     </div>
                   </TableCell>
-                  <TableCell>{getHistoryJobTypeLabel(entry.job_type)}</TableCell>
-                  <TableCell>{entry.status || "Unknown"}</TableCell>
-                  <TableCell>{entry.created_at ? new Date(entry.created_at).toLocaleString() : "-"}</TableCell>
-                  <TableCell>{entry.completed_at ? new Date(entry.completed_at).toLocaleString() : "-"}</TableCell>
+                  <TableCell data-label="AI job">{getHistoryJobTypeLabel(entry.job_type)}</TableCell>
+                  <TableCell data-label="Status">{entry.status || "Unknown"}</TableCell>
+                  <TableCell data-label="Created">{entry.created_at ? new Date(entry.created_at).toLocaleString() : "-"}</TableCell>
+                  <TableCell data-label="Completed">{entry.completed_at ? new Date(entry.completed_at).toLocaleString() : "-"}</TableCell>
                 </TableRow>
               ))}
             </TableBody>

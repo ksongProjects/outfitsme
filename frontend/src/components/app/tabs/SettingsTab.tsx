@@ -250,7 +250,7 @@ export default function SettingsTab() {
           <h2>Cost usage</h2>
           {costSummaryLoading ? (
             <p className="subtext">Loading cost usage...</p>
-          ) : costSummary ? (
+          ) : costSummary && (costSummary.analysis_runs || costSummary.custom_outfit_generations || costSummary.try_on_generations || costSummary.estimated_costs_usd?.total) ? (
             <>
               <p className="subtext">Month start: {costSummary.month_start_utc ? new Date(costSummary.month_start_utc).toLocaleString() : "-"}</p>
               <ul className="o-list o-list--split">
@@ -273,7 +273,7 @@ export default function SettingsTab() {
               </ul>
             </>
           ) : (
-            <p className="subtext">Cost usage unavailable.</p>
+            <p className="subtext">Cost usage unavailable or no usage data yet.</p>
           )}
           <div className="o-cluster o-cluster--wrap o-cluster--stack-sm">
             <Button variant="outline" onClick={() => void refreshCosts()}>Refresh costs</Button>

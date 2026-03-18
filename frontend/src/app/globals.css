@@ -1578,6 +1578,16 @@ button:not(:disabled),
   min-width: 42rem;
 }
 
+@media (max-width: 720px) {
+  .data-table {
+    min-width: auto;
+  }
+  
+  .table-column-mobile-hidden {
+    display: none;
+  }
+}
+
 .data-table th,
 .data-table td {
   padding: 0.95rem 1rem;
@@ -2027,6 +2037,46 @@ pre {
     display: block;
     min-width: 0;
   }
+
+  .data-table thead {
+    display: none;
+  }
+
+  .data-table tr {
+    display: block;
+    border: 1px solid rgba(179, 151, 126, 0.18);
+    border-radius: 1rem;
+    margin-bottom: 0.75rem;
+    padding: 0.75rem;
+  }
+
+  .data-table td {
+    display: grid;
+    grid-template-columns: 45% 55%;
+    padding: 0.5rem 0;
+    border: none;
+    white-space: normal;
+  }
+
+  @media (max-width: 480px) {
+    .data-table td {
+      grid-template-columns: 1fr;
+    }
+
+    .data-table td::before {
+      display: block;
+      margin-bottom: 0.25rem;
+    }
+  }
+
+  .data-table td::before {
+    content: attr(data-label);
+    font-weight: 600;
+    color: rgba(0, 0, 0, 0.65);
+    padding-right: 0.75rem;
+    white-space: nowrap;
+  }
+
 
   .data-table thead {
     display: none;

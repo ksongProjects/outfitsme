@@ -262,14 +262,14 @@ export default function ItemsTab() {
                   className={selectedItemIds.includes(item.id) ? "bg-muted" : ""}
                   onClick={() => setActiveItem(item)}
                 >
-                  <TableCell onClick={(e) => e.stopPropagation()}>
+                  <TableCell data-label="Select" onClick={(e) => e.stopPropagation()}>
                     <Checkbox
                       checked={selectedItemIds.includes(item.id)}
                       onCheckedChange={() => toggleSelectItem(item.id)}
                     />
                   </TableCell>
-                  <TableCell>{item.category || "Item"}</TableCell>
-                  <TableCell>
+                  <TableCell data-label="Category">{item.category || "Item"}</TableCell>
+                  <TableCell data-label="Image">
                     {item.image_url ? (
                       <AppImage
                         src={item.image_url}
@@ -282,14 +282,16 @@ export default function ItemsTab() {
                       <span className="subtext">-</span>
                     )}
                   </TableCell>
-                  <TableCell>
+                  <TableCell data-label="Name">
                     <span className="item-catalog-name">
                       <span className="item-icon" aria-hidden="true">{getItemIcon(item)}</span>
                       <span>{item.name || "Unknown"}</span>
                     </span>
                   </TableCell>
-                  <TableCell>{item.color || "Unknown"}</TableCell>
-                  <TableCell>{item.style_label || "Unknown"}</TableCell>
+                  <TableCell data-label="Color">{item.color || "Unknown"}</TableCell>
+                  <TableCell data-label="Style">
+                    {item.style_label || "Unknown"}
+                  </TableCell>
                 </TableRow>
               ))}
             </TableBody>

@@ -364,14 +364,14 @@ export default function OutfitsTab() {
                   onClick={() => openOutfitDetails(entry.photo_id, entry.outfit_index ?? null)}
                   className="cursor-pointer"
                 >
-                  <TableCell onClick={(e) => e.stopPropagation()}>
+                  <TableCell data-label="Select" onClick={(e) => e.stopPropagation()}>
                     <Checkbox
                       checked={selectedOutfitIds.includes(entry.outfit_id)}
                       onCheckedChange={() => toggleSelectOutfit(entry.outfit_id)}
                       aria-label={`Select ${getOutfitDisplayName(entry)}`}
                     />
                   </TableCell>
-                  <TableCell>
+                  <TableCell data-label="Photo">
                     {entry.image_url ? (
                       <AppImage
                         src={entry.image_url}
@@ -384,10 +384,10 @@ export default function OutfitsTab() {
                       <span className="subtext">-</span>
                     )}
                   </TableCell>
-                  <TableCell>{getOutfitDisplayName(entry)}</TableCell>
-                  <TableCell>{entry.created_at ? new Date(entry.created_at).toLocaleString() : "-"}</TableCell>
-                  <TableCell>{OUTFIT_SOURCE_LABELS[entry.source_type || "photo_analysis"] || "Photo analysis"}</TableCell>
-                  <TableCell>
+                  <TableCell data-label="Name">{getOutfitDisplayName(entry)}</TableCell>
+                  <TableCell data-label="Created">{entry.created_at ? new Date(entry.created_at).toLocaleString() : "-"}</TableCell>
+                  <TableCell data-label="Type">{OUTFIT_SOURCE_LABELS[entry.source_type || "photo_analysis"] || "Photo analysis"}</TableCell>
+                  <TableCell data-label="Action">
                     <Button
                       type="button"
                       variant="ghost"
