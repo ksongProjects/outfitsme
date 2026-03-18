@@ -13,6 +13,7 @@ import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { items } from "@/components/custom/items";
 import { signIn } from "@/lib/auth-client";
+import { useAuthState } from "@/hooks/use-auth-state";
 
 const Masonry = dynamic(() => import("@/components/custom/Masonry"), {
   ssr: false,
@@ -22,6 +23,7 @@ export default function LandingAuth() {
   const [isAuthenticating, setIsAuthenticating] = useState(false);
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { session, isLoading } = useAuthState();
 
   useEffect(() => {
     const authError = (searchParams.get("error") || "").trim().toLowerCase();
@@ -70,6 +72,12 @@ export default function LandingAuth() {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, []);
+
+  useEffect(() => {
+    if (!isLoading && session) {
+      router.push("/dashboard");
+    }
+  }, [session, isLoading, router]);
 
   const handleGoogleAuth = async () => {
     try {
