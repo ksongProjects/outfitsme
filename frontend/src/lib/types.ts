@@ -158,12 +158,13 @@ export type CostSummary = {
   try_on_generations?: number;
   composed_outfits_created?: number;
   estimated_costs_usd?: Record<string, number>;
-  estimated_token_costs_usd?: Record<string, Record<string, number>>;
+  estimated_token_costs_usd?: Record<string, number>;
   token_usage_estimate?: {
     total?: {
       input_tokens?: number;
       output_tokens?: number;
       total_tokens?: number;
+      call_count?: number;
     };
     source?: string;
   };

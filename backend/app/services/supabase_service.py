@@ -2942,7 +2942,8 @@ def save_user_profile_photo(user_id: str, file_storage) -> dict:
 def get_user_cost_summary(user_id: str, month_start_iso: str) -> dict:
     user_settings = get_user_model_settings(user_id)
     is_unlimited = has_unlimited_ai_access(user_settings.get("user_role"))
-    custom_outfit_limit = float('inf') if is_unlimited else settings.MONTHLY_CUSTOM_OUTFIT_LIMIT
+    # Use None for “unlimited” so we never serialize Infinity (invalid JSON)
+    custom_outfit_limit = None if is_unlimited else settings.MONTHLY_CUSTOM_OUTFIT_LIMIT
     snapshot = _query_cost_snapshot(user_id, month_start_iso)
     analysis_count = _to_int((snapshot or {}).get("analysis_count"))
     composed_outfit_count = _to_int((snapshot or {}).get("composed_outfit_count"))

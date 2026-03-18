@@ -45,6 +45,7 @@ export default function SettingsTab() {
     saveFeatureSettings,
     costSummary,
     costSummaryLoading,
+    costSummaryError,
     refreshCosts,
     uploadProfilePhoto,
   } = useSettingsContext();
@@ -250,7 +251,7 @@ export default function SettingsTab() {
           <h2>Cost usage</h2>
           {costSummaryLoading ? (
             <p className="subtext">Loading cost usage...</p>
-          ) : costSummary && (costSummary.analysis_runs || costSummary.custom_outfit_generations || costSummary.try_on_generations || costSummary.estimated_costs_usd?.total) ? (
+          ) : costSummary ? (
             <>
               <p className="subtext">Month start: {costSummary.month_start_utc ? new Date(costSummary.month_start_utc).toLocaleString() : "-"}</p>
               <ul className="o-list o-list--split">
@@ -271,9 +272,14 @@ export default function SettingsTab() {
                 <li>Output tokens: <strong>{costSummary.token_usage_estimate?.total?.output_tokens ?? 0}</strong></li>
                 <li>Total tokens: <strong>{costSummary.token_usage_estimate?.total?.total_tokens ?? 0}</strong></li>
               </ul>
+              {(!costSummary.analysis_runs && !costSummary.custom_outfit_generations && !costSummary.try_on_generations && !(costSummary.estimated_costs_usd?.total ?? 0)) ? (
+                <p className="subtext">No cost usage recorded yet.</p>
+              ) : null}
             </>
+          ) : costSummaryError ? (
+            <p className="subtext">Cost usage unavailable: {costSummaryError}</p>
           ) : (
-            <p className="subtext">Cost usage unavailable or no usage data yet.</p>
+            <p className="subtext">Cost usage unavailable.</p>
           )}
           <div className="o-cluster o-cluster--wrap o-cluster--stack-sm">
             <Button variant="outline" onClick={() => void refreshCosts()}>Refresh costs</Button>
@@ -284,7 +290,3 @@ export default function SettingsTab() {
     </section>
   );
 }
-
-
-
-
