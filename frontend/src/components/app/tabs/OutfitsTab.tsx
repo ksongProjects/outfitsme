@@ -84,8 +84,6 @@ export default function OutfitsTab() {
     wardrobeLoading,
     wardrobeMessage,
     refreshWardrobe,
-    nextWardrobePage,
-    prevWardrobePage,
     setWardrobePage,
     setWardrobePageSize,
     deleteWardrobeEntry,
@@ -104,7 +102,6 @@ export default function OutfitsTab() {
     deselectAllOutfits,
     selectedOutfitIds,
     isAllSelected,
-    isSomeSelected,
   } = useWardrobeContext();
   const [pendingDelete, setPendingDelete] = useState<(typeof wardrobe)[number] | null>(null);
   const [isEditingName, setIsEditingName] = useState(false);

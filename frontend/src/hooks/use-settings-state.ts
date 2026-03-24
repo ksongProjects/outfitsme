@@ -26,13 +26,43 @@ const emptySettingsForm = (): SettingsFormState => ({
   enable_accessory_analysis: false,
 });
 
+const buildSettingsPayload = (settingsForm: SettingsFormState): Partial<SettingsFormState> => ({
+  profile_gender: settingsForm.profile_gender,
+  profile_age: settingsForm.profile_age,
+  enable_outfit_image_generation: settingsForm.enable_outfit_image_generation,
+  enable_online_store_search: settingsForm.enable_online_store_search,
+  enable_accessory_analysis: settingsForm.enable_accessory_analysis,
+});
+
 const toSettingsForm = (settings: Record<string, unknown>): SettingsFormState => ({
   profile_gender: String(settings.profile_gender || ""),
   profile_age: settings.profile_age ? String(settings.profile_age) : "",
   enable_outfit_image_generation: Boolean(settings.enable_outfit_image_generation),
-  enable_online_store_search: false,
+  enable_online_store_search: Boolean(settings.enable_online_store_search),
   enable_accessory_analysis: Boolean(settings.enable_accessory_analysis),
 });
+
+const normalizeCostSummary = (summary: CostSummary | null): CostSummary | null => {
+  if (!summary) {
+    return null;
+  }
+
+  const composedOutfitsCreated =
+    summary.composed_outfits_created ?? summary.custom_outfit_generations ?? 0;
+
+  return {
+    ...summary,
+    composed_outfits_created: composedOutfitsCreated,
+    custom_outfit_generations: composedOutfitsCreated,
+    estimated_costs_usd: {
+      analysis: 0,
+      outfit_image_generation: 0,
+      item_image_generation: 0,
+      total: 0,
+      ...(summary.estimated_costs_usd || {}),
+    },
+  };
+};
 
 export function useSettingsState({
   session,
@@ -44,6 +74,8 @@ export function useSettingsState({
   const queryClient = useQueryClient();
   const [profileName, setProfileName] = useState("");
   const [profilePhotoUploading, setProfilePhotoUploading] = useState(false);
+  const [profileSaving, setProfileSaving] = useState(false);
+  const [featureSaving, setFeatureSaving] = useState(false);
   const [settingsForm, setSettingsForm] = useState<SettingsFormState>(emptySettingsForm);
 
   const preferencesQuery = useQuery({
@@ -92,6 +124,10 @@ export function useSettingsState({
     () => (preferencesQuery.data?.settings ?? {}) as Record<string, unknown>,
     [preferencesQuery.data?.settings]
   );
+  const costSummary = useMemo(
+    () => normalizeCostSummary((costsQuery.data?.costs ?? costsQuery.data ?? null) as CostSummary | null),
+    [costsQuery.data]
+  );
   const userRole = String(preferences.user_role || "trial");
   const profilePhotoUrl = String(preferences.profile_photo_url || "");
 
@@ -135,7 +171,13 @@ export function useSettingsState({
   });
 
   const saveProfile = async () => {
+    if (!accessToken) {
+      toast.error("Please sign in first.");
+      return false;
+    }
+
     const name = profileName.trim();
+    setProfileSaving(true);
     try {
       if (name && name !== (session?.user?.name || "").trim()) {
         await authClient.$fetch("/update-user", {
@@ -144,42 +186,40 @@ export function useSettingsState({
         });
       }
 
-      await savePreferencesMutation.mutateAsync({
-        profile_gender: settingsForm.profile_gender,
-        profile_age: settingsForm.profile_age,
-        enable_outfit_image_generation: settingsForm.enable_outfit_image_generation,
-        enable_online_store_search: false,
-        enable_accessory_analysis: settingsForm.enable_accessory_analysis,
-      });
+      await savePreferencesMutation.mutateAsync(buildSettingsPayload(settingsForm));
 
       toast.success("Profile updated.");
+      return true;
     } catch (error) {
       toast.error((error as Error).message || "Profile could not be updated.");
+      return false;
+    } finally {
+      setProfileSaving(false);
     }
   };
 
   const saveFeatureSettings = async () => {
     if (!accessToken) {
-      return;
+      toast.error("Please sign in first.");
+      return false;
     }
 
+    setFeatureSaving(true);
     try {
-      await savePreferencesMutation.mutateAsync({
-        profile_gender: settingsForm.profile_gender,
-        profile_age: settingsForm.profile_age,
-        enable_outfit_image_generation: settingsForm.enable_outfit_image_generation,
-        enable_online_store_search: false,
-        enable_accessory_analysis: settingsForm.enable_accessory_analysis,
-      });
+      await savePreferencesMutation.mutateAsync(buildSettingsPayload(settingsForm));
       toast.success("Feature settings updated.");
+      return true;
     } catch (error) {
       toast.error((error as Error).message || "Failed to save feature settings.");
+      return false;
+    } finally {
+      setFeatureSaving(false);
     }
   };
 
   const uploadProfilePhoto = async (file: File | null) => {
     if (!accessToken || !file) {
-      return;
+      return false;
     }
 
     setProfilePhotoUploading(true);
@@ -201,8 +241,10 @@ export function useSettingsState({
 
       toast.success("Profile photo updated.");
       await queryClient.invalidateQueries({ queryKey: ["settings-preferences", accessToken] });
+      return true;
     } catch (error) {
       toast.error((error as Error).message || "Failed to upload profile photo.");
+      return false;
     } finally {
       setProfilePhotoUploading(false);
     }
@@ -227,7 +269,9 @@ export function useSettingsState({
     profilePhotoUrl,
     userRole,
     profilePhotoUploading,
-    costSummary: (costsQuery.data?.costs ??costsQuery.data ?? null) as CostSummary | null,
+    profileSaving,
+    featureSaving,
+    costSummary,
     costSummaryLoading: costsQuery.isLoading || costsQuery.isFetching,
     costSummaryError: costsQuery.isError ? (costsQuery.error as Error).message : null,
     refreshCosts,

@@ -62,8 +62,6 @@ export default function ItemsTab() {
     itemsPage,
     itemsPageSize,
     itemsHasMore,
-    nextItemsPage,
-    prevItemsPage,
     setItemsPage,
     setItemsPageSize,
     composeOutfitFromSelected,

@@ -382,3 +382,128 @@ def test_generate_outfitsme_preview_uses_existing_outfit_selection(client, monke
     assert attached == [
         ("user-test-123", "outfit-777", "generated/outfit-777.png"),
     ]
+
+
+def test_settings_preferences_and_costs_flow(client, monkeypatch, auth_headers):
+    updated_payload: dict[str, object] = {}
+
+    def fake_get_user_model_settings(user_id: str) -> dict[str, object]:
+        assert user_id == "user-test-123"
+        return {
+            "user_role": "premium",
+            "profile_gender": "male",
+            "profile_age": 40,
+            "profile_photo_path": "profiles/user-test-123/reference.jpg",
+            "enable_outfit_image_generation": True,
+            "enable_online_store_search": False,
+            "enable_accessory_analysis": False,
+        }
+
+    def fake_get_signed_image_url(storage_path: str | None) -> str | None:
+        if not storage_path:
+            return None
+        return f"https://cdn.example/{storage_path}"
+
+    def fake_upsert_user_model_settings(user_id: str, payload: dict[str, object]) -> dict[str, object]:
+        assert user_id == "user-test-123"
+        updated_payload.update(payload)
+        return {
+            "user_role": "premium",
+            "profile_gender": "male",
+            "profile_age": 40,
+            "profile_photo_path": "profiles/user-test-123/reference.jpg",
+            "profile_photo_url": "https://cdn.example/profiles/user-test-123/reference.jpg",
+            "enable_outfit_image_generation": True,
+            "enable_online_store_search": False,
+            "enable_accessory_analysis": False,
+        }
+
+    def fake_get_user_cost_summary(user_id: str, month_start_iso: str) -> dict[str, object]:
+        assert user_id == "user-test-123"
+        assert month_start_iso.endswith("+00:00")
+        return {
+            "month_start_utc": month_start_iso,
+            "analysis_runs": 4,
+            "try_on_generations": 2,
+            "composed_outfits_created": 1,
+            "custom_outfit_generations": 1,
+            "estimated_costs_usd": {
+                "analysis": 0,
+                "outfit_image_generation": 0,
+                "item_image_generation": 0,
+                "total": 0,
+            },
+            "token_usage_estimate": {
+                "total": {
+                    "input_tokens": 1000,
+                    "output_tokens": 500,
+                    "total_tokens": 1500,
+                    "call_count": 6,
+                },
+                "source": "Aggregated from ai_jobs token fields.",
+            },
+        }
+
+    monkeypatch.setattr(api_module, "get_user_model_settings", fake_get_user_model_settings)
+    monkeypatch.setattr(api_module, "get_signed_image_url", fake_get_signed_image_url)
+    monkeypatch.setattr(api_module, "upsert_user_model_settings", fake_upsert_user_model_settings)
+    monkeypatch.setattr(api_module, "get_user_cost_summary", fake_get_user_cost_summary)
+
+    get_preferences_response = client.get("/api/settings/preferences", headers=auth_headers)
+    print_exchange("Settings Preferences", "GET", "/api/settings/preferences", None, get_preferences_response)
+
+    assert get_preferences_response.status_code == 200
+    assert get_preferences_response.get_json() == {
+        "settings": {
+            "enable_accessory_analysis": False,
+            "enable_online_store_search": False,
+            "enable_outfit_image_generation": True,
+            "profile_age": 40,
+            "profile_gender": "male",
+            "profile_photo_url": "https://cdn.example/profiles/user-test-123/reference.jpg",
+            "user_role": "premium",
+        }
+    }
+
+    request_body = {
+        "profile_gender": "male",
+        "profile_age": "40",
+        "enable_outfit_image_generation": True,
+        "enable_online_store_search": False,
+        "enable_accessory_analysis": False,
+    }
+    update_preferences_response = client.put(
+        "/api/settings/preferences",
+        json=request_body,
+        headers=auth_headers,
+    )
+    print_exchange(
+        "Settings Update",
+        "PUT",
+        "/api/settings/preferences",
+        request_body,
+        update_preferences_response,
+    )
+
+    assert update_preferences_response.status_code == 200
+    assert updated_payload == request_body
+    assert update_preferences_response.get_json() == {
+        "settings": {
+            "enable_accessory_analysis": False,
+            "enable_online_store_search": False,
+            "enable_outfit_image_generation": True,
+            "profile_age": 40,
+            "profile_gender": "male",
+            "profile_photo_path": "profiles/user-test-123/reference.jpg",
+            "profile_photo_url": "https://cdn.example/profiles/user-test-123/reference.jpg",
+            "user_role": "premium",
+        }
+    }
+
+    costs_response = client.get("/api/settings/costs", headers=auth_headers)
+    print_exchange("Settings Costs", "GET", "/api/settings/costs", None, costs_response)
+
+    assert costs_response.status_code == 200
+    assert costs_response.get_json()["costs"]["analysis_runs"] == 4
+    assert costs_response.get_json()["costs"]["composed_outfits_created"] == 1
+    assert costs_response.get_json()["costs"]["custom_outfit_generations"] == 1

@@ -191,6 +191,10 @@ def _execute_rows(builder: Any) -> list[dict[str, Any]]:
     return _response_rows(builder.execute())
 
 
+def _execute_mutation(builder: Any) -> Any:
+    return builder.execute()
+
+
 def _execute_row(builder: Any) -> dict[str, Any] | None:
     rows = _execute_rows(builder)
     return rows[0] if rows else None
@@ -363,7 +367,7 @@ def upsert_user_model_settings(user_id: str, payload: dict[str, Any]) -> dict[st
         age_value = _safe_int(payload.get("profile_age"), 0)
         next_profile_age = age_value if 0 < age_value < 121 else None
 
-    _execute_row(
+    _execute_mutation(
         _table("user_settings")
         .update(
             {
@@ -385,7 +389,6 @@ def upsert_user_model_settings(user_id: str, payload: dict[str, Any]) -> dict[st
             }
         )
         .eq("user_id", user_id)
-        .select("*")
     )
 
     settings_row = get_user_model_settings(user_id)
@@ -406,11 +409,10 @@ def save_user_profile_photo(user_id: str, file_storage) -> dict[str, Any]:
     _upload_bytes(storage_path, content, content_type)
 
     _ensure_user_settings_row(user_id)
-    _execute_row(
+    _execute_mutation(
         _table("user_settings")
         .update({"profile_photo_path": storage_path, "updated_at": datetime.now(timezone.utc).isoformat()})
         .eq("user_id", user_id)
-        .select("user_id")
     )
 
     if previous_path and previous_path != storage_path:
@@ -736,13 +738,13 @@ def save_generated_item_image(user_id: str, item_id: str, data_uri: str) -> dict
     _upload_bytes(storage_path, image_bytes, normalized_mime)
 
     previous = _execute_row(_table("items").select("image_path").eq("id", item_id).eq("user_id", user_id))
-    row = _execute_row(
+    _execute_mutation(
         _table("items")
         .update({"image_path": storage_path})
         .eq("id", item_id)
         .eq("user_id", user_id)
-        .select("*")
     )
+    row = _execute_row(_table("items").select("*").eq("id", item_id).eq("user_id", user_id))
     if not row:
         raise RuntimeError("Item image could not be saved.")
 
@@ -822,13 +824,13 @@ def create_outfit_with_items(
 
 def attach_generated_image_to_outfit(user_id: str, outfit_id: str, generated_storage_path: str) -> dict[str, Any] | None:
     previous = _execute_row(_table("outfits").select("generated_image_path").eq("id", outfit_id).eq("user_id", user_id))
-    row = _execute_row(
+    _execute_mutation(
         _table("outfits")
         .update({"generated_image_path": _normalize_text(generated_storage_path) or None})
         .eq("id", outfit_id)
         .eq("user_id", user_id)
-        .select("*")
     )
+    row = _execute_row(_table("outfits").select("*").eq("id", outfit_id).eq("user_id", user_id))
     previous_path = _normalize_text((previous or {}).get("generated_image_path"))
     if previous_path and previous_path != generated_storage_path:
         _best_effort_remove_storage_paths([previous_path])
@@ -1240,9 +1242,11 @@ def get_user_cost_summary(user_id: str, month_start_iso: str) -> dict[str, Any]:
         "analysis_runs": analysis_runs,
         "try_on_generations": try_on_generations,
         "composed_outfits_created": 0,
+        "custom_outfit_generations": 0,
         "estimated_costs_usd": {
             "analysis": 0,
             "outfit_image_generation": 0,
+            "item_image_generation": 0,
             "total": 0,
         },
         "estimated_token_costs_usd": {

@@ -27,7 +27,6 @@ export default function HistoryTab() {
     historyPageSize,
     historyTotalItems,
     historyTotalPages,
-    historyHasMore,
     setHistoryPage,
     setHistoryPageSize,
   } = useHistoryContext();
