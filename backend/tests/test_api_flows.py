@@ -215,7 +215,7 @@ def test_compose_outfit_uses_profile_and_item_images(client, monkeypatch, auth_h
     def fake_create_completed_ai_job(user_id: str, **kwargs) -> dict[str, str]:
         assert user_id == "user-test-123"
         assert kwargs["photo_id"] == "photo-generated-001"
-        assert kwargs["job_type"] == "try_on"
+        assert kwargs["job_type"] == "custom_outfit"
         return {"id": "job-try-on-001"}
 
     def fake_create_outfit_with_items(user_id: str, **kwargs) -> dict[str, str]:
@@ -268,12 +268,13 @@ def test_compose_outfit_uses_profile_and_item_images(client, monkeypatch, auth_h
 
 def test_generate_outfitsme_preview_uses_existing_outfit_selection(client, monkeypatch, auth_headers):
     generation_call: dict[str, object] = {}
-    attached: list[tuple[str, str, str]] = []
+    created_outfits: list[dict[str, object]] = []
 
     selected_outfit = {
         "outfit_id": "outfit-777",
         "outfit_index": 0,
         "style": "Weekend Layers",
+        "source_type": "photo_analysis",
         "items": [
             {
                 "id": "item-201",
@@ -333,22 +334,38 @@ def test_generate_outfitsme_preview_uses_existing_outfit_selection(client, monke
             "image_url": "https://cdn.example/generated/outfit-777.png",
         }
 
-    def fake_attach_generated_image_to_outfit(user_id: str, outfit_id: str, storage_path: str) -> None:
-        attached.append((user_id, outfit_id, storage_path))
+    def fake_create_photo_record(user_id: str, storage_path: str) -> dict[str, str]:
+        assert user_id == "user-test-123"
+        assert storage_path == "generated/outfit-777.png"
+        return {"id": "photo-generated-777"}
 
     def fake_create_completed_ai_job(user_id: str, **kwargs) -> dict[str, str]:
         assert user_id == "user-test-123"
-        assert kwargs["photo_id"] == "photo-legacy-001"
+        assert kwargs["photo_id"] == "photo-generated-777"
         assert kwargs["job_type"] == "try_on"
         return {"id": "job-preview-001"}
+
+    def fake_create_outfit_with_items(user_id: str, **kwargs) -> dict[str, str]:
+        assert user_id == "user-test-123"
+        assert kwargs["photo_id"] == "photo-generated-777"
+        assert kwargs["style_label"] == "Weekend Layers"
+        assert kwargs["item_ids"] == ["item-201", "item-202"]
+        assert kwargs["job_id"] == "job-preview-001"
+        assert kwargs["generated_image_path"] == "generated/outfit-777.png"
+        created_outfits.append(dict(kwargs))
+        return {
+            "id": "outfit-generated-777",
+            "style_label": "Weekend Layers",
+        }
 
     monkeypatch.setattr(api_module, "get_outfit_for_generation", fake_get_outfit_for_generation)
     monkeypatch.setattr(api_module, "get_user_model_settings", fake_get_user_model_settings)
     monkeypatch.setattr(api_module, "download_photo_bytes", fake_download_photo_bytes)
     monkeypatch.setattr(api_module, "generate_outfitsme_image_with_gemini", fake_generate_outfitsme_image_with_gemini)
     monkeypatch.setattr(api_module, "save_generated_outfit_image", fake_save_generated_outfit_image)
-    monkeypatch.setattr(api_module, "attach_generated_image_to_outfit", fake_attach_generated_image_to_outfit)
+    monkeypatch.setattr(api_module, "create_photo_record", fake_create_photo_record)
     monkeypatch.setattr(api_module, "create_completed_ai_job", fake_create_completed_ai_job)
+    monkeypatch.setattr(api_module, "create_outfit_with_items", fake_create_outfit_with_items)
 
     request_body = {"outfit_index": 0}
     response = client.post(
@@ -369,7 +386,14 @@ def test_generate_outfitsme_preview_uses_existing_outfit_selection(client, monke
         "outfit_index": 0,
         "outfitsme_image_url": "https://cdn.example/generated/outfit-777.png",
         "outfitsme_storage_path": "generated/outfit-777.png",
-        "photo_id": "photo-legacy-001",
+        "photo_id": "photo-generated-777",
+        "saved_outfit": {
+            "outfit_id": "outfit-generated-777",
+            "outfit_index": 0,
+            "photo_id": "photo-generated-777",
+            "source_type": "outfitsme_generated",
+            "style": "Weekend Layers",
+        },
     }
     assert generation_call["reference_image_bytes"] == b"profile-preview-bytes"
     assert generation_call["reference_mime_type"] == "image/png"
@@ -379,9 +403,7 @@ def test_generate_outfitsme_preview_uses_existing_outfit_selection(client, monke
         (b"jacket-image-bytes", "image/jpeg"),
         (b"tee-image-bytes", "image/png"),
     ]
-    assert attached == [
-        ("user-test-123", "outfit-777", "generated/outfit-777.png"),
-    ]
+    assert len(created_outfits) == 1
 
 
 def test_settings_preferences_and_costs_flow(client, monkeypatch, auth_headers):

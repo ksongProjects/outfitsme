@@ -303,3 +303,40 @@ def test_get_wardrobe_photo_details_preserves_custom_outfit_source_type(monkeypa
     assert result is not None
     assert result["selected_outfit"]["source_type"] == "custom_outfit"
     assert result["selected_outfit"]["image_url"] == "https://cdn.example/user-1/generated/look.jpg"
+
+
+def test_get_wardrobe_photo_details_marks_try_on_entries_as_generated(monkeypatch):
+    monkeypatch.setattr(
+        supabase_module,
+        "_execute_row",
+        lambda builder: {
+            "id": "photo-2",
+            "storage_path": "user-1/generated/try-on.jpg",
+            "created_at": "2026-03-24T07:30:00+00:00",
+        },
+    )
+    monkeypatch.setattr(
+        supabase_module,
+        "_load_outfit_rows_for_photo",
+        lambda user_id, photo_id: [
+            {
+                "id": "outfit-2",
+                "outfit_index": 0,
+                "style_label": "Weekend Layers",
+                "generated_image_path": "user-1/generated/try-on.jpg",
+                "job_type": "try_on",
+            }
+        ],
+    )
+    monkeypatch.setattr(supabase_module, "_load_items_for_outfits", lambda outfit_ids: {})
+    monkeypatch.setattr(
+        supabase_module,
+        "get_signed_image_url",
+        lambda storage_path: f"https://cdn.example/{storage_path}" if storage_path else None,
+    )
+
+    result = supabase_module.get_wardrobe_photo_details("user-1", "photo-2", outfit_index=0)
+
+    assert result is not None
+    assert result["selected_outfit"]["source_type"] == "outfitsme_generated"
+    assert result["selected_outfit"]["image_url"] == "https://cdn.example/user-1/generated/try-on.jpg"

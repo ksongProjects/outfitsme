@@ -13,6 +13,7 @@ from app.services.gemini_service import analyze_outfit_with_gemini, generate_ite
 from app.services.supabase_service import (
     claim_analysis_job,
     download_photo_bytes,
+    get_user_model_settings,
     get_photo_storage_path_for_user,
     mark_analysis_job_completed,
     mark_analysis_job_failed,
@@ -199,7 +200,13 @@ def process_analysis_job(job_id: str) -> None:
             raise ValueError("Stored image could not be loaded.")
 
         mime_type = mimetypes.guess_type(storage_path)[0] or "image/jpeg"
-        analysis = analyze_outfit_with_gemini(image_bytes, mime_type, model=model_used or None)
+        user_settings = get_user_model_settings(user_id)
+        analysis = analyze_outfit_with_gemini(
+            image_bytes,
+            mime_type,
+            model=model_used or None,
+            include_accessories=bool(user_settings.get("enable_accessory_analysis")),
+        )
         analysis_usage = analysis.pop("_usage", {}) if isinstance(analysis, dict) else {}
 
         persistence = persist_analysis_for_photo(user_id, photo_id, analysis, job_id=job_id)

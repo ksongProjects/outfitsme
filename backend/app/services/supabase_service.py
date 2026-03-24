@@ -249,10 +249,13 @@ def _serialize_item_row(row: dict[str, Any], *, style_label: str | None = None) 
     }
 
 
-def _derive_outfit_source_type(source_path: str | None, generated_image_path: str | None) -> str:
+def _derive_outfit_source_type(source_path: str | None, generated_image_path: str | None, job_type: str | None = None) -> str:
     normalized_source_path = _normalize_text(source_path)
     normalized_generated_path = _normalize_text(generated_image_path)
+    normalized_job_type = _normalize_text(job_type).lower()
     if not normalized_source_path or normalized_generated_path == normalized_source_path:
+        if normalized_job_type == "try_on":
+            return "outfitsme_generated"
         return "custom_outfit"
     return "photo_analysis"
 
@@ -403,7 +406,7 @@ def get_user_daily_ai_usage(user_id: str, window_start_iso: str) -> dict[str, in
         """
         select
           count(*) filter (where job_type = 'analysis')::integer as analysis_actions_today,
-          count(*) filter (where job_type = 'try_on')::integer as outfit_generations_today
+          count(*) filter (where job_type in ('try_on', 'custom_outfit'))::integer as outfit_generations_today
         from public.ai_jobs
         where user_id = %s
           and created_at >= %s::timestamptz
@@ -711,11 +714,14 @@ def _load_outfit_rows_for_photo(user_id: str, photo_id: str) -> list[dict[str, A
         with ranked as (
           select
             o.*,
+            coalesce(j.job_type, '') as job_type,
             row_number() over (
               partition by o.photo_id
               order by o.created_at asc, o.id asc
             ) - 1 as outfit_index
           from public.outfits o
+          left join public.ai_jobs j
+            on j.id = o.job_id
           where o.user_id = %s
             and o.photo_id = %s
         )
@@ -1012,6 +1018,7 @@ def list_wardrobe(user_id: str, limit: int = 20, offset: int = 0) -> list[dict[s
           ranked.photo_id,
           ranked.style_label,
           ranked.generated_image_path,
+          coalesce(j.job_type, '') as job_type,
           ranked.created_at,
           ranked.outfit_index,
           ranked.outfit_count,
@@ -1020,6 +1027,8 @@ def list_wardrobe(user_id: str, limit: int = 20, offset: int = 0) -> list[dict[s
         from ranked
         left join public.photos p
           on p.id = ranked.photo_id
+        left join public.ai_jobs j
+          on j.id = ranked.job_id
         left join lateral (
           select count(*)::integer as outfit_items_count
           from public.outfit_items oi
@@ -1044,7 +1053,7 @@ def list_wardrobe(user_id: str, limit: int = 20, offset: int = 0) -> list[dict[s
                 "source_outfit_image_url": get_signed_image_url(source_path),
                 "created_at": row.get("created_at"),
                 "style_label": row.get("style_label"),
-                "source_type": _derive_outfit_source_type(source_path, generated_image_path),
+                "source_type": _derive_outfit_source_type(source_path, generated_image_path, row.get("job_type")),
                 "source_outfit_id": None,
                 "outfit_index": row.get("outfit_index") or 0,
                 "outfit_count": row.get("outfit_count") or 1,
@@ -1074,7 +1083,7 @@ def get_wardrobe_photo_details(user_id: str, photo_id: str, outfit_index: int | 
             "outfit_id": outfit["id"],
             "outfit_index": outfit["outfit_index"],
             "style": _normalize_label(outfit.get("style_label"), "Outfit"),
-            "source_type": _derive_outfit_source_type(source_path, generated_image_path),
+            "source_type": _derive_outfit_source_type(source_path, generated_image_path, outfit.get("job_type")),
             "items": items_by_outfit.get(str(outfit["id"]), []),
             "image_url": get_signed_image_url(generated_image_path or source_path),
         }
@@ -1270,6 +1279,7 @@ def get_user_cost_summary(user_id: str, month_start_iso: str) -> dict[str, Any]:
         select
           count(*) filter (where job_type = 'analysis')::integer as analysis_runs,
           count(*) filter (where job_type = 'try_on')::integer as try_on_generations,
+          count(*) filter (where job_type = 'custom_outfit')::integer as custom_outfit_generations,
           coalesce(sum(tokens_input), 0)::integer as tokens_input,
           coalesce(sum(tokens_output), 0)::integer as tokens_output
         from public.ai_jobs
@@ -1295,13 +1305,14 @@ def get_user_cost_summary(user_id: str, month_start_iso: str) -> dict[str, Any]:
     output_tokens = summary.get("tokens_output") or 0
     analysis_runs = summary.get("analysis_runs") or 0
     try_on_generations = summary.get("try_on_generations") or 0
+    custom_outfit_generations = summary.get("custom_outfit_generations") or 0
 
     return {
         "month_start_utc": month_start_iso,
         "analysis_runs": analysis_runs,
         "try_on_generations": try_on_generations,
-        "composed_outfits_created": 0,
-        "custom_outfit_generations": 0,
+        "composed_outfits_created": custom_outfit_generations,
+        "custom_outfit_generations": custom_outfit_generations,
         "estimated_costs_usd": {
             "analysis": 0,
             "outfit_image_generation": 0,
@@ -1316,7 +1327,7 @@ def get_user_cost_summary(user_id: str, month_start_iso: str) -> dict[str, Any]:
                 "input_tokens": input_tokens,
                 "output_tokens": output_tokens,
                 "total_tokens": input_tokens + output_tokens,
-                "call_count": analysis_runs + try_on_generations,
+                "call_count": analysis_runs + try_on_generations + custom_outfit_generations,
             },
             "source": "Aggregated from ai_jobs token fields.",
         },

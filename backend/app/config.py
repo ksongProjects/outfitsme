@@ -33,7 +33,6 @@ class Settings:
     IS_PRODUCTION = FLASK_ENV == "production"
     PORT = int(_clean_env(os.getenv("PORT", "5000"), "5000") or "5000")
     DEBUG = _to_bool(os.getenv("DEBUG", ""), default=(FLASK_ENV != "production"))
-    LOG_GEMINI_PROMPTS = _to_bool(os.getenv("LOG_GEMINI_PROMPTS", ""), default=DEBUG)
     CORS_ALLOWED_ORIGINS = _split_csv(_clean_env(os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:3000")))
     RATE_LIMIT_STORAGE_URI = _clean_env(os.getenv("RATE_LIMIT_STORAGE_URI", "memory://"), "memory://")
     # Legacy single-tier limit; kept for backwards compatibility.

@@ -11,6 +11,7 @@ def test_process_analysis_job_runs_analysis_and_saves_item_images(monkeypatch):
     saved_images: list[tuple[str, str, str]] = []
     sprite_call: dict[str, object] = {}
     completed: dict[str, object] = {}
+    analysis_call: dict[str, object] = {}
 
     monkeypatch.setattr(
         jobs_module,
@@ -27,11 +28,30 @@ def test_process_analysis_job_runs_analysis_and_saves_item_images(monkeypatch):
         "get_photo_storage_path_for_user",
         lambda user_id, photo_id: "uploads/user-test-123/closet-photo.jpg",
     )
-    monkeypatch.setattr(jobs_module, "download_photo_bytes", lambda storage_path: b"source-photo-bytes")
     monkeypatch.setattr(
         jobs_module,
-        "analyze_outfit_with_gemini",
-        lambda image_bytes, mime_type, model=None: {
+        "get_user_model_settings",
+        lambda user_id: {
+            "enable_accessory_analysis": True,
+        },
+    )
+    monkeypatch.setattr(jobs_module, "download_photo_bytes", lambda storage_path: b"source-photo-bytes")
+
+    def fake_analyze_outfit_with_gemini(
+        image_bytes,
+        mime_type,
+        model=None,
+        include_accessories: bool = False,
+    ):
+        analysis_call.update(
+            {
+                "image_bytes": image_bytes,
+                "mime_type": mime_type,
+                "model": model,
+                "include_accessories": include_accessories,
+            }
+        )
+        return {
             "outfits": [
                 {
                     "style": "Business Casual",
@@ -55,8 +75,9 @@ def test_process_analysis_job_runs_analysis_and_saves_item_images(monkeypatch):
                 "input_tokens": 111,
                 "output_tokens": 222,
             },
-        },
-    )
+        }
+
+    monkeypatch.setattr(jobs_module, "analyze_outfit_with_gemini", fake_analyze_outfit_with_gemini)
     monkeypatch.setattr(
         jobs_module,
         "persist_analysis_for_photo",
@@ -119,6 +140,12 @@ def test_process_analysis_job_runs_analysis_and_saves_item_images(monkeypatch):
         "reference_image_bytes": b"source-photo-bytes",
         "reference_mime_type": "image/jpeg",
         "return_usage": True,
+    }
+    assert analysis_call == {
+        "image_bytes": b"source-photo-bytes",
+        "mime_type": "image/jpeg",
+        "model": "gemini-2.5-flash",
+        "include_accessories": True,
     }
     assert [item_id for _user_id, item_id, _data_uri in saved_images] == ["item-001", "item-002"]
     assert all(user_id == "user-test-123" for user_id, _item_id, _data_uri in saved_images)

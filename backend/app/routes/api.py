@@ -12,7 +12,6 @@ from app.services.analysis_jobs_service import enqueue_analysis_job_processing
 from app.services.gemini_service import GeminiNotConfiguredError, generate_outfitsme_image_with_gemini
 from app.services.supabase_service import (
     SupabaseNotConfiguredError,
-    attach_generated_image_to_outfit,
     build_analysis_result_for_photo,
     create_analysis_job,
     create_completed_ai_job,
@@ -336,7 +335,7 @@ def compose_outfit():
             user_id,
             photo_id=str(photo_row["id"]),
             model_used=str((usage_summary or {}).get("model") or settings.GEMINI_IMAGE_MODEL),
-            job_type="try_on",
+            job_type="custom_outfit",
             tokens_input=int((usage_summary or {}).get("input_tokens") or 0),
             tokens_output=int((usage_summary or {}).get("output_tokens") or 0),
         )
@@ -508,6 +507,8 @@ def generate_outfitsme_preview(photo_id: str):
             return jsonify({"error": "Outfit details not found."}), 404
 
         selected_outfit = selection["outfit"]
+        if str(selected_outfit.get("source_type") or "").strip().lower() != "photo_analysis":
+            return jsonify({"error": "Try-on previews are only available for photo analysis outfits."}), 400
         user_settings, profile_photo_bytes, profile_photo_mime = _load_profile_photo_inputs(user_id)
         reference_images, missing_items = _load_item_reference_images(selected_outfit.get("items") or [])
         if missing_items:
@@ -527,21 +528,37 @@ def generate_outfitsme_preview(photo_id: str):
             return jsonify({"error": "Outfit generation returned no image."}), 502
 
         stored = save_generated_outfit_image(user_id, str(selected_outfit["outfit_id"]), generated_data_uri)
-        attach_generated_image_to_outfit(user_id, str(selected_outfit["outfit_id"]), str(stored["storage_path"]))
-        create_completed_ai_job(
+        photo_row = create_photo_record(user_id, str(stored["storage_path"]))
+        job_row = create_completed_ai_job(
             user_id,
-            photo_id=photo_id,
+            photo_id=str(photo_row["id"]),
             model_used=str((usage_summary or {}).get("model") or settings.GEMINI_IMAGE_MODEL),
             job_type="try_on",
             tokens_input=int((usage_summary or {}).get("input_tokens") or 0),
             tokens_output=int((usage_summary or {}).get("output_tokens") or 0),
         )
+        item_ids = [str(item.get("id")) for item in (selected_outfit.get("items") or []) if item.get("id")]
+        outfit_row = create_outfit_with_items(
+            user_id,
+            photo_id=str(photo_row["id"]),
+            style_label=str(selected_outfit.get("style") or "Outfit"),
+            item_ids=item_ids,
+            job_id=str(job_row["id"]),
+            generated_image_path=str(stored["storage_path"]),
+        )
         return jsonify(
             {
-                "photo_id": photo_id,
-                "outfit_index": selected_outfit.get("outfit_index"),
+                "photo_id": photo_row["id"],
+                "outfit_index": 0,
                 "outfitsme_image_url": stored.get("image_url"),
                 "outfitsme_storage_path": stored.get("storage_path"),
+                "saved_outfit": {
+                    "outfit_id": outfit_row["id"],
+                    "photo_id": photo_row["id"],
+                    "outfit_index": 0,
+                    "style": outfit_row.get("style_label"),
+                    "source_type": "outfitsme_generated",
+                },
             }
         ), 200
     except ValueError as exc:
