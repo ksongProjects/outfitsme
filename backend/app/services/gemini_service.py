@@ -689,6 +689,38 @@ def _build_prompt(*, include_accessories: bool = False) -> str:
     )
 
 
+def _build_outfitsme_generation_prompt(
+    *,
+    outfit_style: str,
+    requested_items_text: str,
+    profile_parts: list[str],
+) -> str:
+    return (
+        "Task: create a photorealistic try-on preview of the person from the profile photo. "
+        "The first input image is the person's profile photo and is the only identity reference. "
+        "Dress that same person in the requested outfit. "
+        f"Outfit style: {str(outfit_style or 'Outfit').strip()}. "
+        "Requested outfit items in order:\n"
+        f"{requested_items_text}\n"
+        f"Profile hints: {'; '.join(profile_parts) if profile_parts else 'none'}. "
+        "If additional images are provided, treat them as outfit item reference images only. "
+        "Use them as the authoritative source for clothing or accessory design, color, texture, material, fit, silhouette, styling, and exact footwear appearance. "
+        "Only the requested items may appear as visible outfit pieces in the final image. "
+        "Do not add, invent, replace, swap, or layer in any extra clothing items or accessories that were not provided. "
+        "No extra jackets, shirts, pants, skirts, dresses, shoes, bags, hats, jewelry, scarves, belts, or other visible outfit pieces unless they are explicitly included in the requested items. "
+        "If the requested set is incomplete, keep any unavoidable non-requested coverage visually minimal, neutral, and not styled as an added fashion item. "
+        "Every requested item must appear naturally on the person in the final image, worn or carried as appropriate. "
+        "Dress the person in the correct garment type and place each piece naturally on the body: "
+        "outerwear over tops, tops on the torso and arms, bottoms on the hips and legs, dresses as a full-body garment, "
+        "shoes on the feet, hats on the head, and accessories in the appropriate worn position. "
+        "Do not swap clothing types or place a garment on the wrong part of the body. "
+        "If shoes are provided in the references, the person must wear that exact shoe type on their feet; do not place the shoes on the floor, in the background, or as unworn props. "
+        "If identity and outfit styling ever conflict, preserve identity first while still keeping the selected garments as exact as possible. "
+        "Priority order: 1) preserve the profile photo identity, 2) match the requested outfit exactly, 3) create a realistic full-body fashion image. "
+        "Return exactly one photorealistic image with no text and no watermark."
+    )
+
+
 def _parse_gemini_json(response_json: dict) -> dict:
     candidates = response_json.get("candidates", [])
     if not candidates:
@@ -983,25 +1015,10 @@ def generate_outfitsme_image_with_gemini(
         profile_parts.append(f"age: {profile_age}")
 
     requested_items_text = "\n".join(cleaned_items) if cleaned_items else "best effort from available data"
-    prompt = (
-        "Task: create a photorealistic try-on preview of the person from the profile photo. "
-        "The first input image is the person's profile photo and is the only identity reference. "
-        "Dress that same person in the requested outfit. "
-        f"Outfit style: {str(outfit_style or 'Outfit').strip()}. "
-        "Requested outfit items in order:\n"
-        f"{requested_items_text}\n"
-        f"Profile hints: {'; '.join(profile_parts) if profile_parts else 'none'}. "
-        "If additional images are provided, treat them as outfit item reference images only. "
-        "Use them as the authoritative source for clothing or accessory design, color, texture, material, fit, silhouette, styling, and exact footwear appearance. "
-        "Every requested item must appear naturally on the person in the final image, worn or carried as appropriate. "
-        "Dress the person in the correct garment type and place each piece naturally on the body: "
-        "outerwear over tops, tops on the torso and arms, bottoms on the hips and legs, dresses as a full-body garment, "
-        "shoes on the feet, hats on the head, and accessories in the appropriate worn position. "
-        "Do not swap clothing types or place a garment on the wrong part of the body. "
-        "If shoes are provided in the references, the person must wear that exact shoe type on their feet; do not place the shoes on the floor, in the background, or as unworn props. "
-        "If identity and outfit styling ever conflict, preserve identity first while still keeping the selected garments as exact as possible. "
-        "Priority order: 1) preserve the profile photo identity, 2) match the requested outfit, 3) create a realistic full-body fashion image. "
-        "Return exactly one photorealistic image with no text and no watermark."
+    prompt = _build_outfitsme_generation_prompt(
+        outfit_style=str(outfit_style or "Outfit").strip(),
+        requested_items_text=requested_items_text,
+        profile_parts=profile_parts,
     )
 
     parts = [

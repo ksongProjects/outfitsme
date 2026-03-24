@@ -15,6 +15,38 @@ function getRequiredEnv(name: string): string {
   return value;
 }
 
+function buildTrustedOrigins(appUrl: string): string[] {
+  const candidates = [
+    appUrl,
+    process.env.APP_URL || "",
+    process.env.NEXT_PUBLIC_APP_URL || "",
+    process.env.BETTER_AUTH_URL || "",
+  ];
+  const origins = new Set<string>();
+
+  for (const candidate of candidates) {
+    const value = candidate.trim();
+    if (!value) {
+      continue;
+    }
+
+    try {
+      const parsed = new URL(value);
+      origins.add(parsed.origin);
+
+      if (parsed.hostname.startsWith("www.")) {
+        origins.add(`${parsed.protocol}//${parsed.hostname.slice(4)}${parsed.port ? `:${parsed.port}` : ""}`);
+      } else {
+        origins.add(`${parsed.protocol}//www.${parsed.hostname}${parsed.port ? `:${parsed.port}` : ""}`);
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return Array.from(origins);
+}
+
 async function ensureDefaultAppUserRows(userId: string) {
   const normalizedUserId = userId.trim();
 
@@ -66,6 +98,11 @@ function createAuth() {
         disableImplicitSignUp: false,
       },
     },
+    account: {
+      // Keep OAuth state in an encrypted cookie so sign-in start does not depend
+      // on a database write succeeding before we can redirect to Google.
+      storeStateStrategy: "cookie",
+    },
     databaseHooks: {
       user: {
         create: {
@@ -82,6 +119,7 @@ function createAuth() {
     session: {
       expiresIn: 60 * 60,
     },
+    trustedOrigins: buildTrustedOrigins(appUrl),
     baseURL: appUrl,
     basePath: "/api/auth",
     secret: authSecret,
