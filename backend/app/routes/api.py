@@ -1,53 +1,44 @@
-import requests
 import mimetypes
-from datetime import datetime, timedelta, timezone
-from time import monotonic, sleep
-from flask import Blueprint, jsonify, request
-from gotrue.errors import AuthApiError
+from datetime import datetime, timezone
+from uuid import uuid4
 
-from app.services.access_control import has_unlimited_ai_access, is_admin_role, normalize_user_role
-from app.services.analysis_jobs_service import enqueue_analysis_job_processing
+import requests
+from flask import Blueprint, jsonify, request
+
 from app.config import settings
 from app.extensions import limiter
-from app.services.gemini_service import (
-    GeminiNotConfiguredError,
-    generate_outfitsme_image_with_gemini,
-)
-from app.services.models_service import build_model_availability, get_preferred_model
-from app.services.secrets_service import SettingsEncryptionError
+from app.services.analysis_jobs_service import enqueue_analysis_job_processing
+from app.services.gemini_service import GeminiNotConfiguredError, generate_outfitsme_image_with_gemini
 from app.services.supabase_service import (
-    compose_outfit_from_items,
+    SupabaseNotConfiguredError,
+    attach_generated_image_to_outfit,
+    build_analysis_result_for_photo,
     create_analysis_job,
     create_completed_ai_job,
-    create_outfitsme_generated_outfit,
+    create_outfit_with_items,
     create_photo_record,
     delete_wardrobe_outfit,
     delete_wardrobe_outfits,
     download_photo_bytes,
-    update_wardrobe_outfit_style_label,
-    get_dashboard_stats,
     get_analysis_job_for_user,
+    get_dashboard_stats,
+    get_items_for_user,
+    get_outfit_for_generation,
     get_signed_image_url,
-    list_analysis_history,
-    get_wardrobe_photo_details,
-    get_user_model_settings,
-    get_trial_usage_snapshot,
-    list_user_items,
-    SupabaseNotConfiguredError,
-    get_user_created_at_from_token,
-    get_user_id_from_token,
-    get_user_analysis_job_count_since,
-    get_user_monthly_composed_outfit_count,
     get_user_cost_summary,
-    get_user_generated_image_count_since,
-    save_user_profile_photo,
-    attach_ai_usage_to_outfit_analysis,
-    attach_generated_image_to_outfit,
-    save_generated_outfit_image,
+    get_user_id_from_token,
+    get_user_model_settings,
+    list_analysis_history,
+    list_user_items,
     list_wardrobe,
+    save_generated_outfit_image,
+    save_user_profile_photo,
+    update_wardrobe_outfit_style_label,
     upsert_user_model_settings,
     upload_photo_for_user,
+    get_wardrobe_photo_details,
 )
+
 
 api_bp = Blueprint("api", __name__)
 
@@ -70,37 +61,6 @@ def _rate_limit_key() -> str:
         return request.remote_addr or "anonymous"
 
 
-def _current_month_window_utc() -> tuple[str, str]:
-    now = datetime.now(timezone.utc)
-    month_start_dt = datetime(now.year, now.month, 1, tzinfo=timezone.utc)
-    if now.month == 12:
-        next_month_start_dt = datetime(now.year + 1, 1, 1, tzinfo=timezone.utc)
-    else:
-        next_month_start_dt = datetime(now.year, now.month + 1, 1, tzinfo=timezone.utc)
-    return month_start_dt.isoformat(), next_month_start_dt.isoformat()
-
-
-def _parse_iso_datetime(value: str | None) -> datetime | None:
-    raw = str(value or "").strip()
-    if not raw:
-        return None
-    normalized = raw.replace("Z", "+00:00")
-    try:
-        parsed = datetime.fromisoformat(normalized)
-    except ValueError:
-        return None
-    if parsed.tzinfo is None:
-        return parsed.replace(tzinfo=timezone.utc)
-    return parsed.astimezone(timezone.utc)
-
-
-def _current_day_window_utc() -> tuple[str, str, datetime]:
-    now = datetime.now(timezone.utc)
-    day_start_dt = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
-    next_day_start_dt = day_start_dt + timedelta(days=1)
-    return day_start_dt.isoformat(), next_day_start_dt.isoformat(), now
-
-
 def _parse_pagination_params(default_page_size: int = 20, max_page_size: int = 25) -> tuple[int, int]:
     page_raw = request.args.get("page", "1")
     page_size_raw = request.args.get("page_size", str(default_page_size))
@@ -116,579 +76,340 @@ def _parse_pagination_params(default_page_size: int = 20, max_page_size: int = 2
     return page, page_size
 
 
-def _build_trial_usage(user_id: str, access_token: str) -> dict:
-    day_start_iso, next_day_start_iso, _ = _current_day_window_utc()
-    usage_snapshot = get_trial_usage_snapshot(user_id, day_start_iso) or {}
-    user_role = normalize_user_role(usage_snapshot.get("user_role"))
-    if not user_role:
-        user_settings = get_user_model_settings(user_id)
-        user_role = normalize_user_role(user_settings.get("user_role"))
-    if has_unlimited_ai_access(user_role):
-        return {
-            "user_role": user_role,
-            "trial_active": False,
-            "trial_started_at_utc": None,
-            "trial_ends_at_utc": None,
-            "trial_days_total": settings.TRIAL_DAYS,
-            "trial_days_remaining": None,
-            "daily_limit": None,
-            "used_today": 0,
-            "remaining_today": None,
-            "today_window_start_utc": None,
-            "next_reset_utc": None,
-            "analysis_actions_today": 0,
-            "outfit_generations_today": 0,
-            "access_mode": "unlimited"
-        }
-
-    created_at = _parse_iso_datetime(str(usage_snapshot.get("user_created_at") or ""))
-    if created_at is None:
-        created_at = _parse_iso_datetime(get_user_created_at_from_token(access_token))
-    if created_at is None:
-        created_at = datetime.now(timezone.utc)
-
+def _month_start_utc() -> str:
     now = datetime.now(timezone.utc)
-    trial_ends_at = created_at + timedelta(days=max(settings.TRIAL_DAYS, 0))
-    trial_active = now < trial_ends_at if settings.TRIAL_DAYS > 0 else False
-    analysis_actions = int(usage_snapshot.get("analysis_actions_today") or 0)
-    outfit_generation_actions = int(usage_snapshot.get("outfit_generations_today") or 0)
-    if not usage_snapshot:
-        analysis_actions = get_user_analysis_job_count_since(
-            user_id,
-            day_start_iso,
-            statuses=["completed"]
-        )
-        outfit_generation_actions = get_user_generated_image_count_since(user_id, day_start_iso, "outfits")
-    used_today = analysis_actions + outfit_generation_actions
-    daily_limit = max(settings.TRIAL_DAILY_AI_ACTION_LIMIT, 0)
-    remaining_today = None if daily_limit <= 0 else max(daily_limit - used_today, 0)
-    days_remaining = max((trial_ends_at.date() - now.date()).days, 0) if trial_active else 0
-    return {
-        "user_role": user_role,
-        "trial_active": trial_active,
-        "trial_started_at_utc": created_at.isoformat(),
-        "trial_ends_at_utc": trial_ends_at.isoformat(),
-        "trial_days_total": settings.TRIAL_DAYS,
-        "trial_days_remaining": days_remaining,
-        "daily_limit": daily_limit,
-        "used_today": used_today,
-        "remaining_today": remaining_today,
-        "today_window_start_utc": day_start_iso,
-        "next_reset_utc": next_day_start_iso,
-        "analysis_actions_today": analysis_actions,
-        "outfit_generations_today": outfit_generation_actions,
-        "access_mode": "trial"
-    }
+    return datetime(now.year, now.month, 1, tzinfo=timezone.utc).isoformat()
 
 
-def _trial_limit_response(usage: dict) -> tuple[dict, int]:
-    if not usage.get("trial_active"):
-        return (
-            {
-                "error": "Your 14-day trial has ended.",
-                **usage
-            },
-            403
-        )
-    return (
-        {
-            "error": "Daily trial limit reached.",
-            **usage
-        },
-        429
-    )
+def _require_user() -> tuple[str | None, tuple[dict, int] | None]:
+    access_token = _extract_access_token()
+    if not access_token:
+        return None, ({"error": "Missing bearer token."}, 401)
+    user_id = get_user_id_from_token(access_token)
+    if not user_id:
+        return None, ({"error": "Invalid or expired token."}, 401)
+    return user_id, None
+
+
+def _load_profile_photo_inputs(user_id: str) -> tuple[dict, bytes, str]:
+    user_settings = get_user_model_settings(user_id)
+    profile_photo_path = str(user_settings.get("profile_photo_path") or "").strip()
+    if not profile_photo_path:
+        raise ValueError("Profile photo is required before generating outfit previews.")
+
+    profile_photo_bytes = download_photo_bytes(profile_photo_path)
+    if not profile_photo_bytes:
+        raise ValueError("Profile photo could not be loaded. Please upload it again.")
+
+    profile_photo_mime = mimetypes.guess_type(profile_photo_path)[0] or "image/jpeg"
+    return user_settings, profile_photo_bytes, profile_photo_mime
+
+
+def _load_item_reference_images(items: list[dict]) -> tuple[list[tuple[bytes, str]], list[str]]:
+    reference_images: list[tuple[bytes, str]] = []
+    missing_items: list[str] = []
+    for item in items:
+        image_path = str(item.get("image_path") or "").strip()
+        if not image_path:
+            missing_items.append(str(item.get("name") or "Unnamed item"))
+            continue
+        image_bytes = download_photo_bytes(image_path)
+        if not image_bytes:
+            missing_items.append(str(item.get("name") or "Unnamed item"))
+            continue
+        reference_images.append((image_bytes, mimetypes.guess_type(image_path)[0] or "image/jpeg"))
+    return reference_images, missing_items
 
 
 @api_bp.post("/analyze")
 @limiter.limit("5 per minute", key_func=_rate_limit_key)
 def analyze_outfit():
-    access_token = _extract_access_token()
-    if not access_token:
-        return jsonify({"error": "Missing bearer token."}), 401
+    user_id, error = _require_user()
+    if error:
+        return jsonify(error[0]), error[1]
 
     image = request.files.get("image")
-
     if image is None or image.filename == "":
         return jsonify({"error": "Image file is required."}), 400
+    if not settings.GEMINI_API_KEY:
+        return jsonify({"error": "Outfit analysis is temporarily unavailable."}), 503
 
     try:
-        user_id = get_user_id_from_token(access_token)
-        if not user_id:
-            return jsonify({"error": "Invalid or expired token."}), 401
-
-        usage = _build_trial_usage(user_id, access_token)
-        if usage.get("access_mode") == "trial" and not usage["trial_active"]:
-            payload, status_code = _trial_limit_response(usage)
-            return jsonify(payload), status_code
-        if usage.get("access_mode") == "trial" and usage["daily_limit"] > 0 and usage["used_today"] >= usage["daily_limit"]:
-            payload, status_code = _trial_limit_response(usage)
-            return jsonify(payload), status_code
-
-        image_bytes = image.read()
-        if not image_bytes:
-            return jsonify({"error": "Image file is empty."}), 400
-
-        mime_type = image.mimetype or "image/jpeg"
-
-        requested_model = (request.form.get("analysis_model") or "").strip()
-        user_settings = get_user_model_settings(user_id)
-        available_models = build_model_availability(user_settings)
-        chosen_model_id = requested_model or get_preferred_model(user_settings)
-        model_entry = next((model for model in available_models if model["id"] == chosen_model_id), None)
-        if not model_entry:
-            return jsonify({"error": f"Unknown analysis model: {chosen_model_id}"}), 400
-        if not model_entry.get("available"):
-            return jsonify({"error": model_entry.get("unavailable_reason") or "Selected model is unavailable."}), 400
-
-        image.stream.seek(0)
         storage_path = upload_photo_for_user(image, user_id)
         photo_row = create_photo_record(user_id, storage_path)
-        job_row = create_analysis_job(
-            user_id,
-            photo_id=photo_row["id"],
-            storage_path=storage_path,
-            mime_type=mime_type,
-            analysis_model=chosen_model_id
-        )
-        enqueue_analysis_job_processing(job_row["id"])
-
+        model_used = (request.form.get("analysis_model") or settings.GEMINI_MODEL).strip() or settings.GEMINI_MODEL
+        job_row = create_analysis_job(user_id, photo_id=str(photo_row["id"]), model_used=model_used)
+        enqueue_analysis_job_processing(str(job_row["id"]))
         return jsonify(
             {
                 "job_id": job_row["id"],
-                "status": job_row.get("status", "queued"),
-                "analysis_model": chosen_model_id,
+                "status": job_row.get("status", "pending"),
+                "analysis_model": job_row.get("model_used") or model_used,
                 "photo_id": photo_row["id"],
-                "created_at": job_row.get("created_at")
+                "created_at": job_row.get("created_at"),
             }
         ), 202
     except SupabaseNotConfiguredError as exc:
         return jsonify({"error": str(exc)}), 500
     except GeminiNotConfiguredError as exc:
         return jsonify({"error": str(exc)}), 500
-    except SettingsEncryptionError as exc:
-        return jsonify({"error": str(exc)}), 500
     except requests.HTTPError as exc:
-        error_text = str(exc)
-        if "Unable to process input image" in error_text:
-            return (
-                jsonify(
-                    {
-                        "error": (
-                            "We couldn't process this image. It may be corrupted or unsupported. "
-                            "Please try another JPG, PNG, or WEBP file."
-                        )
-                    }
-                ),
-                400
-            )
-        if "429" in error_text or "quota" in error_text.lower():
-            return jsonify({"error": "AI service quota/rate limit reached. Please try again shortly."}), 429
         return jsonify({"error": f"Model request failed: {exc}"}), 502
     except ValueError as exc:
-        return jsonify({"error": f"Model response parse failed: {exc}"}), 502
-    except AuthApiError:
-        return jsonify({"error": "Invalid or expired token."}), 401
+        return jsonify({"error": str(exc)}), 400
     except Exception as exc:  # noqa: BLE001
         return jsonify({"error": f"Analyze failed: {exc}"}), 500
 
 
 @api_bp.get("/analyze/jobs/<job_id>")
 def get_analyze_job(job_id: str):
-    access_token = _extract_access_token()
-    if not access_token:
-        return jsonify({"error": "Missing bearer token."}), 401
+    user_id, error = _require_user()
+    if error:
+        return jsonify(error[0]), error[1]
 
     try:
-        user_id = get_user_id_from_token(access_token)
-        if not user_id:
-            return jsonify({"error": "Invalid or expired token."}), 401
+        job_row = get_analysis_job_for_user(user_id, job_id)
+        if not job_row:
+            return jsonify({"error": "Job not found."}), 404
 
-        wait_seconds_raw = request.args.get("wait_seconds", "0")
-        try:
-            wait_seconds = int(wait_seconds_raw)
-        except ValueError:
-            wait_seconds = 0
-        wait_seconds = max(0, min(wait_seconds, 20))
+        result = None
+        if job_row.get("status") == "completed" and job_row.get("job_type") == "analysis" and job_row.get("photo_id"):
+            result = build_analysis_result_for_photo(user_id, str(job_row["photo_id"]))
 
-        deadline = monotonic() + wait_seconds
-        job_row = None
-        while True:
-            job_row = get_analysis_job_for_user(user_id, job_id)
-            if not job_row:
-                return jsonify({"error": "Job not found."}), 404
-            if job_row.get("status") == "queued":
-                enqueue_analysis_job_processing(job_id)
-            if job_row.get("status") in {"completed", "failed"}:
-                break
-            if monotonic() >= deadline:
-                break
-            sleep(1)
-
+        updated_at = job_row.get("completed_at") or job_row.get("created_at")
         return jsonify(
             {
                 "job_id": job_row.get("id"),
                 "status": job_row.get("status"),
                 "error_message": job_row.get("error_message"),
-                "result": job_row.get("result_json"),
+                "result": result,
                 "created_at": job_row.get("created_at"),
-                "started_at": job_row.get("started_at"),
                 "completed_at": job_row.get("completed_at"),
-                "updated_at": job_row.get("updated_at")
+                "updated_at": updated_at,
             }
         ), 200
     except SupabaseNotConfiguredError as exc:
         return jsonify({"error": str(exc)}), 500
-    except AuthApiError:
-        return jsonify({"error": "Invalid or expired token."}), 401
     except Exception as exc:  # noqa: BLE001
         return jsonify({"error": f"Analyze job lookup failed: {exc}"}), 500
 
 
 @api_bp.post("/similar")
 def find_similar_items():
-    access_token = _extract_access_token()
-    if not access_token:
-        return jsonify({"error": "Missing bearer token."}), 401
+    user_id, error = _require_user()
+    if error:
+        return jsonify(error[0]), error[1]
 
     payload = request.get_json(silent=True) or {}
+    if not isinstance(payload, dict):
+        return jsonify({"error": "Invalid payload."}), 400
     items = payload.get("items", [])
-
     if not isinstance(items, list):
         return jsonify({"error": "items must be a list."}), 400
 
-    try:
-        user_id = get_user_id_from_token(access_token)
-        if not user_id:
-            return jsonify({"error": "Invalid or expired token."}), 401
-    except SupabaseNotConfiguredError as exc:
-        return jsonify({"error": str(exc)}), 500
-    except AuthApiError:
-        return jsonify({"error": "Invalid or expired token."}), 401
-
     results = []
     for item in items:
-        item_name = item.get("name", "Unknown item")
         results.append(
             {
-                "item": item_name,
+                "item": str((item or {}).get("name") or "Unknown item"),
                 "store": "Example Fashion Store",
                 "price": "$49.99",
                 "availability": "In stock",
-                "delivery_timeline": "3-5 business days"
+                "delivery_timeline": "3-5 business days",
             }
         )
-
     return jsonify({"user_id": user_id, "results": results}), 200
 
 
 @api_bp.post("/outfits/compose")
 def compose_outfit():
-    access_token = _extract_access_token()
-    if not access_token:
-        return jsonify({"error": "Missing bearer token."}), 401
+    user_id, error = _require_user()
+    if error:
+        return jsonify(error[0]), error[1]
 
     payload = request.get_json(silent=True) or {}
     if not isinstance(payload, dict):
         return jsonify({"error": "Invalid payload."}), 400
-
     item_ids = payload.get("item_ids", [])
-    style_label = payload.get("style_label", "Composed outfit")
-    if not isinstance(item_ids, list):
-        return jsonify({"error": "item_ids must be a list."}), 400
+    style_label = str(payload.get("style_label") or "Composed outfit")
+    if not isinstance(item_ids, list) or not item_ids:
+        return jsonify({"error": "item_ids must be a non-empty list."}), 400
+    if not settings.GEMINI_API_KEY:
+        return jsonify({"error": "Outfit generation is temporarily unavailable."}), 503
 
     try:
-        user_id = get_user_id_from_token(access_token)
-        if not user_id:
-            return jsonify({"error": "Invalid or expired token."}), 401
+        items = get_items_for_user(user_id, [str(item_id) for item_id in item_ids])
+        if len(items) != len(item_ids):
+            return jsonify({"error": "One or more items could not be found."}), 404
 
-        user_settings = get_user_model_settings(user_id)
-        if not bool(user_settings.get("enable_outfit_image_generation")):
-            return jsonify(
-                {
-                    "error": (
-                        "Outfit image generation is off. Enable it in "
-                        "Settings > Features after confirming Google billing is enabled."
-                    )
-                }
-            ), 400
-
-        # Check monthly limit for non-premium users
-        if not has_unlimited_ai_access(user_settings.get("user_role")):
-            month_start_iso, _ = _current_month_window_utc()
-            monthly_custom_outfit_count = get_user_monthly_composed_outfit_count(user_id, month_start_iso)
-            if monthly_custom_outfit_count >= settings.MONTHLY_CUSTOM_OUTFIT_LIMIT:
-                return jsonify(
-                    {
-                        "error": "Monthly custom outfit generation limit reached.",
-                        "monthly_limit": settings.MONTHLY_CUSTOM_OUTFIT_LIMIT,
-                        "used_this_month": monthly_custom_outfit_count,
-                        "remaining_this_month": 0
-                    }
-                ), 429
-
-        profile_photo_path = str(user_settings.get("profile_photo_path") or "").strip()
-        if not profile_photo_path:
-            return jsonify({"error": "Profile photo is required to create a custom outfit preview."}), 400
-
-        if not settings.GEMINI_API_KEY:
-            return jsonify({"error": "OutfitsMe generation is temporarily unavailable."}), 503
-
-        reference_photo_bytes = download_photo_bytes(profile_photo_path)
-        if not reference_photo_bytes:
-            return jsonify({"error": "Profile photo could not be loaded. Please upload it again."}), 400
-        reference_mime_type = mimetypes.guess_type(profile_photo_path)[0] or "image/jpeg"
-
-        result = compose_outfit_from_items(user_id, item_ids=item_ids, style_label=style_label)
-        item_reference_images: list[tuple[bytes, str]] = []
-        seen_item_paths: set[str] = set()
-        for item in (result.get("items") or []):
-            if not isinstance(item, dict):
-                continue
-            image_path = str(item.get("image_path") or "").strip()
-            if not image_path or image_path in seen_item_paths:
-                continue
-            seen_item_paths.add(image_path)
-            item_image_bytes = download_photo_bytes(image_path)
-            if not item_image_bytes:
-                continue
-            item_reference_images.append(
-                (
-                    item_image_bytes,
-                    mimetypes.guess_type(image_path)[0] or "image/jpeg",
-                )
-            )
+        user_settings, profile_photo_bytes, profile_photo_mime = _load_profile_photo_inputs(user_id)
+        reference_images, missing_items = _load_item_reference_images(items)
+        if missing_items:
+            return jsonify({"error": f"Missing item images for: {', '.join(missing_items)}"}), 400
 
         generated_data_uri, usage_summary = generate_outfitsme_image_with_gemini(
-            reference_image_bytes=reference_photo_bytes,
-            reference_mime_type=reference_mime_type,
-            outfit_style=result.get("style_label") or style_label or "Composed outfit",
-            outfit_items=result.get("items") or [],
-            outfit_item_reference_images=item_reference_images,
+            reference_image_bytes=profile_photo_bytes,
+            reference_mime_type=profile_photo_mime,
+            outfit_style=style_label,
+            outfit_items=items,
+            outfit_item_reference_images=reference_images,
             profile_gender=user_settings.get("profile_gender"),
             profile_age=user_settings.get("profile_age"),
-            return_usage=True
+            return_usage=True,
         )
         if not generated_data_uri:
-            return jsonify({"error": "Custom outfit preview generation returned no image."}), 502
+            return jsonify({"error": "Outfit generation returned no image."}), 502
 
-        if generated_data_uri and result.get("outfit_id"):
-            stored = save_generated_outfit_image(
-                user_id,
-                str(result.get("outfit_id")),
-                generated_data_uri
-            )
-            attach_generated_image_to_outfit(
-                user_id,
-                str(result.get("outfit_id")),
-                stored.get("storage_path") or ""
-            )
-            if result.get("analysis_id"):
-                attach_ai_usage_to_outfit_analysis(
-                    user_id,
-                    str(result.get("analysis_id") or ""),
-                    usage_summary=usage_summary,
-                    generated_storage_path=stored.get("storage_path") or ""
-                )
-            result["image_url"] = stored.get("image_url")
-            result["image_storage_path"] = stored.get("storage_path")
-            result["ai_usage"] = usage_summary
-            usage_model = (
-                usage_summary.get("model")
-                if isinstance(usage_summary, dict)
-                else ""
-            )
-            create_completed_ai_job(
-                user_id,
-                photo_id=str(result.get("photo_id") or ""),
-                storage_path=str(stored.get("storage_path") or ""),
-                mime_type=str(stored.get("content_type") or "image/png"),
-                analysis_model=str(
-                    usage_model
-                    or settings.GEMINI_IMAGE_MODEL
-                    or settings.DEFAULT_ANALYSIS_MODEL
-                ),
-                job_type="custom_outfit",
-                result_json={
-                    "style_label": result.get("style_label") or style_label or "Composed outfit",
-                    "analysis_id": result.get("analysis_id"),
-                    "outfit_id": result.get("outfit_id"),
-                },
-            )
-
-        return jsonify({"user_id": user_id, **result}), 200
+        stored = save_generated_outfit_image(user_id, uuid4().hex, generated_data_uri)
+        photo_row = create_photo_record(user_id, str(stored["storage_path"]))
+        job_row = create_completed_ai_job(
+            user_id,
+            photo_id=str(photo_row["id"]),
+            model_used=str((usage_summary or {}).get("model") or settings.GEMINI_IMAGE_MODEL),
+            job_type="try_on",
+            tokens_input=int((usage_summary or {}).get("input_tokens") or 0),
+            tokens_output=int((usage_summary or {}).get("output_tokens") or 0),
+        )
+        outfit_row = create_outfit_with_items(
+            user_id,
+            photo_id=str(photo_row["id"]),
+            style_label=style_label,
+            item_ids=[str(item["id"]) for item in items],
+            job_id=str(job_row["id"]),
+            generated_image_path=str(stored["storage_path"]),
+        )
+        return jsonify(
+            {
+                "photo_id": photo_row["id"],
+                "outfit_id": outfit_row["id"],
+                "style_label": outfit_row.get("style_label"),
+                "image_url": stored.get("image_url"),
+                "image_storage_path": stored.get("storage_path"),
+                "ai_usage": usage_summary or {},
+            }
+        ), 200
+    except (SupabaseNotConfiguredError, GeminiNotConfiguredError) as exc:
+        return jsonify({"error": str(exc)}), 500
+    except requests.HTTPError as exc:
+        return jsonify({"error": f"Outfit generation failed: {exc}"}), 502
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
-    except SupabaseNotConfiguredError as exc:
-        return jsonify({"error": str(exc)}), 500
-    except AuthApiError:
-        return jsonify({"error": "Invalid or expired token."}), 401
     except Exception as exc:  # noqa: BLE001
-        return jsonify({"error": f"Compose outfit failed: {exc}"}), 500
+        return jsonify({"error": f"Outfit compose failed: {exc}"}), 500
 
 
 @api_bp.get("/wardrobe")
 def get_wardrobe():
-    access_token = _extract_access_token()
-    if not access_token:
-        return jsonify({"error": "Missing bearer token."}), 401
+    user_id, error = _require_user()
+    if error:
+        return jsonify(error[0]), error[1]
 
     try:
-        user_id = get_user_id_from_token(access_token)
-        if not user_id:
-            return jsonify({"error": "Invalid or expired token."}), 401
-
         page, page_size = _parse_pagination_params()
         wardrobe = list_wardrobe(user_id, limit=page_size + 1, offset=(page - 1) * page_size)
         has_more = len(wardrobe) > page_size
-        return jsonify(
-            {
-                "user_id": user_id,
-                "wardrobe": wardrobe[:page_size],
-                "page": page,
-                "page_size": page_size,
-                "has_more": has_more
-            }
-        ), 200
+        return jsonify({"wardrobe": wardrobe[:page_size], "page": page, "page_size": page_size, "has_more": has_more}), 200
     except SupabaseNotConfiguredError as exc:
         return jsonify({"error": str(exc)}), 500
-    except AuthApiError:
-        return jsonify({"error": "Invalid or expired token."}), 401
     except Exception as exc:  # noqa: BLE001
         return jsonify({"error": f"Wardrobe lookup failed: {exc}"}), 500
 
 
 @api_bp.get("/history")
 def get_history():
-    access_token = _extract_access_token()
-    if not access_token:
-        return jsonify({"error": "Missing bearer token."}), 401
+    user_id, error = _require_user()
+    if error:
+        return jsonify(error[0]), error[1]
 
     try:
-        user_id = get_user_id_from_token(access_token)
-        if not user_id:
-            return jsonify({"error": "Invalid or expired token."}), 401
-
         history = list_analysis_history(user_id)
-        return jsonify({"user_id": user_id, "history": history}), 200
+        return jsonify({"history": history}), 200
     except SupabaseNotConfiguredError as exc:
         return jsonify({"error": str(exc)}), 500
-    except AuthApiError:
-        return jsonify({"error": "Invalid or expired token."}), 401
     except Exception as exc:  # noqa: BLE001
         return jsonify({"error": f"History lookup failed: {exc}"}), 500
 
 
 @api_bp.route("/delete-wardrobe", methods=["DELETE"])
 def delete_wardrobe_entries():
-    access_token = _extract_access_token()
-    if not access_token:
-        return jsonify({"error": "Missing bearer token."}), 401
+    user_id, error = _require_user()
+    if error:
+        return jsonify(error[0]), error[1]
 
     payload = request.get_json(silent=True) or {}
     outfit_ids = payload.get("outfit_ids", [])
-    if not isinstance(outfit_ids, list) or not outfit_ids:
-        return jsonify({"error": "outfit_ids must be a non-empty array."}), 400
+    if not isinstance(outfit_ids, list):
+        return jsonify({"error": "outfit_ids must be a list."}), 400
 
     try:
-        user_id = get_user_id_from_token(access_token)
-        if not user_id:
-            return jsonify({"error": "Invalid or expired token."}), 401
-
-        result = delete_wardrobe_outfits(user_id, outfit_ids)
+        result = delete_wardrobe_outfits(user_id, [str(outfit_id) for outfit_id in outfit_ids])
         return jsonify(result), 200
     except SupabaseNotConfiguredError as exc:
         return jsonify({"error": str(exc)}), 500
-    except AuthApiError:
-        return jsonify({"error": "Invalid or expired token."}), 401
     except Exception as exc:  # noqa: BLE001
-        return jsonify({"error": f"Bulk wardrobe delete failed: {exc}"}), 500
+        return jsonify({"error": f"Wardrobe bulk delete failed: {exc}"}), 500
 
 
 @api_bp.delete("/wardrobe/<outfit_id>")
 def delete_wardrobe_entry(outfit_id: str):
-    access_token = _extract_access_token()
-    if not access_token:
-        return jsonify({"error": "Missing bearer token."}), 401
+    user_id, error = _require_user()
+    if error:
+        return jsonify(error[0]), error[1]
 
     try:
-        user_id = get_user_id_from_token(access_token)
-        if not user_id:
-            return jsonify({"error": "Invalid or expired token."}), 401
-
         deleted = delete_wardrobe_outfit(user_id, outfit_id)
         if not deleted:
             return jsonify({"error": "Wardrobe item not found."}), 404
-
         return jsonify({"deleted": True, "outfit_id": outfit_id}), 200
     except SupabaseNotConfiguredError as exc:
         return jsonify({"error": str(exc)}), 500
-    except AuthApiError:
-        return jsonify({"error": "Invalid or expired token."}), 401
     except Exception as exc:  # noqa: BLE001
         return jsonify({"error": f"Wardrobe delete failed: {exc}"}), 500
 
 
 @api_bp.put("/wardrobe/<outfit_id>")
 def update_wardrobe_entry(outfit_id: str):
-    access_token = _extract_access_token()
-    if not access_token:
-        return jsonify({"error": "Missing bearer token."}), 401
+    user_id, error = _require_user()
+    if error:
+        return jsonify(error[0]), error[1]
 
     payload = request.get_json(silent=True) or {}
-    style_label = payload.get("style_label", "")
-    if not str(style_label or "").strip():
+    style_label = str(payload.get("style_label") or "").strip()
+    if not style_label:
         return jsonify({"error": "style_label is required."}), 400
 
     try:
-        user_id = get_user_id_from_token(access_token)
-        if not user_id:
-            return jsonify({"error": "Invalid or expired token."}), 401
-
         updated = update_wardrobe_outfit_style_label(user_id, outfit_id, style_label)
         if not updated:
             return jsonify({"error": "Wardrobe item not found."}), 404
-
         return jsonify({"updated": True, "outfit": updated}), 200
     except SupabaseNotConfiguredError as exc:
         return jsonify({"error": str(exc)}), 500
-    except AuthApiError:
-        return jsonify({"error": "Invalid or expired token."}), 401
     except Exception as exc:  # noqa: BLE001
         return jsonify({"error": f"Wardrobe update failed: {exc}"}), 500
 
 
 @api_bp.get("/wardrobe/<photo_id>/details")
 def get_wardrobe_details(photo_id: str):
-    access_token = _extract_access_token()
-    if not access_token:
-        return jsonify({"error": "Missing bearer token."}), 401
+    user_id, error = _require_user()
+    if error:
+        return jsonify(error[0]), error[1]
+
+    outfit_index_raw = request.args.get("outfit_index")
+    outfit_index = None
+    if outfit_index_raw not in {None, ""}:
+        try:
+            outfit_index = int(outfit_index_raw)
+        except ValueError:
+            return jsonify({"error": "outfit_index must be an integer."}), 400
 
     try:
-        user_id = get_user_id_from_token(access_token)
-        if not user_id:
-            return jsonify({"error": "Invalid or expired token."}), 401
-
-        outfit_index_raw = request.args.get("outfit_index")
-        outfit_index = None
-        if outfit_index_raw is not None and outfit_index_raw != "":
-            outfit_index = int(outfit_index_raw)
-            if outfit_index < 0:
-                return jsonify({"error": "outfit_index must be >= 0"}), 400
-
         details = get_wardrobe_photo_details(user_id, photo_id, outfit_index=outfit_index)
         if not details:
             return jsonify({"error": "Outfit details not found."}), 404
-
-        if outfit_index is not None and details.get("selected_outfit") is None:
-            return jsonify({"error": "Requested outfit index not found for this photo."}), 404
-
         return jsonify({"photo_id": photo_id, "details": details}), 200
-    except ValueError:
-        return jsonify({"error": "outfit_index must be an integer."}), 400
     except SupabaseNotConfiguredError as exc:
         return jsonify({"error": str(exc)}), 500
-    except AuthApiError:
-        return jsonify({"error": "Invalid or expired token."}), 401
     except Exception as exc:  # noqa: BLE001
         return jsonify({"error": f"Wardrobe details lookup failed: {exc}"}), 500
 
@@ -696,135 +417,54 @@ def get_wardrobe_details(photo_id: str):
 @api_bp.post("/wardrobe/<photo_id>/outfitsme")
 @limiter.limit("3 per minute", key_func=_rate_limit_key)
 def generate_outfitsme_preview(photo_id: str):
-    access_token = _extract_access_token()
-    if not access_token:
-        return jsonify({"error": "Missing bearer token."}), 401
+    user_id, error = _require_user()
+    if error:
+        return jsonify(error[0]), error[1]
 
     payload = request.get_json(silent=True) or {}
+    if not isinstance(payload, dict):
+        return jsonify({"error": "Invalid payload."}), 400
     outfit_index_raw = payload.get("outfit_index")
+    try:
+        outfit_index = int(outfit_index_raw) if outfit_index_raw not in {None, ""} else None
+    except (TypeError, ValueError):
+        return jsonify({"error": "outfit_index must be an integer."}), 400
+    if not settings.GEMINI_API_KEY:
+        return jsonify({"error": "Outfit generation is temporarily unavailable."}), 503
 
     try:
-        user_id = get_user_id_from_token(access_token)
-        if not user_id:
-            return jsonify({"error": "Invalid or expired token."}), 401
-
-        outfit_index = None
-        if outfit_index_raw is not None and str(outfit_index_raw).strip() != "":
-            outfit_index = int(outfit_index_raw)
-            if outfit_index < 0:
-                return jsonify({"error": "outfit_index must be >= 0"}), 400
-
-        details = get_wardrobe_photo_details(user_id, photo_id, outfit_index=outfit_index)
-        selected_outfit = details.get("selected_outfit") if isinstance(details, dict) else None
-        if not details or not selected_outfit:
+        selection = get_outfit_for_generation(user_id, photo_id, outfit_index=outfit_index)
+        if not selection:
             return jsonify({"error": "Outfit details not found."}), 404
 
-        user_settings = get_user_model_settings(user_id)
-        if not bool(user_settings.get("enable_outfit_image_generation")):
-            return jsonify(
-                {
-                    "error": (
-                        "OutfitsMe image generation is disabled. Enable it in "
-                        "Settings > Features after confirming Google billing is enabled."
-                    )
-                }
-            ), 400
-        profile_photo_path = str(user_settings.get("profile_photo_path") or "").strip()
-        if not profile_photo_path:
-            return jsonify({"error": "Reference photo is required. Upload one in Settings > Profile to use OutfitsMe."}), 400
+        selected_outfit = selection["outfit"]
+        user_settings, profile_photo_bytes, profile_photo_mime = _load_profile_photo_inputs(user_id)
+        reference_images, missing_items = _load_item_reference_images(selected_outfit.get("items") or [])
+        if missing_items:
+            return jsonify({"error": f"Missing item images for: {', '.join(missing_items)}"}), 400
 
-        reference_photo_bytes = download_photo_bytes(profile_photo_path)
-        if not reference_photo_bytes:
-            return jsonify({"error": "Reference photo could not be loaded. Please upload it again."}), 400
-        reference_mime_type = mimetypes.guess_type(profile_photo_path)[0] or "image/jpeg"
-
-        usage = _build_trial_usage(user_id, access_token)
-        if usage.get("access_mode") == "trial" and not usage["trial_active"]:
-            payload, status_code = _trial_limit_response(usage)
-            return jsonify(payload), status_code
-        if usage.get("access_mode") == "trial" and usage["daily_limit"] > 0 and usage["used_today"] >= usage["daily_limit"]:
-            payload, status_code = _trial_limit_response(usage)
-            return jsonify(payload), status_code
-
-        item_reference_images: list[tuple[bytes, str]] = []
-        seen_item_paths: set[str] = set()
-        for item in (selected_outfit.get("items") or []):
-            if not isinstance(item, dict):
-                continue
-            image_path = str(item.get("image_path") or "").strip()
-            if not image_path or image_path in seen_item_paths:
-                continue
-            seen_item_paths.add(image_path)
-            item_image_bytes = download_photo_bytes(image_path)
-            if not item_image_bytes:
-                continue
-            item_reference_images.append(
-                (
-                    item_image_bytes,
-                    mimetypes.guess_type(image_path)[0] or "image/jpeg",
-                )
-            )
-
-        if not settings.GEMINI_API_KEY:
-            return jsonify(
-                {
-                    "error": "OutfitsMe generation is temporarily unavailable."
-                }
-            ), 503
         generated_data_uri, usage_summary = generate_outfitsme_image_with_gemini(
-            reference_image_bytes=reference_photo_bytes,
-            reference_mime_type=reference_mime_type,
-            outfit_style=selected_outfit.get("style") or "Outfit",
+            reference_image_bytes=profile_photo_bytes,
+            reference_mime_type=profile_photo_mime,
+            outfit_style=str(selected_outfit.get("style") or "Outfit"),
             outfit_items=selected_outfit.get("items") or [],
-            outfit_item_reference_images=item_reference_images,
+            outfit_item_reference_images=reference_images,
             profile_gender=user_settings.get("profile_gender"),
             profile_age=user_settings.get("profile_age"),
-            return_usage=True
+            return_usage=True,
         )
         if not generated_data_uri:
-            return jsonify({"error": "OutfitsMe generation returned no image."}), 502
+            return jsonify({"error": "Outfit generation returned no image."}), 502
 
-        outfit_row_id = selected_outfit.get("outfit_id") or f"{photo_id}-{selected_outfit.get('outfit_index', 0)}"
-        stored = save_generated_outfit_image(user_id, str(outfit_row_id), generated_data_uri)
-        source_outfit_id = str(selected_outfit.get("outfit_id")) if selected_outfit.get("outfit_id") else None
-        if selected_outfit.get("outfit_id"):
-            attach_generated_image_to_outfit(
-                user_id,
-                str(selected_outfit.get("outfit_id")),
-                stored.get("storage_path") or ""
-            )
-        generated_entry = create_outfitsme_generated_outfit(
-            user_id,
-            source_photo_id=photo_id,
-            source_outfit_id=source_outfit_id,
-            source_outfit_index=int(selected_outfit.get("outfit_index") or 0),
-            style_label=selected_outfit.get("style") or "Outfit",
-            items=selected_outfit.get("items") or [],
-            generated_storage_path=stored.get("storage_path") or "",
-            usage_summary=usage_summary
-        )
-        usage_model = (
-            usage_summary.get("model")
-            if isinstance(usage_summary, dict)
-            else ""
-        )
+        stored = save_generated_outfit_image(user_id, str(selected_outfit["outfit_id"]), generated_data_uri)
+        attach_generated_image_to_outfit(user_id, str(selected_outfit["outfit_id"]), str(stored["storage_path"]))
         create_completed_ai_job(
             user_id,
-            photo_id=str(generated_entry.get("photo_id") or photo_id),
-            storage_path=str(stored.get("storage_path") or ""),
-            mime_type=str(stored.get("content_type") or "image/png"),
-            analysis_model=str(
-                usage_model
-                or settings.GEMINI_IMAGE_MODEL
-                or settings.DEFAULT_ANALYSIS_MODEL
-            ),
+            photo_id=photo_id,
+            model_used=str((usage_summary or {}).get("model") or settings.GEMINI_IMAGE_MODEL),
             job_type="try_on",
-            result_json={
-                "style_label": selected_outfit.get("style") or "Outfit",
-                "source_photo_id": photo_id,
-                "source_outfit_id": source_outfit_id,
-                "outfit_index": selected_outfit.get("outfit_index"),
-            },
+            tokens_input=int((usage_summary or {}).get("input_tokens") or 0),
+            tokens_output=int((usage_summary or {}).get("output_tokens") or 0),
         )
         return jsonify(
             {
@@ -832,150 +472,104 @@ def generate_outfitsme_preview(photo_id: str):
                 "outfit_index": selected_outfit.get("outfit_index"),
                 "outfitsme_image_url": stored.get("image_url"),
                 "outfitsme_storage_path": stored.get("storage_path"),
-                "saved_outfit": generated_entry
             }
         ), 200
-    except ValueError:
-        return jsonify({"error": "outfit_index must be an integer."}), 400
-    except SupabaseNotConfiguredError as exc:
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except (SupabaseNotConfiguredError, GeminiNotConfiguredError) as exc:
         return jsonify({"error": str(exc)}), 500
-    except GeminiNotConfiguredError as exc:
-        return jsonify({"error": str(exc)}), 500
-    except AuthApiError:
-        return jsonify({"error": "Invalid or expired token."}), 401
     except requests.HTTPError as exc:
-        return jsonify({"error": f"OutfitsMe model request failed: {exc}"}), 502
+        return jsonify({"error": f"Outfit generation failed: {exc}"}), 502
     except Exception as exc:  # noqa: BLE001
         return jsonify({"error": f"OutfitsMe generation failed: {exc}"}), 500
 
 
 @api_bp.get("/items")
 def get_items():
-    access_token = _extract_access_token()
-    if not access_token:
-        return jsonify({"error": "Missing bearer token."}), 401
+    user_id, error = _require_user()
+    if error:
+        return jsonify(error[0]), error[1]
 
     try:
-        user_id = get_user_id_from_token(access_token)
-        if not user_id:
-            return jsonify({"error": "Invalid or expired token."}), 401
-
         page, page_size = _parse_pagination_params()
         items = list_user_items(user_id, limit=page_size + 1, offset=(page - 1) * page_size)
         has_more = len(items) > page_size
-        return jsonify(
-            {
-                "user_id": user_id,
-                "items": items[:page_size],
-                "page": page,
-                "page_size": page_size,
-                "has_more": has_more
-            }
-        ), 200
+        return jsonify({"user_id": user_id, "items": items[:page_size], "page": page, "page_size": page_size, "has_more": has_more}), 200
     except SupabaseNotConfiguredError as exc:
         return jsonify({"error": str(exc)}), 500
-    except AuthApiError:
-        return jsonify({"error": "Invalid or expired token."}), 401
     except Exception as exc:  # noqa: BLE001
         return jsonify({"error": f"Items lookup failed: {exc}"}), 500
 
 
 @api_bp.get("/stats")
 def get_stats():
-    access_token = _extract_access_token()
-    if not access_token:
-        return jsonify({"error": "Missing bearer token."}), 401
+    user_id, error = _require_user()
+    if error:
+        return jsonify(error[0]), error[1]
 
     try:
-        user_id = get_user_id_from_token(access_token)
-        if not user_id:
-            return jsonify({"error": "Invalid or expired token."}), 401
-
-        stats = get_dashboard_stats(user_id)
-        return jsonify({"user_id": user_id, "stats": stats}), 200
+        return jsonify({"user_id": user_id, "stats": get_dashboard_stats(user_id)}), 200
     except SupabaseNotConfiguredError as exc:
         return jsonify({"error": str(exc)}), 500
-    except AuthApiError:
-        return jsonify({"error": "Invalid or expired token."}), 401
     except Exception as exc:  # noqa: BLE001
         return jsonify({"error": f"Stats lookup failed: {exc}"}), 500
 
 
 @api_bp.get("/limits")
 def get_limits():
-    access_token = _extract_access_token()
-    if not access_token:
-        return jsonify({"error": "Missing bearer token."}), 401
+    user_id, error = _require_user()
+    if error:
+        return jsonify(error[0]), error[1]
 
-    try:
-        user_id = get_user_id_from_token(access_token)
-        if not user_id:
-            return jsonify({"error": "Invalid or expired token."}), 401
-
-        usage = _build_trial_usage(user_id, access_token)
-        return jsonify(
-            {
-                "user_id": user_id,
-                "analysis": usage,
-                "rate_limit": {"analyze": "5 per minute"},
-                "access": {
-                    "user_role": usage.get("user_role", "trial"),
-                    "is_admin": is_admin_role(usage.get("user_role"))
-                }
-            }
-        ), 200
-    except SupabaseNotConfiguredError as exc:
-        return jsonify({"error": str(exc)}), 500
-    except AuthApiError:
-        return jsonify({"error": "Invalid or expired token."}), 401
-    except Exception as exc:  # noqa: BLE001
-        return jsonify({"error": f"Limits lookup failed: {exc}"}), 500
+    return jsonify(
+        {
+            "user_id": user_id,
+            "analysis": {
+                "user_role": "premium",
+                "trial_active": False,
+                "trial_started_at_utc": None,
+                "trial_ends_at_utc": None,
+                "trial_days_total": 0,
+                "trial_days_remaining": None,
+                "daily_limit": None,
+                "used_today": 0,
+                "remaining_today": None,
+                "today_window_start_utc": None,
+                "next_reset_utc": None,
+                "analysis_actions_today": 0,
+                "outfit_generations_today": 0,
+                "access_mode": "unlimited",
+            },
+            "rate_limit": {"analyze": "5 per minute"},
+            "access": {"user_role": "premium", "is_admin": False},
+        }
+    ), 200
 
 
 @api_bp.get("/models")
 def get_models():
-    access_token = _extract_access_token()
-    if not access_token:
-        return jsonify({"error": "Missing bearer token."}), 401
+    user_id, error = _require_user()
+    if error:
+        return jsonify(error[0]), error[1]
 
-    try:
-        user_id = get_user_id_from_token(access_token)
-        if not user_id:
-            return jsonify({"error": "Invalid or expired token."}), 401
-
-        model_settings = get_user_model_settings(user_id)
-        models = build_model_availability(model_settings)
-        preferred_model = get_preferred_model(model_settings)
-        image_ready = [model for model in models if model.get("supports_image") and model.get("available")]
-        return jsonify(
-            {
-                "models": models,
-                "preferred_model": preferred_model,
-                "image_ready_models": image_ready,
-                "user_role": model_settings.get("user_role", "trial")
-            }
-        ), 200
-    except SupabaseNotConfiguredError as exc:
-        return jsonify({"error": str(exc)}), 500
-    except SettingsEncryptionError as exc:
-        return jsonify({"error": str(exc)}), 500
-    except AuthApiError:
-        return jsonify({"error": "Invalid or expired token."}), 401
-    except Exception as exc:  # noqa: BLE001
-        return jsonify({"error": f"Model lookup failed: {exc}"}), 500
+    available = bool(settings.GEMINI_API_KEY)
+    model = {
+        "id": settings.GEMINI_MODEL,
+        "label": "Gemini 2.5 Flash",
+        "supports_image": True,
+        "available": available,
+        "unavailable_reason": None if available else "GEMINI_API_KEY is not configured.",
+    }
+    return jsonify({"models": [model], "preferred_model": settings.GEMINI_MODEL, "user_role": "premium"}), 200
 
 
 @api_bp.get("/settings/preferences")
 def get_settings_preferences():
-    access_token = _extract_access_token()
-    if not access_token:
-        return jsonify({"error": "Missing bearer token."}), 401
+    user_id, error = _require_user()
+    if error:
+        return jsonify(error[0]), error[1]
 
     try:
-        user_id = get_user_id_from_token(access_token)
-        if not user_id:
-            return jsonify({"error": "Invalid or expired token."}), 401
-
         current_settings = get_user_model_settings(user_id)
         return jsonify(
             {
@@ -983,98 +577,67 @@ def get_settings_preferences():
                     "user_role": current_settings.get("user_role", "trial"),
                     "profile_gender": current_settings.get("profile_gender", ""),
                     "profile_age": current_settings.get("profile_age"),
-                    "profile_photo_url": (
-                        get_signed_image_url(current_settings.get("profile_photo_path"), expires_in_seconds=3600)
-                        if current_settings.get("profile_photo_path")
-                        else None
-                    ),
+                    "profile_photo_url": get_signed_image_url(current_settings.get("profile_photo_path")),
                     "enable_outfit_image_generation": bool(current_settings.get("enable_outfit_image_generation")),
                     "enable_online_store_search": bool(current_settings.get("enable_online_store_search")),
-                    "enable_accessory_analysis": bool(current_settings.get("enable_accessory_analysis"))
+                    "enable_accessory_analysis": bool(current_settings.get("enable_accessory_analysis")),
                 }
             }
         ), 200
     except SupabaseNotConfiguredError as exc:
         return jsonify({"error": str(exc)}), 500
-    except AuthApiError:
-        return jsonify({"error": "Invalid or expired token."}), 401
     except Exception as exc:  # noqa: BLE001
         return jsonify({"error": f"Settings lookup failed: {exc}"}), 500
 
 
 @api_bp.put("/settings/preferences")
 def update_settings_preferences():
-    access_token = _extract_access_token()
-    if not access_token:
-        return jsonify({"error": "Missing bearer token."}), 401
+    user_id, error = _require_user()
+    if error:
+        return jsonify(error[0]), error[1]
 
     payload = request.get_json(silent=True) or {}
     if not isinstance(payload, dict):
         return jsonify({"error": "Invalid payload."}), 400
 
     try:
-        user_id = get_user_id_from_token(access_token)
-        if not user_id:
-            return jsonify({"error": "Invalid or expired token."}), 401
-
         updated = upsert_user_model_settings(user_id, payload)
         return jsonify({"settings": updated}), 200
     except SupabaseNotConfiguredError as exc:
         return jsonify({"error": str(exc)}), 500
-    except AuthApiError:
-        return jsonify({"error": "Invalid or expired token."}), 401
     except Exception as exc:  # noqa: BLE001
         return jsonify({"error": f"Settings update failed: {exc}"}), 500
 
 
 @api_bp.get("/settings/costs")
 def get_settings_costs():
-    access_token = _extract_access_token()
-    if not access_token:
-        return jsonify({"error": "Missing bearer token."}), 401
+    user_id, error = _require_user()
+    if error:
+        return jsonify(error[0]), error[1]
 
     try:
-        user_id = get_user_id_from_token(access_token)
-        if not user_id:
-            return jsonify({"error": "Invalid or expired token."}), 401
-        month_start_iso, _ = _current_month_window_utc()
-        summary = get_user_cost_summary(user_id, month_start_iso)
-        return jsonify({"costs": summary}), 200
+        return jsonify({"costs": get_user_cost_summary(user_id, _month_start_utc())}), 200
     except SupabaseNotConfiguredError as exc:
         return jsonify({"error": str(exc)}), 500
-    except SettingsEncryptionError as exc:
-        return jsonify({"error": str(exc)}), 500
-    except AuthApiError:
-        return jsonify({"error": "Invalid or expired token."}), 401
     except Exception as exc:  # noqa: BLE001
         return jsonify({"error": f"Costs lookup failed: {exc}"}), 500
 
 
 @api_bp.post("/settings/profile-photo")
 def upload_profile_photo():
-    access_token = _extract_access_token()
-    if not access_token:
-        return jsonify({"error": "Missing bearer token."}), 401
+    user_id, error = _require_user()
+    if error:
+        return jsonify(error[0]), error[1]
 
     image = request.files.get("image")
     if image is None or image.filename == "":
         return jsonify({"error": "Image file is required."}), 400
 
     try:
-        user_id = get_user_id_from_token(access_token)
-        if not user_id:
-            return jsonify({"error": "Invalid or expired token."}), 401
-
-        result = save_user_profile_photo(user_id, image)
-        return jsonify(result), 200
+        return jsonify(save_user_profile_photo(user_id, image)), 200
     except ValueError as exc:
         return jsonify({"error": str(exc)}), 400
     except SupabaseNotConfiguredError as exc:
         return jsonify({"error": str(exc)}), 500
-    except SettingsEncryptionError as exc:
-        return jsonify({"error": str(exc)}), 500
-    except AuthApiError:
-        return jsonify({"error": "Invalid or expired token."}), 401
     except Exception as exc:  # noqa: BLE001
         return jsonify({"error": f"Profile photo upload failed: {exc}"}), 500
-
