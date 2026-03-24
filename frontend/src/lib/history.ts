@@ -1,6 +1,7 @@
 import type { HistoryEntry } from "@/lib/types";
 
 const HISTORY_JOB_TYPE_LABELS: Record<string, string> = {
+  analysis: "Photo analysis",
   photo_analysis: "Photo analysis",
   custom_outfit: "Custom outfit",
   try_on: "Try this on",

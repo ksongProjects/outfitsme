@@ -1,5 +1,5 @@
 import mimetypes
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 import requests
@@ -7,6 +7,7 @@ from flask import Blueprint, jsonify, request
 
 from app.config import settings
 from app.extensions import limiter
+from app.services.access_control import has_unlimited_ai_access, is_admin_role, normalize_user_role
 from app.services.analysis_jobs_service import enqueue_analysis_job_processing
 from app.services.gemini_service import GeminiNotConfiguredError, generate_outfitsme_image_with_gemini
 from app.services.supabase_service import (
@@ -25,6 +26,8 @@ from app.services.supabase_service import (
     get_items_for_user,
     get_outfit_for_generation,
     get_signed_image_url,
+    get_user_access_snapshot,
+    get_user_daily_ai_usage,
     get_user_cost_summary,
     get_user_id_from_token,
     get_user_model_settings,
@@ -79,6 +82,73 @@ def _parse_pagination_params(default_page_size: int = 20, max_page_size: int = 2
 def _month_start_utc() -> str:
     now = datetime.now(timezone.utc)
     return datetime(now.year, now.month, 1, tzinfo=timezone.utc).isoformat()
+
+
+def _coerce_utc_datetime(value) -> datetime | None:
+    if isinstance(value, datetime):
+        return value.astimezone(timezone.utc) if value.tzinfo else value.replace(tzinfo=timezone.utc)
+    cleaned = str(value or "").strip()
+    if not cleaned:
+        return None
+    try:
+        parsed = datetime.fromisoformat(cleaned.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed.astimezone(timezone.utc) if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+def _build_analysis_access_payload(user_id: str) -> dict:
+    snapshot = get_user_access_snapshot(user_id)
+    user_role = normalize_user_role(snapshot.get("user_role"))
+    if has_unlimited_ai_access(user_role):
+        return {
+            "user_role": user_role,
+            "trial_active": False,
+            "trial_started_at_utc": None,
+            "trial_ends_at_utc": None,
+            "trial_days_total": 0,
+            "trial_days_remaining": None,
+            "daily_limit": None,
+            "used_today": 0,
+            "remaining_today": None,
+            "today_window_start_utc": None,
+            "next_reset_utc": None,
+            "analysis_actions_today": 0,
+            "outfit_generations_today": 0,
+            "access_mode": "unlimited",
+        }
+
+    now = datetime.now(timezone.utc)
+    trial_started_at = _coerce_utc_datetime(snapshot.get("account_created_at")) or now
+    trial_ends_at = trial_started_at + timedelta(days=max(settings.TRIAL_DAYS, 0))
+    trial_active = now < trial_ends_at if settings.TRIAL_DAYS > 0 else False
+    remaining_seconds = max((trial_ends_at - now).total_seconds(), 0)
+    trial_days_remaining = int((remaining_seconds + 86399) // 86400) if trial_active else 0
+    today_window_start = datetime(now.year, now.month, now.day, tzinfo=timezone.utc)
+    next_reset = today_window_start + timedelta(days=1)
+    daily_limit = max(settings.TRIAL_DAILY_AI_ACTION_LIMIT, 0)
+    usage = get_user_daily_ai_usage(user_id, today_window_start.isoformat())
+    analysis_actions_today = max(int(usage.get("analysis_actions_today", 0)), 0)
+    outfit_generations_today = max(int(usage.get("outfit_generations_today", 0)), 0)
+    used_today = analysis_actions_today + outfit_generations_today
+    remaining_today = max(daily_limit - used_today, 0) if trial_active else 0
+
+    return {
+        "user_role": user_role,
+        "trial_active": trial_active,
+        "trial_started_at_utc": trial_started_at.isoformat(),
+        "trial_ends_at_utc": trial_ends_at.isoformat(),
+        "trial_days_total": max(settings.TRIAL_DAYS, 0),
+        "trial_days_remaining": trial_days_remaining,
+        "daily_limit": daily_limit,
+        "used_today": used_today,
+        "remaining_today": remaining_today,
+        "today_window_start_utc": today_window_start.isoformat(),
+        "next_reset_utc": next_reset.isoformat(),
+        "analysis_actions_today": analysis_actions_today,
+        "outfit_generations_today": outfit_generations_today,
+        "access_mode": "trial",
+    }
 
 
 def _require_user() -> tuple[str | None, tuple[dict, int] | None]:
@@ -521,27 +591,13 @@ def get_limits():
     if error:
         return jsonify(error[0]), error[1]
 
+    access_payload = _build_analysis_access_payload(user_id)
     return jsonify(
         {
             "user_id": user_id,
-            "analysis": {
-                "user_role": "premium",
-                "trial_active": False,
-                "trial_started_at_utc": None,
-                "trial_ends_at_utc": None,
-                "trial_days_total": 0,
-                "trial_days_remaining": None,
-                "daily_limit": None,
-                "used_today": 0,
-                "remaining_today": None,
-                "today_window_start_utc": None,
-                "next_reset_utc": None,
-                "analysis_actions_today": 0,
-                "outfit_generations_today": 0,
-                "access_mode": "unlimited",
-            },
+            "analysis": access_payload,
             "rate_limit": {"analyze": "5 per minute"},
-            "access": {"user_role": "premium", "is_admin": False},
+            "access": {"user_role": access_payload["user_role"], "is_admin": is_admin_role(access_payload["user_role"])},
         }
     ), 200
 
@@ -552,6 +608,7 @@ def get_models():
     if error:
         return jsonify(error[0]), error[1]
 
+    access_payload = _build_analysis_access_payload(user_id)
     available = bool(settings.GEMINI_API_KEY)
     model = {
         "id": settings.GEMINI_MODEL,
@@ -560,7 +617,7 @@ def get_models():
         "available": available,
         "unavailable_reason": None if available else "GEMINI_API_KEY is not configured.",
     }
-    return jsonify({"models": [model], "preferred_model": settings.GEMINI_MODEL, "user_role": "premium"}), 200
+    return jsonify({"models": [model], "preferred_model": settings.GEMINI_MODEL, "user_role": access_payload["user_role"]}), 200
 
 
 @api_bp.get("/settings/preferences")

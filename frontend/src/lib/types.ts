@@ -34,6 +34,7 @@ export type OutfitAnalysis = {
   outfit_index?: number;
   style?: string;
   source_type?: string;
+  image_url?: string;
   items?: ItemRecord[];
 };
 

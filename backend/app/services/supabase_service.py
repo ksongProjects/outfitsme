@@ -249,6 +249,14 @@ def _serialize_item_row(row: dict[str, Any], *, style_label: str | None = None) 
     }
 
 
+def _derive_outfit_source_type(source_path: str | None, generated_image_path: str | None) -> str:
+    normalized_source_path = _normalize_text(source_path)
+    normalized_generated_path = _normalize_text(generated_image_path)
+    if not normalized_source_path or normalized_generated_path == normalized_source_path:
+        return "custom_outfit"
+    return "photo_analysis"
+
+
 def get_user_id_from_token(access_token: str) -> str | None:
     token = _normalize_text(access_token)
     if not token:
@@ -271,10 +279,15 @@ def upload_photo_for_user(file_storage, user_id: str) -> str:
 
 
 def create_photo_record(user_id: str, storage_path: str) -> dict[str, Any]:
+    photo_id = str(uuid4())
+    _execute_mutation(
+        _table("photos").insert({"id": photo_id, "user_id": user_id, "storage_path": storage_path})
+    )
     row = _execute_row(
         _table("photos")
-        .insert({"user_id": user_id, "storage_path": storage_path})
         .select("id, user_id, storage_path, created_at")
+        .eq("id", photo_id)
+        .eq("user_id", user_id)
     )
     if not row:
         raise RuntimeError("Photo record could not be created.")
@@ -360,6 +373,49 @@ def get_user_model_settings(user_id: str) -> dict[str, Any]:
     }
 
 
+def get_user_access_snapshot(user_id: str) -> dict[str, Any]:
+    snapshot = _db_fetchone(
+        """
+        select
+          coalesce(us.user_role, 'trial') as user_role,
+          u.created_at as account_created_at
+        from public.users u
+        left join public.user_settings us
+          on us.user_id = u.id
+        where u.id = %s
+        limit 1
+        """,
+        (user_id,),
+    )
+    if not snapshot:
+        return {
+            "user_role": "trial",
+            "account_created_at": None,
+        }
+    return {
+        "user_role": _normalize_text(snapshot.get("user_role"), "trial"),
+        "account_created_at": snapshot.get("account_created_at"),
+    }
+
+
+def get_user_daily_ai_usage(user_id: str, window_start_iso: str) -> dict[str, int]:
+    usage = _db_fetchone(
+        """
+        select
+          count(*) filter (where job_type = 'analysis')::integer as analysis_actions_today,
+          count(*) filter (where job_type = 'try_on')::integer as outfit_generations_today
+        from public.ai_jobs
+        where user_id = %s
+          and created_at >= %s::timestamptz
+        """,
+        (user_id, window_start_iso),
+    ) or {}
+    return {
+        "analysis_actions_today": _safe_int(usage.get("analysis_actions_today")),
+        "outfit_generations_today": _safe_int(usage.get("outfit_generations_today")),
+    }
+
+
 def upsert_user_model_settings(user_id: str, payload: dict[str, Any]) -> dict[str, Any]:
     current = get_user_model_settings(user_id)
     next_profile_age = current.get("profile_age")
@@ -425,10 +481,11 @@ def save_user_profile_photo(user_id: str, file_storage) -> dict[str, Any]:
 
 
 def create_analysis_job(user_id: str, *, photo_id: str, model_used: str | None = None) -> dict[str, Any]:
-    row = _execute_row(
-        _table("ai_jobs")
-        .insert(
+    job_id = str(uuid4())
+    _execute_mutation(
+        _table("ai_jobs").insert(
             {
+                "id": job_id,
                 "user_id": user_id,
                 "photo_id": photo_id,
                 "job_type": "analysis",
@@ -436,8 +493,8 @@ def create_analysis_job(user_id: str, *, photo_id: str, model_used: str | None =
                 "model_used": _normalize_text(model_used) or settings.DEFAULT_ANALYSIS_MODEL,
             }
         )
-        .select("*")
     )
+    row = _execute_row(_table("ai_jobs").select("*").eq("id", job_id).eq("user_id", user_id))
     if not row:
         raise RuntimeError("AI job could not be created.")
     return row
@@ -452,10 +509,11 @@ def create_completed_ai_job(
     tokens_input: int = 0,
     tokens_output: int = 0,
 ) -> dict[str, Any]:
-    row = _execute_row(
-        _table("ai_jobs")
-        .insert(
+    job_id = str(uuid4())
+    _execute_mutation(
+        _table("ai_jobs").insert(
             {
+                "id": job_id,
                 "user_id": user_id,
                 "photo_id": photo_id,
                 "job_type": job_type,
@@ -466,8 +524,8 @@ def create_completed_ai_job(
                 "completed_at": datetime.now(timezone.utc).isoformat(),
             }
         )
-        .select("*")
     )
+    row = _execute_row(_table("ai_jobs").select("*").eq("id", job_id).eq("user_id", user_id))
     if not row:
         raise RuntimeError("AI job could not be created.")
     return row
@@ -986,7 +1044,7 @@ def list_wardrobe(user_id: str, limit: int = 20, offset: int = 0) -> list[dict[s
                 "source_outfit_image_url": get_signed_image_url(source_path),
                 "created_at": row.get("created_at"),
                 "style_label": row.get("style_label"),
-                "source_type": "custom_outfit" if not source_path or generated_image_path == source_path else "photo_analysis",
+                "source_type": _derive_outfit_source_type(source_path, generated_image_path),
                 "source_outfit_id": None,
                 "outfit_index": row.get("outfit_index") or 0,
                 "outfit_count": row.get("outfit_count") or 1,
@@ -1011,13 +1069,14 @@ def get_wardrobe_photo_details(user_id: str, photo_id: str, outfit_index: int | 
 
     for outfit in outfits:
         generated_image_path = _normalize_text(outfit.get("generated_image_path"))
+        source_path = _normalize_text(photo_row.get("storage_path"))
         response = {
             "outfit_id": outfit["id"],
             "outfit_index": outfit["outfit_index"],
             "style": _normalize_label(outfit.get("style_label"), "Outfit"),
-            "source_type": "photo_analysis",
+            "source_type": _derive_outfit_source_type(source_path, generated_image_path),
             "items": items_by_outfit.get(str(outfit["id"]), []),
-            "image_url": get_signed_image_url(generated_image_path or photo_row.get("storage_path")),
+            "image_url": get_signed_image_url(generated_image_path or source_path),
         }
         if outfit_index is not None and outfit["outfit_index"] == outfit_index:
             selected_outfit = response
@@ -1161,13 +1220,13 @@ def delete_wardrobe_outfits(user_id: str, outfit_ids: list[str]) -> dict[str, An
 
 
 def update_wardrobe_outfit_style_label(user_id: str, outfit_id: str, style_label: str) -> dict[str, Any] | None:
-    row = _execute_row(
+    _execute_mutation(
         _table("outfits")
         .update({"style_label": _normalize_label(style_label, "Outfit")})
         .eq("id", outfit_id)
         .eq("user_id", user_id)
-        .select("*")
     )
+    row = _execute_row(_table("outfits").select("*").eq("id", outfit_id).eq("user_id", user_id))
     if not row:
         return None
     return {

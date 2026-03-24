@@ -507,3 +507,86 @@ def test_settings_preferences_and_costs_flow(client, monkeypatch, auth_headers):
     assert costs_response.get_json()["costs"]["analysis_runs"] == 4
     assert costs_response.get_json()["costs"]["composed_outfits_created"] == 1
     assert costs_response.get_json()["costs"]["custom_outfit_generations"] == 1
+
+
+def test_limits_and_models_reflect_trial_access_for_new_user(client, monkeypatch, auth_headers):
+    monkeypatch.setattr(
+        api_module,
+        "get_user_access_snapshot",
+        lambda user_id: {
+            "user_role": "trial",
+            "account_created_at": "2026-03-24T05:00:00+00:00",
+        },
+    )
+    monkeypatch.setattr(
+        api_module,
+        "get_user_daily_ai_usage",
+        lambda user_id, window_start_iso: {
+            "analysis_actions_today": 1,
+            "outfit_generations_today": 0,
+        },
+    )
+    monkeypatch.setattr(api_module.settings, "TRIAL_DAYS", 14, raising=False)
+    monkeypatch.setattr(api_module.settings, "TRIAL_DAILY_AI_ACTION_LIMIT", 10, raising=False)
+    monkeypatch.setattr(api_module.settings, "GEMINI_API_KEY", "test-gemini-key", raising=False)
+
+    limits_response = client.get("/api/limits", headers=auth_headers)
+    print_exchange("Access Limits Trial", "GET", "/api/limits", None, limits_response)
+
+    assert limits_response.status_code == 200
+    limits_json = limits_response.get_json()
+    assert limits_json["analysis"]["user_role"] == "trial"
+    assert limits_json["analysis"]["access_mode"] == "trial"
+    assert limits_json["analysis"]["trial_active"] is True
+    assert limits_json["analysis"]["daily_limit"] == 10
+    assert limits_json["analysis"]["used_today"] == 1
+    assert limits_json["analysis"]["remaining_today"] == 9
+    assert limits_json["analysis"]["analysis_actions_today"] == 1
+    assert limits_json["analysis"]["outfit_generations_today"] == 0
+    assert limits_json["access"] == {
+        "user_role": "trial",
+        "is_admin": False,
+    }
+
+    models_response = client.get("/api/models", headers=auth_headers)
+    print_exchange("Models Trial", "GET", "/api/models", None, models_response)
+
+    assert models_response.status_code == 200
+    assert models_response.get_json()["user_role"] == "trial"
+
+
+def test_limits_reflect_unlimited_access_for_premium_user(client, monkeypatch, auth_headers):
+    monkeypatch.setattr(
+        api_module,
+        "get_user_access_snapshot",
+        lambda user_id: {
+            "user_role": "premium",
+            "account_created_at": "2026-03-01T05:00:00+00:00",
+        },
+    )
+
+    limits_response = client.get("/api/limits", headers=auth_headers)
+    print_exchange("Access Limits Premium", "GET", "/api/limits", None, limits_response)
+
+    assert limits_response.status_code == 200
+    limits_json = limits_response.get_json()
+    assert limits_json["analysis"] == {
+        "user_role": "premium",
+        "trial_active": False,
+        "trial_started_at_utc": None,
+        "trial_ends_at_utc": None,
+        "trial_days_total": 0,
+        "trial_days_remaining": None,
+        "daily_limit": None,
+        "used_today": 0,
+        "remaining_today": None,
+        "today_window_start_utc": None,
+        "next_reset_utc": None,
+        "analysis_actions_today": 0,
+        "outfit_generations_today": 0,
+        "access_mode": "unlimited",
+    }
+    assert limits_json["access"] == {
+        "user_role": "premium",
+        "is_admin": False,
+    }

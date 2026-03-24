@@ -115,19 +115,19 @@ export default function OutfitsTab() {
   const [sourceFilter, setSourceFilter] = useState("all");
   const imageGenerationEnabled = Boolean(settingsForm?.enable_outfit_image_generation);
   const selectedOutfitSourceType = String(outfitDetails?.selected_outfit?.source_type || "").trim().toLowerCase();
-  const primaryDetailImageLabel =
+  const canGenerateTryOn = selectedOutfitSourceType === "photo_analysis";
+  const selectedOutfitImageLabel =
     selectedOutfitSourceType === "custom_outfit"
       ? "Generated outfit preview"
       : selectedOutfitSourceType === "outfitsme_generated"
         ? "Try-on preview"
         : "Original outfit";
-  const detailSourceImageUrl = String(outfitDetails?.source_outfit_image_url || "").trim();
-  const primaryDetailImageUrl =
-    selectedOutfitSourceType === "outfitsme_generated"
-      ? String(outfitDetails?.outfitsme_image_url || outfitDetails?.image_url || "").trim()
-      : String(outfitDetails?.image_url || outfitDetails?.outfitsme_image_url || "").trim();
-  const shouldShowSourceDetailImage =
-    Boolean(detailSourceImageUrl) && selectedOutfitSourceType !== "outfitsme_generated";
+  const selectedOutfitImageUrl = String(
+    outfitDetails?.selected_outfit?.image_url ||
+      outfitDetails?.outfitsme_image_url ||
+      outfitDetails?.image_url ||
+      ""
+  ).trim();
 
   const filteredWardrobe = useMemo(
     () => wardrobe.filter((entry) => sourceFilter === "all" || (entry.source_type || "photo_analysis") === sourceFilter),
@@ -210,6 +210,10 @@ export default function OutfitsTab() {
     if (!details.photo_id || !selected) {
       return;
     }
+    if (!canGenerateTryOn) {
+      toast.error("Try-on previews are only available for photo analysis outfits.");
+      return;
+    }
     if (!imageGenerationEnabled) {
       toast.error("Outfit image generation is off. Enable it in Settings > Features.");
       return;
@@ -240,12 +244,7 @@ export default function OutfitsTab() {
   };
 
   const handleDownloadOutfitImage = async () => {
-    const primaryImageUrl =
-      selectedOutfitSourceType === "outfitsme_generated"
-        ? String(outfitDetails?.outfitsme_image_url || outfitDetails?.image_url || "").trim()
-        : String(outfitDetails?.outfitsme_image_url || "").trim() ||
-          String(outfitDetails?.image_url || "").trim() ||
-          String(outfitDetails?.source_outfit_image_url || "").trim();
+    const primaryImageUrl = selectedOutfitImageUrl;
 
     if (!primaryImageUrl) {
       toast.error("No downloadable image is available for this outfit.");
@@ -471,7 +470,7 @@ export default function OutfitsTab() {
             </div>
             {!outfitDetailsLoading && outfitDetails?.selected_outfit ? (
               <div className="modal-header-actions o-cluster o-cluster--wrap o-cluster--stack-sm outfit-detail-header-actions">
-                {selectedOutfitSourceType === "photo_analysis" ? (
+                {canGenerateTryOn ? (
                   <Button
                     type="button"
                     variant="outline"
@@ -537,25 +536,16 @@ export default function OutfitsTab() {
               <p className="subtext">Loading outfit details...</p>
             ) : (
               <div className="o-detail-layout o-detail-layout--stack-sm">
-                {shouldShowSourceDetailImage ? (
+                {selectedOutfitImageUrl ? (
                   <AppImage
-                    src={detailSourceImageUrl}
-                    alt="Source outfit"
-                    className="modal-image outfit-detail-image"
-                    width={1600}
-                    height={2000}
-                  />
-                ) : null}
-                {primaryDetailImageUrl ? (
-                  <AppImage
-                    src={primaryDetailImageUrl}
-                    alt={primaryDetailImageLabel}
+                    src={selectedOutfitImageUrl}
+                    alt={selectedOutfitImageLabel}
                     className="modal-image outfit-detail-image"
                     width={1600}
                     height={2000}
                   />
                 ) : (
-                  <p className="subtext">{primaryDetailImageLabel} is unavailable for this outfit.</p>
+                  <p className="subtext">{selectedOutfitImageLabel} is unavailable for this outfit.</p>
                 )}
                 <div className="outfit-detail-panel">
                   {outfitDetails?.selected_outfit ? (

@@ -103,6 +103,7 @@ export function useItemsState({ accessToken, initialPageSize = 20 }: { accessTok
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["items", accessToken] }),
         queryClient.invalidateQueries({ queryKey: ["wardrobe", accessToken] }),
+        queryClient.invalidateQueries({ queryKey: ["limits", accessToken] }),
         queryClient.invalidateQueries({ queryKey: ["stats", accessToken] }),
       ]);
     },

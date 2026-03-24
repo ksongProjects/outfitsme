@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { ChevronDown, ChevronUp, Wand2 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -747,8 +747,8 @@ export default function AnalyzeTab() {
                                 outfitMePreviewState[previewKey] || "";
 
                               return (
-                                <>
-                                  <ul className="o-list" key={previewKey}>
+                                <Fragment key={previewKey}>
+                                  <ul className="o-list">
                                     {(outfit.items || []).map(
                                       (item, itemIndex) => (
                                         <li
@@ -851,7 +851,7 @@ export default function AnalyzeTab() {
                                       )}
                                     </Button>
                                   </div>
-                                </>
+                                </Fragment>
                               );
                             })}
                           </div>

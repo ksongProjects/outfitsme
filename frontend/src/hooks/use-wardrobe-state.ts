@@ -363,6 +363,7 @@ export function useWardrobeState({
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["wardrobe", accessToken] }),
         queryClient.invalidateQueries({ queryKey: buildDetailsQueryKey(photoId, outfitIndex) }),
+        queryClient.invalidateQueries({ queryKey: ["limits", accessToken] }),
         queryClient.invalidateQueries({ queryKey: ["stats", accessToken] }),
       ]);
 
