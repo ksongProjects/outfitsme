@@ -29,4 +29,7 @@ def test_outfitsme_generation_prompt_forbids_extra_outfit_items():
     assert "Only the requested items may appear as visible outfit pieces" in prompt
     assert "Do not add, invent, replace, swap, or layer in any extra clothing items or accessories" in prompt
     assert "No extra jackets, shirts, pants, skirts, dresses, shoes, bags, hats, jewelry, scarves, belts" in prompt
+    assert "Show the full person from head to toe in a full-body composition" in prompt
+    assert "Do not crop to a portrait, chest-up, waist-up, or top-only framing" in prompt
+    assert "Do not add smiles, grins, laughter, exaggerated emotion, or any strong facial expression" in prompt
     assert "match the requested outfit exactly" in prompt
