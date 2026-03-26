@@ -1,16 +1,13 @@
 """Better Auth backend session validation for Flask API."""
 import base64
-from contextlib import contextmanager
 from datetime import datetime, timezone
 import json
 import time
 from urllib.parse import urlparse
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
-import psycopg2
-from psycopg2 import sql
-from psycopg2.pool import SimpleConnectionPool
 import requests
+from supabase import Client, create_client
 from app.config import settings
 
 
@@ -19,8 +16,7 @@ class BetterAuthSessionError(RuntimeError):
 
 
 _JWKS_CACHE: dict[str, object] = {"keys": {}, "expires_at": 0.0}
-_DB_POOL: SimpleConnectionPool | None = None
-_DB_CONNECT_TIMEOUT_SECONDS = 3
+_SUPABASE_CLIENT: Client | None = None
 
 
 def _base64url_decode(value: str) -> bytes:
@@ -58,6 +54,25 @@ def _get_cached_jwks() -> dict[str, dict]:
     _JWKS_CACHE["keys"] = keys
     _JWKS_CACHE["expires_at"] = now + 300
     return keys
+
+
+def _get_supabase_client() -> Client:
+    if not settings.SUPABASE_URL or not settings.SUPABASE_SECRET_KEY:
+        raise BetterAuthSessionError("SUPABASE_URL and SUPABASE_SECRET_KEY must be configured.")
+
+    global _SUPABASE_CLIENT
+    if _SUPABASE_CLIENT is None:
+        _SUPABASE_CLIENT = create_client(settings.SUPABASE_URL, settings.SUPABASE_SECRET_KEY)
+    return _SUPABASE_CLIENT
+
+
+def _response_rows(response) -> list[dict]:
+    data = getattr(response, "data", None) if response is not None else None
+    if isinstance(data, list):
+        return [dict(row) for row in data if isinstance(row, dict)]
+    if isinstance(data, dict):
+        return [dict(data)]
+    return []
 
 
 def get_user_id_from_better_auth_jwt(token: str) -> str | None:
@@ -119,41 +134,6 @@ def get_user_id_from_better_auth_jwt(token: str) -> str | None:
         return None
 
 
-def _get_database_pool() -> SimpleConnectionPool:
-    if not settings.DATABASE_URL:
-        raise BetterAuthSessionError("DATABASE_URL environment variable is required.")
-    global _DB_POOL
-    if _DB_POOL is None:
-        try:
-            _DB_POOL = SimpleConnectionPool(
-                1,
-                5,
-                settings.DATABASE_URL,
-                connect_timeout=_DB_CONNECT_TIMEOUT_SECONDS,
-                application_name="outfitsme-api",
-            )
-        except psycopg2.Error as e:
-            raise BetterAuthSessionError(f"Failed to connect to database: {e}")
-    return _DB_POOL
-
-
-@contextmanager
-def get_database_connection():
-    """Borrow a PostgreSQL connection from a small shared pool."""
-    pool = _get_database_pool()
-    conn = None
-    try:
-        conn = pool.getconn()
-        yield conn
-    finally:
-        if conn is not None:
-            try:
-                conn.rollback()
-            except psycopg2.Error:
-                pass
-            pool.putconn(conn)
-
-
 def get_user_id_from_session_token(session_token: str) -> str | None:
     """
     Validate a Better Auth session token and return the user ID.
@@ -168,22 +148,16 @@ def get_user_id_from_session_token(session_token: str) -> str | None:
         return None
     
     try:
-        with get_database_connection() as conn:
-            with conn.cursor() as cur:
-                # Better Auth is configured with plural table names in this repo.
-                cur.execute(
-                    sql.SQL("""
-                        SELECT user_id FROM "sessions"
-                        WHERE token = %s AND expires_at > %s
-                        LIMIT 1
-                    """),
-                    (session_token, datetime.now(timezone.utc))
-                )
-                result = cur.fetchone()
-
-        return result[0] if result else None
-    except psycopg2.Error:
-        return None
+        rows = _response_rows(
+            _get_supabase_client()
+            .table("sessions")
+            .select("user_id")
+            .eq("token", session_token)
+            .gt("expires_at", datetime.now(timezone.utc).isoformat())
+            .limit(1)
+            .execute()
+        )
+        return str(rows[0].get("user_id")) if rows and rows[0].get("user_id") else None
     except Exception:
         return None
 
@@ -199,25 +173,19 @@ def get_user_created_at_from_better_auth_token(token: str) -> str | None:
         return None
 
     try:
-        with get_database_connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    sql.SQL("""
-                        SELECT created_at FROM "users"
-                        WHERE id = %s
-                        LIMIT 1
-                    """),
-                    (user_id,)
-                )
-                result = cur.fetchone()
-
-        created_at = result[0] if result else None
+        rows = _response_rows(
+            _get_supabase_client()
+            .table("users")
+            .select("created_at")
+            .eq("id", user_id)
+            .limit(1)
+            .execute()
+        )
+        created_at = rows[0].get("created_at") if rows else None
         if isinstance(created_at, datetime):
             if created_at.tzinfo is None:
                 created_at = created_at.replace(tzinfo=timezone.utc)
             return created_at.astimezone(timezone.utc).isoformat()
         return str(created_at) if created_at else None
-    except psycopg2.Error:
-        return None
     except Exception:
         return None

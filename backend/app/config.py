@@ -143,7 +143,6 @@ class Settings:
     )
     SETTINGS_ENCRYPTION_KEY = _clean_env(os.getenv("SETTINGS_ENCRYPTION_KEY", ""))
     DEFAULT_ANALYSIS_MODEL = _clean_env(os.getenv("DEFAULT_ANALYSIS_MODEL", "gemini-2.5-flash"), "gemini-2.5-flash")
-    DATABASE_URL = _clean_env(os.getenv("DATABASE_URL", ""))
     APP_URL = _clean_env(os.getenv("APP_URL", ""))
     BETTER_AUTH_URL = _clean_env(
         os.getenv("BETTER_AUTH_URL", os.getenv("APP_URL", os.getenv("NEXT_PUBLIC_APP_URL", "")))

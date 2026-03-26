@@ -247,16 +247,35 @@ def test_update_wardrobe_outfit_style_label_updates_without_select(monkeypatch):
 
 
 def test_get_user_daily_ai_usage_returns_counted_actions(monkeypatch):
-    calls: list[tuple[str, tuple[object, ...]]] = []
+    class _FakeUsageBuilder:
+        def __init__(self) -> None:
+            self.selected: str | None = None
+            self.filters: list[tuple[str, object]] = []
 
-    def fake_db_fetchone(query: str, params: tuple[object, ...] = ()):
-        calls.append((query, params))
-        return {
-            "analysis_actions_today": 2,
-            "outfit_generations_today": 1,
-        }
+        def select(self, fields: str):
+            self.selected = fields
+            return self
 
-    monkeypatch.setattr(supabase_module, "_db_fetchone", fake_db_fetchone)
+        def eq(self, key: str, value: object):
+            self.filters.append((key, value))
+            return self
+
+        def gte(self, key: str, value: object):
+            self.filters.append((f"{key}__gte", value))
+            return self
+
+    builder = _FakeUsageBuilder()
+
+    monkeypatch.setattr(supabase_module, "_table", lambda name: builder)
+    monkeypatch.setattr(
+        supabase_module,
+        "_execute_rows",
+        lambda query_builder: [
+            {"job_type": "analysis"},
+            {"job_type": "analysis"},
+            {"job_type": "try_on"},
+        ],
+    )
 
     result = supabase_module.get_user_daily_ai_usage("user-1", "2026-03-24T00:00:00+00:00")
 
@@ -264,9 +283,11 @@ def test_get_user_daily_ai_usage_returns_counted_actions(monkeypatch):
         "analysis_actions_today": 2,
         "outfit_generations_today": 1,
     }
-    assert len(calls) == 1
-    assert "from public.ai_jobs" in calls[0][0]
-    assert calls[0][1] == ("user-1", "2026-03-24T00:00:00+00:00")
+    assert builder.selected == "job_type"
+    assert builder.filters == [
+        ("user_id", "user-1"),
+        ("created_at__gte", "2026-03-24T00:00:00+00:00"),
+    ]
 
 
 def test_get_wardrobe_photo_details_preserves_custom_outfit_source_type(monkeypatch):

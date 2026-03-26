@@ -3,18 +3,17 @@ from __future__ import annotations
 import base64
 import binascii
 import mimetypes
+from collections import defaultdict
 from datetime import datetime, timezone
 from io import BytesIO
 from typing import Any
 from uuid import uuid4
 
 from PIL import Image, ImageOps
-from psycopg2.extras import RealDictCursor
 from supabase import Client, create_client
 
 from app.config import settings
 from app.services.better_auth_service import (
-    get_database_connection,
     get_user_id_from_better_auth_jwt,
     get_user_id_from_session_token,
 )
@@ -200,20 +199,33 @@ def _execute_row(builder: Any) -> dict[str, Any] | None:
     return rows[0] if rows else None
 
 
-def _db_fetchone(query: str, params: tuple[Any, ...] = ()) -> dict[str, Any] | None:
-    with get_database_connection() as conn:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute(query, params)
-            row = cur.fetchone()
-    return dict(row) if row else None
+def _execute_count(builder: Any) -> int:
+    response = builder.execute()
+    count = getattr(response, "count", None) if response is not None else None
+    if count is not None:
+        return _safe_int(count)
+    return len(_response_rows(response))
 
 
-def _db_fetchall(query: str, params: tuple[Any, ...] = ()) -> list[dict[str, Any]]:
-    with get_database_connection() as conn:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute(query, params)
-            rows = cur.fetchall()
-    return [dict(row) for row in rows]
+def _parse_sortable_datetime(value: Any) -> datetime:
+    cleaned = str(value or "").strip()
+    if not cleaned:
+        return datetime.min.replace(tzinfo=timezone.utc)
+    try:
+        parsed = datetime.fromisoformat(cleaned.replace("Z", "+00:00"))
+    except ValueError:
+        return datetime.min.replace(tzinfo=timezone.utc)
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
+
+def _sort_key_created_desc(row: dict[str, Any]) -> tuple[datetime, str]:
+    return (_parse_sortable_datetime(row.get("created_at")), str(row.get("id") or ""))
+
+
+def _sort_key_created_asc(row: dict[str, Any]) -> tuple[datetime, str]:
+    return (_parse_sortable_datetime(row.get("created_at")), str(row.get("id") or ""))
 
 
 def _best_effort_remove_storage_paths(storage_paths: list[str]) -> None:
@@ -377,45 +389,32 @@ def get_user_model_settings(user_id: str) -> dict[str, Any]:
 
 
 def get_user_access_snapshot(user_id: str) -> dict[str, Any]:
-    snapshot = _db_fetchone(
-        """
-        select
-          coalesce(us.user_role, 'trial') as user_role,
-          u.created_at as account_created_at
-        from public.users u
-        left join public.user_settings us
-          on us.user_id = u.id
-        where u.id = %s
-        limit 1
-        """,
-        (user_id,),
-    )
-    if not snapshot:
-        return {
-            "user_role": "trial",
-            "account_created_at": None,
-        }
+    user_row = _execute_row(_table("users").select("id, created_at").eq("id", user_id))
+    settings_row = _execute_row(_table("user_settings").select("user_role").eq("user_id", user_id)) or {}
     return {
-        "user_role": _normalize_text(snapshot.get("user_role"), "trial"),
-        "account_created_at": snapshot.get("account_created_at"),
+        "user_role": _normalize_text(settings_row.get("user_role"), "trial"),
+        "account_created_at": (user_row or {}).get("created_at"),
     }
 
 
 def get_user_daily_ai_usage(user_id: str, window_start_iso: str) -> dict[str, int]:
-    usage = _db_fetchone(
-        """
-        select
-          count(*) filter (where job_type = 'analysis')::integer as analysis_actions_today,
-          count(*) filter (where job_type in ('try_on', 'custom_outfit'))::integer as outfit_generations_today
-        from public.ai_jobs
-        where user_id = %s
-          and created_at >= %s::timestamptz
-        """,
-        (user_id, window_start_iso),
-    ) or {}
+    rows = _execute_rows(
+        _table("ai_jobs")
+        .select("job_type")
+        .eq("user_id", user_id)
+        .gte("created_at", window_start_iso)
+    )
+    analysis_actions_today = 0
+    outfit_generations_today = 0
+    for row in rows:
+        job_type = _normalize_text(row.get("job_type")).lower()
+        if job_type == "analysis":
+            analysis_actions_today += 1
+        elif job_type in {"try_on", "custom_outfit"}:
+            outfit_generations_today += 1
     return {
-        "analysis_actions_today": _safe_int(usage.get("analysis_actions_today")),
-        "outfit_generations_today": _safe_int(usage.get("outfit_generations_today")),
+        "analysis_actions_today": analysis_actions_today,
+        "outfit_generations_today": outfit_generations_today,
     }
 
 
@@ -539,56 +538,42 @@ def get_analysis_job_for_user(user_id: str, job_id: str) -> dict[str, Any] | Non
 
 
 def claim_analysis_job(job_id: str) -> dict[str, Any] | None:
-    with get_database_connection() as conn:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute(
-                """
-                update public.ai_jobs
-                set status = 'processing'
-                where id = %s
-                  and status = 'pending'
-                returning *
-                """,
-                (job_id,),
-            )
-            row = cur.fetchone()
-        conn.commit()
-    return dict(row) if row else None
+    rows = _execute_rows(
+        _table("ai_jobs")
+        .update({"status": "processing"})
+        .eq("id", job_id)
+        .eq("status", "pending")
+    )
+    return rows[0] if rows else None
 
 
 def mark_analysis_job_completed(job_id: str, tokens_input: int = 0, tokens_output: int = 0) -> None:
-    with get_database_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                update public.ai_jobs
-                set
-                  status = 'completed',
-                  tokens_input = %s,
-                  tokens_output = %s,
-                  completed_at = now()
-                where id = %s
-                """,
-                (max(_safe_int(tokens_input), 0), max(_safe_int(tokens_output), 0), job_id),
-            )
-        conn.commit()
+    _execute_mutation(
+        _table("ai_jobs")
+        .update(
+            {
+                "status": "completed",
+                "tokens_input": max(_safe_int(tokens_input), 0),
+                "tokens_output": max(_safe_int(tokens_output), 0),
+                "completed_at": datetime.now(timezone.utc).isoformat(),
+            }
+        )
+        .eq("id", job_id)
+    )
 
 
 def mark_analysis_job_failed(job_id: str, error_message: str) -> None:
-    with get_database_connection() as conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                """
-                update public.ai_jobs
-                set
-                  status = 'failed',
-                  error_message = %s,
-                  completed_at = now()
-                where id = %s
-                """,
-                (_normalize_text(error_message, "Job failed."), job_id),
-            )
-        conn.commit()
+    _execute_mutation(
+        _table("ai_jobs")
+        .update(
+            {
+                "status": "failed",
+                "error_message": _normalize_text(error_message, "Job failed."),
+                "completed_at": datetime.now(timezone.utc).isoformat(),
+            }
+        )
+        .eq("id", job_id)
+    )
 
 
 def _normalize_analysis_outfits(analysis: dict[str, Any]) -> list[dict[str, Any]]:
@@ -638,67 +623,62 @@ def persist_analysis_for_photo(
     persisted_items: dict[tuple[str, str, str, str], dict[str, Any]] = {}
     persisted_outfits: list[dict[str, Any]] = []
 
-    with get_database_connection() as conn:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            for signature, item in item_map.items():
-                cur.execute(
-                    """
-                    insert into public.items (
-                      user_id,
-                      name,
-                      category,
-                      color,
-                      material,
-                      description
-                    )
-                    values (%s, %s, %s, %s, %s, %s)
-                    returning *
-                    """,
-                    (
-                        user_id,
-                        item["name"],
-                        item["category"],
-                        item["color"],
-                        item["material"] or None,
-                        item["description"],
-                    ),
-                )
-                persisted_items[signature] = dict(cur.fetchone())
+    for signature, item in item_map.items():
+        row = _execute_row(
+            _table("items").insert(
+                {
+                    "user_id": user_id,
+                    "name": item["name"],
+                    "category": item["category"],
+                    "color": item["color"],
+                    "material": item["material"] or None,
+                    "description": item["description"],
+                }
+            )
+        )
+        if not row:
+            raise RuntimeError("Item could not be created.")
+        persisted_items[signature] = row
 
-            for index, outfit in enumerate(normalized_outfits):
-                cur.execute(
-                    """
-                    insert into public.outfits (user_id, job_id, photo_id, style_label)
-                    values (%s, %s, %s, %s)
-                    returning *
-                    """,
-                    (user_id, job_id, photo_id, outfit["style"]),
-                )
-                outfit_row = dict(cur.fetchone())
-                outfit_items: list[dict[str, Any]] = []
+    for index, outfit in enumerate(normalized_outfits):
+        outfit_row = _execute_row(
+            _table("outfits").insert(
+                {
+                    "user_id": user_id,
+                    "job_id": job_id,
+                    "photo_id": photo_id,
+                    "style_label": outfit["style"],
+                }
+            )
+        )
+        if not outfit_row:
+            raise RuntimeError("Outfit could not be created.")
 
-                for item in outfit["items"]:
-                    item_row = persisted_items[_item_signature(item)]
-                    cur.execute(
-                        """
-                        insert into public.outfit_items (outfit_id, item_id)
-                        values (%s, %s)
-                        on conflict (outfit_id, item_id) do nothing
-                        """,
-                        (outfit_row["id"], item_row["id"]),
-                    )
-                    outfit_items.append(_serialize_item_row(item_row))
+        outfit_items: list[dict[str, Any]] = []
+        outfit_item_rows: list[dict[str, Any]] = []
+        for item in outfit["items"]:
+            item_row = persisted_items[_item_signature(item)]
+            outfit_item_rows.append({"outfit_id": outfit_row["id"], "item_id": item_row["id"]})
+            outfit_items.append(_serialize_item_row(item_row))
 
-                persisted_outfits.append(
-                    {
-                        "outfit_id": outfit_row["id"],
-                        "outfit_index": index,
-                        "style": outfit_row["style_label"],
-                        "items": outfit_items,
-                        "generated_image_path": outfit_row.get("generated_image_path"),
-                    }
+        if outfit_item_rows:
+            _execute_mutation(
+                _table("outfit_items").upsert(
+                    outfit_item_rows,
+                    ignore_duplicates=True,
+                    on_conflict="outfit_id,item_id",
                 )
-        conn.commit()
+            )
+
+        persisted_outfits.append(
+            {
+                "outfit_id": outfit_row["id"],
+                "outfit_index": index,
+                "style": outfit_row["style_label"],
+                "items": outfit_items,
+                "generated_image_path": outfit_row.get("generated_image_path"),
+            }
+        )
 
     return {
         "photo_id": photo_id,
@@ -709,59 +689,55 @@ def persist_analysis_for_photo(
 
 
 def _load_outfit_rows_for_photo(user_id: str, photo_id: str) -> list[dict[str, Any]]:
-    return _db_fetchall(
-        """
-        with ranked as (
-          select
-            o.*,
-            coalesce(j.job_type, '') as job_type,
-            row_number() over (
-              partition by o.photo_id
-              order by o.created_at asc, o.id asc
-            ) - 1 as outfit_index
-          from public.outfits o
-          left join public.ai_jobs j
-            on j.id = o.job_id
-          where o.user_id = %s
-            and o.photo_id = %s
-        )
-        select *
-        from ranked
-        order by outfit_index asc
-        """,
-        (user_id, photo_id),
+    rows = _execute_rows(
+        _table("outfits")
+        .select("id, photo_id, style_label, generated_image_path, job_id, created_at")
+        .eq("user_id", user_id)
+        .eq("photo_id", photo_id)
     )
+    rows = sorted(rows, key=_sort_key_created_asc)
+    job_ids = sorted({str(row.get("job_id")) for row in rows if row.get("job_id") is not None})
+    jobs_by_id: dict[str, dict[str, Any]] = {}
+    if job_ids:
+        jobs_by_id = {
+            str(row["id"]): row
+            for row in _execute_rows(_table("ai_jobs").select("id, job_type").in_("id", job_ids))
+            if row.get("id") is not None
+        }
+
+    enriched_rows: list[dict[str, Any]] = []
+    for index, row in enumerate(rows):
+        enriched = dict(row)
+        enriched["outfit_index"] = index
+        enriched["job_type"] = (jobs_by_id.get(str(row.get("job_id") or "")) or {}).get("job_type", "")
+        enriched_rows.append(enriched)
+    return enriched_rows
 
 
 def _load_items_for_outfits(outfit_ids: list[str]) -> dict[str, list[dict[str, Any]]]:
     if not outfit_ids:
         return {}
 
-    rows = _db_fetchall(
-        """
-        select
-          oi.outfit_id,
-          i.id,
-          i.name,
-          i.category,
-          i.color,
-          i.brand,
-          i.material,
-          i.description,
-          i.image_path,
-          i.created_at
-        from public.outfit_items oi
-        join public.items i
-          on i.id = oi.item_id
-        where oi.outfit_id = any(%s::uuid[])
-        order by i.created_at asc, i.id asc
-        """,
-        (outfit_ids,),
+    outfit_item_rows = _execute_rows(
+        _table("outfit_items")
+        .select("outfit_id, item_id")
+        .in_("outfit_id", outfit_ids)
     )
+    item_ids = sorted({str(row.get("item_id")) for row in outfit_item_rows if row.get("item_id") is not None})
+    item_rows = (
+        _execute_rows(_table("items").select("id, name, category, color, brand, material, description, image_path, created_at").in_("id", item_ids))
+        if item_ids
+        else []
+    )
+    items_by_id = {str(row["id"]): row for row in item_rows if row.get("id") is not None}
 
     items_by_outfit: dict[str, list[dict[str, Any]]] = {}
-    for row in rows:
-        items_by_outfit.setdefault(str(row["outfit_id"]), []).append(_serialize_item_row(row))
+    for row in sorted(outfit_item_rows, key=lambda value: str(value.get("item_id") or "")):
+        outfit_id = str(row.get("outfit_id") or "")
+        item = items_by_id.get(str(row.get("item_id") or ""))
+        if not outfit_id or not item:
+            continue
+        items_by_outfit.setdefault(outfit_id, []).append(_serialize_item_row(item))
     return items_by_outfit
 
 
@@ -845,44 +821,28 @@ def create_outfit_with_items(
     if not item_ids:
         raise ValueError("At least one item is required.")
 
-    with get_database_connection() as conn:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute(
-                """
-                insert into public.outfits (
-                  user_id,
-                  job_id,
-                  photo_id,
-                  style_label,
-                  generated_image_path,
-                  is_favorite
-                )
-                values (%s, %s, %s, %s, %s, %s)
-                returning *
-                """,
-                (
-                    user_id,
-                    job_id,
-                    photo_id,
-                    _normalize_label(style_label, "Outfit"),
-                    _normalize_text(generated_image_path) or None,
-                    bool(is_favorite),
-                ),
-            )
-            outfit_row = cur.fetchone()
-            if not outfit_row:
-                raise RuntimeError("Outfit could not be created.")
+    outfit_row = _execute_row(
+        _table("outfits").insert(
+            {
+                "user_id": user_id,
+                "job_id": job_id,
+                "photo_id": photo_id,
+                "style_label": _normalize_label(style_label, "Outfit"),
+                "generated_image_path": _normalize_text(generated_image_path) or None,
+                "is_favorite": bool(is_favorite),
+            }
+        )
+    )
+    if not outfit_row:
+        raise RuntimeError("Outfit could not be created.")
 
-            for item_id in item_ids:
-                cur.execute(
-                    """
-                    insert into public.outfit_items (outfit_id, item_id)
-                    values (%s, %s)
-                    on conflict (outfit_id, item_id) do nothing
-                    """,
-                    (outfit_row["id"], item_id),
-                )
-        conn.commit()
+    _execute_mutation(
+        _table("outfit_items").upsert(
+            [{"outfit_id": outfit_row["id"], "item_id": item_id} for item_id in item_ids],
+            ignore_duplicates=True,
+            on_conflict="outfit_id,item_id",
+        )
+    )
     return dict(outfit_row)
 
 
@@ -908,40 +868,52 @@ def _list_item_rows(
     limit: int | None = None,
     offset: int = 0,
 ) -> list[dict[str, Any]]:
-    where_clauses = ["i.user_id = %s"]
-    params: list[Any] = [user_id, user_id]
-
+    builder = _table("items").select("*").eq("user_id", user_id).order("created_at", desc=True).order("id", desc=True)
     if item_ids is not None:
-        if not item_ids:
+        usable_item_ids = [str(item_id) for item_id in item_ids if str(item_id).strip()]
+        if not usable_item_ids:
             return []
-        where_clauses.append("i.id = any(%s::uuid[])")
-        params.append(item_ids)
+        builder = builder.in_("id", usable_item_ids)
+    elif limit is not None:
+        builder = builder.range(max(offset, 0), max(offset, 0) + max(limit, 1) - 1)
 
-    limit_clause = ""
-    if limit is not None:
-        limit_clause = "limit %s offset %s"
-        params.extend([max(limit, 1), max(offset, 0)])
+    rows = _execute_rows(builder)
+    if not rows:
+        return []
 
-    query = f"""
-        select
-          i.*,
-          style_source.style_label
-        from public.items i
-        left join lateral (
-          select o.style_label
-          from public.outfit_items oi
-          join public.outfits o
-            on o.id = oi.outfit_id
-          where oi.item_id = i.id
-            and o.user_id = %s
-          order by o.created_at desc, o.id desc
-          limit 1
-        ) style_source on true
-        where {' and '.join(where_clauses)}
-        order by i.created_at desc, i.id desc
-        {limit_clause}
-    """
-    return _db_fetchall(query, tuple(params))
+    item_id_strings = [str(row.get("id")) for row in rows if row.get("id") is not None]
+    style_by_item_id: dict[str, str | None] = {}
+
+    if item_id_strings:
+        outfit_item_rows = _execute_rows(_table("outfit_items").select("item_id, outfit_id").in_("item_id", item_id_strings))
+        outfit_ids = sorted({str(row.get("outfit_id")) for row in outfit_item_rows if row.get("outfit_id") is not None})
+        outfits_by_id: dict[str, dict[str, Any]] = {}
+        if outfit_ids:
+            outfit_rows = _execute_rows(
+                _table("outfits")
+                .select("id, user_id, style_label, created_at")
+                .eq("user_id", user_id)
+                .in_("id", outfit_ids)
+            )
+            outfits_by_id = {str(row["id"]): row for row in outfit_rows if row.get("id") is not None}
+
+        best_outfit_by_item_id: dict[str, dict[str, Any]] = {}
+        for row in outfit_item_rows:
+            item_id = str(row.get("item_id") or "")
+            outfit = outfits_by_id.get(str(row.get("outfit_id") or ""))
+            if not item_id or not outfit:
+                continue
+            current = best_outfit_by_item_id.get(item_id)
+            if current is None or _sort_key_created_desc(outfit) > _sort_key_created_desc(current):
+                best_outfit_by_item_id[item_id] = outfit
+        style_by_item_id = {
+            item_id: best_outfit_by_item_id[item_id].get("style_label")
+            for item_id in best_outfit_by_item_id
+        }
+
+    for row in rows:
+        row["style_label"] = style_by_item_id.get(str(row.get("id")))
+    return rows
 
 
 def get_items_for_user(user_id: str, item_ids: list[str]) -> list[dict[str, Any]]:
@@ -955,35 +927,40 @@ def list_user_items(user_id: str, limit: int = 20, offset: int = 0) -> list[dict
 
 
 def list_analysis_history(user_id: str, limit: int = 50) -> list[dict[str, Any]]:
-    rows = _db_fetchall(
-        """
-        select
-          j.id as job_id,
-          j.photo_id,
-          j.job_type,
-          j.model_used,
-          j.status,
-          j.error_message,
-          j.created_at,
-          j.completed_at,
-          p.storage_path,
-          count(distinct o.id)::integer as outfit_count,
-          max(o.style_label) as style_label
-        from public.ai_jobs j
-        left join public.photos p
-          on p.id = j.photo_id
-        left join public.outfits o
-          on o.job_id = j.id
-        where j.user_id = %s
-        group by j.id, p.storage_path
-        order by j.created_at desc, j.id desc
-        limit %s
-        """,
-        (user_id, max(limit, 1)),
+    rows = _execute_rows(
+        _table("ai_jobs")
+        .select("id, photo_id, job_type, model_used, status, error_message, created_at, completed_at")
+        .eq("user_id", user_id)
+        .order("created_at", desc=True)
+        .order("id", desc=True)
+        .range(0, max(limit, 1) - 1)
     )
+    photo_ids = sorted({str(row.get("photo_id")) for row in rows if row.get("photo_id") is not None})
+    photo_rows = _execute_rows(_table("photos").select("id, storage_path").in_("id", photo_ids)) if photo_ids else []
+    photos_by_id = {str(row["id"]): row for row in photo_rows if row.get("id") is not None}
+
+    job_ids = [str(row.get("id")) for row in rows if row.get("id") is not None]
+    outfit_rows = (
+        _execute_rows(_table("outfits").select("id, job_id, style_label, created_at").eq("user_id", user_id).in_("job_id", job_ids))
+        if job_ids
+        else []
+    )
+    outfit_count_by_job_id: dict[str, int] = defaultdict(int)
+    style_by_job_id: dict[str, str | None] = {}
+    latest_outfit_by_job_id: dict[str, dict[str, Any]] = {}
+    for outfit in outfit_rows:
+        job_id = str(outfit.get("job_id") or "")
+        if not job_id:
+            continue
+        outfit_count_by_job_id[job_id] += 1
+        current = latest_outfit_by_job_id.get(job_id)
+        if current is None or _sort_key_created_desc(outfit) > _sort_key_created_desc(current):
+            latest_outfit_by_job_id[job_id] = outfit
+            style_by_job_id[job_id] = outfit.get("style_label")
+
     return [
         {
-            "job_id": row["job_id"],
+            "job_id": row["id"],
             "photo_id": row.get("photo_id"),
             "job_type": row.get("job_type"),
             "analysis_model": row.get("model_used"),
@@ -991,73 +968,75 @@ def list_analysis_history(user_id: str, limit: int = 50) -> list[dict[str, Any]]
             "error_message": row.get("error_message"),
             "created_at": row.get("created_at"),
             "completed_at": row.get("completed_at"),
-            "image_url": get_signed_image_url(row.get("storage_path")),
-            "outfit_count": row.get("outfit_count") or 0,
-            "style_label": row.get("style_label"),
+            "image_url": get_signed_image_url((photos_by_id.get(str(row.get("photo_id") or "")) or {}).get("storage_path")),
+            "outfit_count": outfit_count_by_job_id.get(str(row.get("id")), 0),
+            "style_label": style_by_job_id.get(str(row.get("id"))),
         }
         for row in rows
     ]
 
 
 def list_wardrobe(user_id: str, limit: int = 20, offset: int = 0) -> list[dict[str, Any]]:
-    rows = _db_fetchall(
-        """
-        with ranked as (
-          select
-            o.*,
-            row_number() over (
-              partition by o.photo_id
-              order by o.created_at asc, o.id asc
-            ) - 1 as outfit_index,
-            count(*) over (partition by o.photo_id) as outfit_count
-          from public.outfits o
-          where o.user_id = %s
-        )
-        select
-          ranked.id as outfit_id,
-          ranked.photo_id,
-          ranked.style_label,
-          ranked.generated_image_path,
-          coalesce(j.job_type, '') as job_type,
-          ranked.created_at,
-          ranked.outfit_index,
-          ranked.outfit_count,
-          p.storage_path,
-          coalesce(item_counts.outfit_items_count, 0) as outfit_items_count
-        from ranked
-        left join public.photos p
-          on p.id = ranked.photo_id
-        left join public.ai_jobs j
-          on j.id = ranked.job_id
-        left join lateral (
-          select count(*)::integer as outfit_items_count
-          from public.outfit_items oi
-          where oi.outfit_id = ranked.id
-        ) item_counts on true
-        order by ranked.created_at desc, ranked.id desc
-        limit %s offset %s
-        """,
-        (user_id, max(limit, 1), max(offset, 0)),
+    rows = _execute_rows(
+        _table("outfits")
+        .select("id, photo_id, style_label, generated_image_path, job_id, created_at")
+        .eq("user_id", user_id)
     )
 
-    wardrobe: list[dict[str, Any]] = []
+    outfits_by_photo_id: dict[str, list[dict[str, Any]]] = defaultdict(list)
     for row in rows:
+        photo_id = str(row.get("photo_id") or "")
+        if photo_id:
+            outfits_by_photo_id[photo_id].append(row)
+
+    enriched_rows: list[dict[str, Any]] = []
+    for photo_id, outfit_rows in outfits_by_photo_id.items():
+        ordered = sorted(outfit_rows, key=_sort_key_created_asc)
+        outfit_count = len(ordered)
+        for index, outfit in enumerate(ordered):
+            enriched = dict(outfit)
+            enriched["outfit_index"] = index
+            enriched["outfit_count"] = outfit_count
+            enriched_rows.append(enriched)
+
+    enriched_rows.sort(key=_sort_key_created_desc, reverse=True)
+    paged_rows = enriched_rows[max(offset, 0): max(offset, 0) + max(limit, 1)]
+
+    photo_ids = sorted({str(row.get("photo_id")) for row in paged_rows if row.get("photo_id") is not None})
+    photo_rows = _execute_rows(_table("photos").select("id, storage_path").in_("id", photo_ids)) if photo_ids else []
+    photos_by_id = {str(row["id"]): row for row in photo_rows if row.get("id") is not None}
+
+    job_ids = sorted({str(row.get("job_id")) for row in paged_rows if row.get("job_id") is not None})
+    job_rows = _execute_rows(_table("ai_jobs").select("id, job_type").in_("id", job_ids)) if job_ids else []
+    jobs_by_id = {str(row["id"]): row for row in job_rows if row.get("id") is not None}
+
+    outfit_ids = [str(row.get("id")) for row in paged_rows if row.get("id") is not None]
+    outfit_item_rows = _execute_rows(_table("outfit_items").select("outfit_id").in_("outfit_id", outfit_ids)) if outfit_ids else []
+    outfit_items_count_by_outfit_id: dict[str, int] = defaultdict(int)
+    for row in outfit_item_rows:
+        outfit_id = str(row.get("outfit_id") or "")
+        if outfit_id:
+            outfit_items_count_by_outfit_id[outfit_id] += 1
+
+    wardrobe: list[dict[str, Any]] = []
+    for row in paged_rows:
         generated_image_path = _normalize_text(row.get("generated_image_path"))
-        source_path = _normalize_text(row.get("storage_path"))
+        source_path = _normalize_text((photos_by_id.get(str(row.get("photo_id") or "")) or {}).get("storage_path"))
+        job_type = (jobs_by_id.get(str(row.get("job_id") or "")) or {}).get("job_type")
         wardrobe.append(
             {
-                "row_id": str(row["outfit_id"]),
-                "outfit_id": row["outfit_id"],
+                "row_id": str(row["id"]),
+                "outfit_id": row["id"],
                 "photo_id": row["photo_id"],
                 "image_url": get_signed_image_url(generated_image_path or source_path),
                 "source_outfit_image_url": get_signed_image_url(source_path),
                 "created_at": row.get("created_at"),
                 "style_label": row.get("style_label"),
-                "source_type": _derive_outfit_source_type(source_path, generated_image_path, row.get("job_type")),
+                "source_type": _derive_outfit_source_type(source_path, generated_image_path, job_type),
                 "source_outfit_id": None,
                 "outfit_index": row.get("outfit_index") or 0,
                 "outfit_count": row.get("outfit_count") or 1,
-                "outfit_items_count": row.get("outfit_items_count") or 0,
+                "outfit_items_count": outfit_items_count_by_outfit_id.get(str(row.get("id")), 0),
             }
         )
     return wardrobe
@@ -1138,75 +1117,46 @@ def delete_wardrobe_outfit(user_id: str, outfit_id: str) -> bool:
     photo_storage_path = ""
     generated_image_path = ""
 
-    with get_database_connection() as conn:
-        with conn.cursor(cursor_factory=RealDictCursor) as cur:
-            cur.execute(
-                """
-                select
-                  o.photo_id,
-                  o.generated_image_path,
-                  array_remove(array_agg(oi.item_id), null) as item_ids
-                from public.outfits o
-                left join public.outfit_items oi
-                  on oi.outfit_id = o.id
-                where o.id = %s
-                  and o.user_id = %s
-                group by o.id
-                """,
-                (outfit_id, user_id),
-            )
-            target = cur.fetchone()
-            if not target:
-                return False
+    target = _execute_row(
+        _table("outfits")
+        .select("id, photo_id, generated_image_path")
+        .eq("id", outfit_id)
+        .eq("user_id", user_id)
+    )
+    if not target:
+        return False
 
-            generated_image_path = _normalize_text(target.get("generated_image_path"))
-            photo_id = target.get("photo_id")
-            item_ids = [str(item_id) for item_id in (target.get("item_ids") or [])]
+    generated_image_path = _normalize_text(target.get("generated_image_path"))
+    photo_id = target.get("photo_id")
+    item_rows = _execute_rows(_table("outfit_items").select("item_id").eq("outfit_id", outfit_id))
+    item_ids = [str(row.get("item_id")) for row in item_rows if row.get("item_id") is not None]
 
-            cur.execute("delete from public.outfits where id = %s and user_id = %s", (outfit_id, user_id))
+    _execute_mutation(_table("outfit_items").delete().eq("outfit_id", outfit_id))
+    deleted_rows = _execute_rows(_table("outfits").delete().eq("id", outfit_id).eq("user_id", user_id))
+    if not deleted_rows:
+        return False
 
-            for item_id in item_ids:
-                cur.execute(
-                    """
-                    select i.image_path
-                    from public.items i
-                    where i.id = %s
-                      and i.user_id = %s
-                      and not exists (
-                        select 1
-                        from public.outfit_items oi
-                        where oi.item_id = i.id
-                      )
-                    """,
-                    (item_id, user_id),
-                )
-                orphan_item = cur.fetchone()
-                if orphan_item and orphan_item.get("image_path"):
-                    orphan_item_paths.append(str(orphan_item["image_path"]))
+    for item_id in item_ids:
+        still_linked = _execute_rows(_table("outfit_items").select("outfit_id").eq("item_id", item_id).limit(1))
+        if still_linked:
+            continue
 
-                cur.execute(
-                    """
-                    delete from public.items
-                    where id = %s
-                      and user_id = %s
-                      and not exists (
-                        select 1
-                        from public.outfit_items oi
-                        where oi.item_id = public.items.id
-                      )
-                    """,
-                    (item_id, user_id),
-                )
+        orphan_item = _execute_row(
+            _table("items")
+            .select("id, image_path")
+            .eq("id", item_id)
+            .eq("user_id", user_id)
+        )
+        if orphan_item and orphan_item.get("image_path"):
+            orphan_item_paths.append(str(orphan_item["image_path"]))
+            _execute_mutation(_table("items").delete().eq("id", item_id).eq("user_id", user_id))
 
-            if photo_id:
-                cur.execute("select count(*)::integer as remaining from public.outfits where photo_id = %s", (photo_id,))
-                remaining = cur.fetchone()
-                if remaining and int(remaining["remaining"] or 0) == 0:
-                    cur.execute("select storage_path from public.photos where id = %s", (photo_id,))
-                    photo_row = cur.fetchone()
-                    photo_storage_path = _normalize_text((photo_row or {}).get("storage_path"))
-                    cur.execute("delete from public.photos where id = %s and user_id = %s", (photo_id, user_id))
-        conn.commit()
+    if photo_id:
+        remaining = _execute_count(_table("outfits").select("id", count="exact").eq("photo_id", photo_id).eq("user_id", user_id))
+        if remaining == 0:
+            photo_row = _execute_row(_table("photos").select("id, storage_path").eq("id", photo_id).eq("user_id", user_id))
+            photo_storage_path = _normalize_text((photo_row or {}).get("storage_path"))
+            _execute_mutation(_table("photos").delete().eq("id", photo_id).eq("user_id", user_id))
 
     storage_paths = orphan_item_paths
     if generated_image_path:
@@ -1247,65 +1197,52 @@ def update_wardrobe_outfit_style_label(user_id: str, outfit_id: str, style_label
 
 
 def get_dashboard_stats(user_id: str) -> dict[str, Any]:
-    snapshot = _db_fetchone(
-        """
-        select
-          (select count(*)::integer from public.photos where user_id = %s) as photos_count,
-          (select count(*)::integer from public.outfits where user_id = %s) as outfits_count,
-          (select count(*)::integer from public.ai_jobs where user_id = %s) as analyses_count,
-          (select count(*)::integer from public.items where user_id = %s) as items_count,
-          (
-            select count(*)::integer
-            from public.outfits
-            where user_id = %s
-              and generated_image_path is not null
-              and btrim(generated_image_path) <> ''
-          ) as generated_outfit_images_count
-        """,
-        (user_id, user_id, user_id, user_id, user_id),
-    )
-    return snapshot or {
-        "photos_count": 0,
-        "outfits_count": 0,
-        "analyses_count": 0,
-        "items_count": 0,
-        "generated_outfit_images_count": 0,
+    photos_count = _execute_count(_table("photos").select("id", count="exact").eq("user_id", user_id))
+    outfits_count = _execute_count(_table("outfits").select("id", count="exact").eq("user_id", user_id))
+    analyses_count = _execute_count(_table("ai_jobs").select("id", count="exact").eq("user_id", user_id))
+    items_count = _execute_count(_table("items").select("id", count="exact").eq("user_id", user_id))
+    generated_rows = _execute_rows(_table("outfits").select("generated_image_path").eq("user_id", user_id))
+    generated_outfit_images_count = sum(1 for row in generated_rows if _normalize_text(row.get("generated_image_path")))
+    return {
+        "photos_count": photos_count,
+        "outfits_count": outfits_count,
+        "analyses_count": analyses_count,
+        "items_count": items_count,
+        "generated_outfit_images_count": generated_outfit_images_count,
     }
 
 
 def get_user_cost_summary(user_id: str, month_start_iso: str) -> dict[str, Any]:
-    summary = _db_fetchone(
-        """
-        select
-          count(*) filter (where job_type = 'analysis')::integer as analysis_runs,
-          count(*) filter (where job_type = 'try_on')::integer as try_on_generations,
-          count(*) filter (where job_type = 'custom_outfit')::integer as custom_outfit_generations,
-          coalesce(sum(tokens_input), 0)::integer as tokens_input,
-          coalesce(sum(tokens_output), 0)::integer as tokens_output
-        from public.ai_jobs
-        where user_id = %s
-          and created_at >= %s::timestamptz
-        """,
-        (user_id, month_start_iso),
-    ) or {}
+    ai_job_rows = _execute_rows(
+        _table("ai_jobs")
+        .select("job_type, tokens_input, tokens_output")
+        .eq("user_id", user_id)
+        .gte("created_at", month_start_iso)
+    )
 
-    generated_outfit_images = _db_fetchone(
-        """
-        select count(*)::integer as generated_outfit_images
-        from public.outfits
-        where user_id = %s
-          and created_at >= %s::timestamptz
-          and generated_image_path is not null
-          and btrim(generated_image_path) <> ''
-        """,
-        (user_id, month_start_iso),
-    ) or {}
+    analysis_runs = 0
+    try_on_generations = 0
+    custom_outfit_generations = 0
+    input_tokens = 0
+    output_tokens = 0
+    for row in ai_job_rows:
+        job_type = _normalize_text(row.get("job_type")).lower()
+        input_tokens += _safe_int(row.get("tokens_input"))
+        output_tokens += _safe_int(row.get("tokens_output"))
+        if job_type == "analysis":
+            analysis_runs += 1
+        elif job_type == "try_on":
+            try_on_generations += 1
+        elif job_type == "custom_outfit":
+            custom_outfit_generations += 1
 
-    input_tokens = summary.get("tokens_input") or 0
-    output_tokens = summary.get("tokens_output") or 0
-    analysis_runs = summary.get("analysis_runs") or 0
-    try_on_generations = summary.get("try_on_generations") or 0
-    custom_outfit_generations = summary.get("custom_outfit_generations") or 0
+    outfit_rows = _execute_rows(
+        _table("outfits")
+        .select("generated_image_path")
+        .eq("user_id", user_id)
+        .gte("created_at", month_start_iso)
+    )
+    generated_outfit_images_count = sum(1 for row in outfit_rows if _normalize_text(row.get("generated_image_path")))
 
     return {
         "month_start_utc": month_start_iso,
@@ -1331,7 +1268,7 @@ def get_user_cost_summary(user_id: str, month_start_iso: str) -> dict[str, Any]:
             },
             "source": "Aggregated from ai_jobs token fields.",
         },
-        "generated_outfit_images": generated_outfit_images.get("generated_outfit_images") or 0,
+        "generated_outfit_images": generated_outfit_images_count,
         "unit_costs_usd": {},
         "token_pricing_usd_per_1m": {},
     }
