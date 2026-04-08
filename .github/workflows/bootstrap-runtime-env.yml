@@ -105,6 +105,7 @@ jobs:
           GEMINI_IMAGE_MODEL: ${{ secrets.GEMINI_IMAGE_MODEL }}
           SETTINGS_ENCRYPTION_KEY: ${{ secrets.SETTINGS_ENCRYPTION_KEY }}
           DEFAULT_ANALYSIS_MODEL: ${{ secrets.DEFAULT_ANALYSIS_MODEL }}
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
           BETTER_AUTH_SECRET: ${{ secrets.BETTER_AUTH_SECRET }}
           GOOGLE_CLIENT_ID: ${{ secrets.GOOGLE_CLIENT_ID }}
           GOOGLE_CLIENT_SECRET: ${{ secrets.GOOGLE_CLIENT_SECRET }}
@@ -125,6 +126,7 @@ jobs:
           : "${GEMINI_IMAGE_MODEL:?GEMINI_IMAGE_MODEL GitHub secret is required}"
           : "${SETTINGS_ENCRYPTION_KEY:?SETTINGS_ENCRYPTION_KEY GitHub secret is required}"
           : "${DEFAULT_ANALYSIS_MODEL:?DEFAULT_ANALYSIS_MODEL GitHub secret is required}"
+          : "${DATABASE_URL:?DATABASE_URL GitHub secret is required}"
           : "${BETTER_AUTH_SECRET:?BETTER_AUTH_SECRET GitHub secret is required}"
           : "${GOOGLE_CLIENT_ID:?GOOGLE_CLIENT_ID GitHub secret is required}"
           : "${GOOGLE_CLIENT_SECRET:?GOOGLE_CLIENT_SECRET GitHub secret is required}"
@@ -174,6 +176,7 @@ jobs:
             printf 'GEMINI_IMAGE_MODEL=%s\n' "$GEMINI_IMAGE_MODEL"
             printf 'SETTINGS_ENCRYPTION_KEY=%s\n' "$SETTINGS_ENCRYPTION_KEY"
             printf 'DEFAULT_ANALYSIS_MODEL=%s\n' "$DEFAULT_ANALYSIS_MODEL"
+            printf 'DATABASE_URL=%s\n' "$DATABASE_URL"
             printf 'BETTER_AUTH_SECRET=%s\n' "$BETTER_AUTH_SECRET"
             printf 'GOOGLE_CLIENT_ID=%s\n' "$GOOGLE_CLIENT_ID"
             printf 'GOOGLE_CLIENT_SECRET=%s\n' "$GOOGLE_CLIENT_SECRET"
