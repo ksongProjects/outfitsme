@@ -147,6 +147,7 @@ class Settings:
     BETTER_AUTH_URL = _clean_env(
         os.getenv("BETTER_AUTH_URL", os.getenv("APP_URL", os.getenv("NEXT_PUBLIC_APP_URL", "")))
     )
+    BETTER_AUTH_JWKS_URL = _clean_env(os.getenv("BETTER_AUTH_JWKS_URL", BETTER_AUTH_URL))
     BETTER_AUTH_JWT_ISSUER = _clean_env(os.getenv("BETTER_AUTH_JWT_ISSUER", BETTER_AUTH_URL))
     BETTER_AUTH_JWT_AUDIENCE = _clean_env(os.getenv("BETTER_AUTH_JWT_AUDIENCE", BETTER_AUTH_URL))
 

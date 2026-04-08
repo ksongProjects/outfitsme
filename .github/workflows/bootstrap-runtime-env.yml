@@ -93,6 +93,9 @@ jobs:
           NEXT_PUBLIC_APP_URL: ${{ secrets.NEXT_PUBLIC_APP_URL }}
           NEXT_PUBLIC_API_BASE_URL: ${{ secrets.NEXT_PUBLIC_API_BASE_URL }}
           BETTER_AUTH_URL: ${{ secrets.BETTER_AUTH_URL }}
+          BETTER_AUTH_JWKS_URL: ${{ secrets.BETTER_AUTH_JWKS_URL }}
+          BETTER_AUTH_JWT_ISSUER: ${{ secrets.BETTER_AUTH_JWT_ISSUER }}
+          BETTER_AUTH_JWT_AUDIENCE: ${{ secrets.BETTER_AUTH_JWT_AUDIENCE }}
           CORS_ALLOWED_ORIGINS: ${{ secrets.CORS_ALLOWED_ORIGINS }}
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SECRET_KEY: ${{ secrets.SUPABASE_SECRET_KEY }}
@@ -130,6 +133,15 @@ jobs:
           if [ -z "${BETTER_AUTH_URL:-}" ]; then
             BETTER_AUTH_URL="$APP_URL"
           fi
+          if [ -z "${BETTER_AUTH_JWKS_URL:-}" ]; then
+            BETTER_AUTH_JWKS_URL="$BETTER_AUTH_URL"
+          fi
+          if [ -z "${BETTER_AUTH_JWT_ISSUER:-}" ]; then
+            BETTER_AUTH_JWT_ISSUER="$BETTER_AUTH_URL"
+          fi
+          if [ -z "${BETTER_AUTH_JWT_AUDIENCE:-}" ]; then
+            BETTER_AUTH_JWT_AUDIENCE="$BETTER_AUTH_URL"
+          fi
 
           REMOTE_BOOTSTRAP="$RUNNER_TEMP/remote-bootstrap-runtime-env.sh"
           {
@@ -150,6 +162,9 @@ jobs:
             printf 'NEXT_PUBLIC_APP_URL=%s\n' "$NEXT_PUBLIC_APP_URL"
             printf 'NEXT_PUBLIC_API_BASE_URL=%s\n' "$NEXT_PUBLIC_API_BASE_URL"
             printf 'BETTER_AUTH_URL=%s\n' "$BETTER_AUTH_URL"
+            printf 'BETTER_AUTH_JWKS_URL=%s\n' "$BETTER_AUTH_JWKS_URL"
+            printf 'BETTER_AUTH_JWT_ISSUER=%s\n' "$BETTER_AUTH_JWT_ISSUER"
+            printf 'BETTER_AUTH_JWT_AUDIENCE=%s\n' "$BETTER_AUTH_JWT_AUDIENCE"
             printf 'CORS_ALLOWED_ORIGINS=%s\n' "$CORS_ALLOWED_ORIGINS"
             printf 'SUPABASE_URL=%s\n' "$SUPABASE_URL"
             printf 'SUPABASE_SECRET_KEY=%s\n' "$SUPABASE_SECRET_KEY"

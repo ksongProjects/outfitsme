@@ -55,6 +55,11 @@ CORS_ALLOWED_ORIGINS=http://localhost:3000
 RATE_LIMIT_STORAGE_URI=memory://
 MONTHLY_ANALYSIS_LIMIT=100
 ENABLE_BEDROCK_ANALYSIS=false
+APP_URL=http://localhost:3000
+BETTER_AUTH_URL=http://localhost:3000
+BETTER_AUTH_JWKS_URL=http://localhost:3000/api/auth/jwks
+BETTER_AUTH_JWT_ISSUER=http://localhost:3000
+BETTER_AUTH_JWT_AUDIENCE=http://localhost:3000
 SUPABASE_URL=
 SUPABASE_SECRET_KEY=
 SUPABASE_BUCKET=outfit-images
@@ -75,6 +80,8 @@ Production defaults/safety:
 - For multi-instance deployments, use Redis for shared rate-limit state (for example, `RATE_LIMIT_STORAGE_URI=redis://...`).
 - `MONTHLY_ANALYSIS_LIMIT` enforces per-user monthly analyze quota (`0` disables the cap).
 - `ENABLE_BEDROCK_ANALYSIS=false` keeps analysis provider scope to Gemini-only. Set to `true` to re-enable Bedrock model options.
+- Keep `BETTER_AUTH_URL`, `BETTER_AUTH_JWT_ISSUER`, and `BETTER_AUTH_JWT_AUDIENCE` on the public app origin.
+- In Docker/Compose production, set `BETTER_AUTH_JWKS_URL=http://frontend:3000/api/auth/jwks` so the backend fetches JWKS from the internal frontend service instead of the public CDN path.
 
 Production/shared Gemini configuration:
 - Store the single server-managed Gemini key only in the backend environment as `GEMINI_API_KEY`.

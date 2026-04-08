@@ -3,7 +3,7 @@ import base64
 from datetime import datetime, timezone
 import json
 import time
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlunparse
 
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 import requests
@@ -31,11 +31,25 @@ def _normalized_auth_origin(raw_url: str) -> str:
     return f"{parsed.scheme}://{parsed.netloc}"
 
 
+def _normalized_jwks_url(raw_url: str) -> str:
+    parsed = urlparse((raw_url or "").strip())
+    if not parsed.scheme or not parsed.netloc:
+        return ""
+
+    path = (parsed.path or "").rstrip("/")
+    if not path:
+        path = "/api/auth/jwks"
+
+    return urlunparse((parsed.scheme, parsed.netloc, path, "", parsed.query, ""))
+
+
 def _get_jwks_url() -> str:
-    base_url = _normalized_auth_origin(settings.BETTER_AUTH_URL)
-    if not base_url:
-        raise BetterAuthSessionError("BETTER_AUTH_URL or APP_URL must be configured for Better Auth JWT validation.")
-    return f"{base_url}/api/auth/jwks"
+    jwks_url = _normalized_jwks_url(settings.BETTER_AUTH_JWKS_URL)
+    if not jwks_url:
+        raise BetterAuthSessionError(
+            "BETTER_AUTH_JWKS_URL or BETTER_AUTH_URL must be configured for Better Auth JWT validation."
+        )
+    return jwks_url
 
 
 def _get_cached_jwks() -> dict[str, dict]:
