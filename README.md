@@ -1,109 +1,188 @@
-# OutfitsMe v1
+# OutfitsMe
 
-OutfitsMe is a web app where users upload outfit photos, identify clothing items, create personal styles, and find similar products on online stores.
+OutfitsMe is a wardrobe app that turns outfit photos into structured closet data.
 
-## Current Local MVP
+Current app flow:
+- Sign in with Google.
+- Upload and crop an outfit photo.
+- Run async Gemini analysis to detect outfits and items.
+- Save results into a wardrobe and item catalog.
+- Build new AI-generated outfits from saved items.
+- Generate "OutfitsMe" try-on previews from a saved profile reference photo.
 
-Implemented in this repo:
-- `frontend/`: Next.js UI with landing auth and a tabbed app (`Home`, `Photo analysis`, `My Outfits`, `Item catalog`, `Settings`)
-- `backend/`: Flask API with authenticated endpoints, Gemini + Bedrock analysis routing, Supabase token verification, private bucket upload, and DB persistence
+## High-Level Use Cases
 
-Frontend data/state stack:
-- TanStack Query for query/mutation API flows with cache invalidation
-- TanStack Table for item catalog pagination + table rendering
+Use OutfitsMe when you want to:
+- Turn outfit photos into a searchable digital wardrobe instead of keeping everything in your camera roll.
+- Break down a look into reusable clothing items so you can organize what you own or what inspires you.
+- Explore new combinations from saved pieces and generate fresh outfit ideas from your catalog.
+- Preview how an analyzed outfit might look on you using a profile reference photo.
+- Track AI usage, outfit history, and wardrobe growth in one place.
 
-Gemini and AWS Bedrock Agent are supported for analysis. Similar-item results are still mocked for now.
+At a high level, OutfitsMe is part closet organizer, part outfit idea generator, and part try-on preview tool.
 
-## Prerequisites
+## Current Status
 
-- Node.js 18+
-- Python 3.10+
-- Supabase project
+This repo contains a working full-stack app, not just a landing page or concept demo.
+
+What is working today:
+- Google OAuth sign-in through Better Auth
+- Protected dashboard with usage, recent activity, and wardrobe stats
+- Photo analysis queue with job polling and progress states
+- Automatic outfit + item persistence to Supabase
+- Generated item thumbnails after analysis
+- Wardrobe browsing, rename, single delete, bulk delete, image download
+- Item catalog filtering by type, color, and style
+- Custom outfit generation from selected saved items
+- OutfitsMe try-on preview generation for analyzed outfits after profile photo upload and feature enablement
+- User profile settings, profile photo upload, feature toggles, and cost summary
+- History table for analysis, custom outfit, and try-on jobs
+
+Known limitations:
+- Online store search is not live yet. Settings marks it as coming soon.
+- `POST /api/similar` still returns placeholder/mock store results.
+- Only Gemini is wired into the current product flow. Bedrock is not part of the active app path right now.
+- Frontend has linting, but no `npm test` script is configured at the moment.
+
+## Stack
+
+- `frontend/`: Next.js 16, React 19, Better Auth, Drizzle, TanStack Query, Zustand, Tailwind CSS
+- `backend/`: Flask API, Flask-Limiter, Supabase storage/database access, Gemini integration
+- `supabase/`: schema and RLS migrations
+- `infra/aws/`: AWS Terraform template currently checked into this repo
+- `deploy/`, `proxy/`, `compose.yaml`: Docker Compose and production deploy assets
+
+## Repo Layout
+
+- `frontend/`: public landing page, auth, dashboard UI, app tabs
+- `backend/`: Flask routes, auth validation, analysis job worker, Supabase and Gemini services
+- `supabase/migrations/`: database, auth-table, storage, and AI pipeline setup
+- `infra/aws/`: AWS infrastructure template
+- `deploy/`: deployment scripts used by GitHub Actions
+- `proxy/`: nginx templates for HTTP bootstrap and TLS runtime
+
+## User-Facing Features
+
+### Landing + Auth
+
+- Public landing page with Google sign-in CTA
+- Better Auth handles auth routes under `frontend/src/app/api/auth`
+- Session-backed JWT is used to call the Flask API
+
+### Dashboard
+
+- Library totals for analyzed photos, generated outfit images, and cataloged items
+- Trial/unlimited access summary
+- Recent AI activity summary
+
+### Photo Analysis
+
+- Upload JPG/PNG/WEBP photos
+- Optional crop selection before upload
+- Async analysis jobs with queue state and polling
+- Up to 5 concurrent analysis jobs from the UI
+- Saved analysis cards with detected outfits and item breakdowns
+- Generated item thumbnails for detected pieces
+- Optional accessory analysis toggle from Settings
+
+### My Outfits
+
+- Browse saved outfits from photo analysis, custom outfit generation, and OutfitsMe generation
+- Open outfit details modal
+- Rename outfits
+- Delete one or many outfits
+- Download current outfit image
+- Generate try-on previews from analyzed outfits after enabling outfit image generation and uploading a profile photo
+
+### Item Catalog
+
+- Browse detected items with pagination
+- Filter by type, color, and style
+- Select saved items and create a new composed outfit
+
+### Settings
+
+- Upload profile reference photo
+- Save display name, gender, and age
+- Toggle outfit image generation
+- Toggle accessory analysis
+- View monthly AI usage and estimated costs
+
+## Auth + Data Model
+
+Auth is split across frontend and backend:
+
+- Next.js uses Better Auth with Google OAuth and a PostgreSQL connection from `DATABASE_URL`
+- Better Auth tables live in Supabase/Postgres public schema
+- Backend validates Better Auth JWTs against the JWKS endpoint
+- Supabase stores photos, profile photos, generated outfit images, outfits, items, jobs, and user settings
+
+Current role model:
+- `trial`
+- `premium`
+- `admin`
+
+Trial behavior in current code:
+- trial length controlled by `TRIAL_DAYS`
+- daily AI limit controlled by `TRIAL_DAILY_AI_ACTION_LIMIT`
+- unlimited AI access for `premium` and `admin`
 
 ## Supabase Setup
 
-1. Create a private storage bucket named `outfit-images`.
-2. Create tables (`photos`, `outfit_analyses`, `items`, `outfits`, `outfit_items`, `user_settings`) from migrations.
-3. Enable RLS and add owner-based policies by `user_id`.
-4. Enable email/password auth in Supabase Auth.
-5. Run:
-   - `supabase/migrations/20260217_000001_initial_schema.sql`
-   - `supabase/migrations/20260217_000002_user_settings.sql`
-   - `supabase/migrations/20260217_000003_bedrock_agent_settings.sql`
-   - `supabase/migrations/20260217_000004_drop_unused_bedrock_model_id.sql`
-   - `supabase/migrations/20260217_000005_drop_unused_aws_credentials.sql`
-   - `supabase/migrations/20260217_000006_outfits_table_and_itemized_deletes.sql`
-   - `supabase/migrations/20260222_000007_analysis_jobs.sql`
+Run these migrations in order:
 
-## Environment Variables
+1. `supabase/migrations/0001_auth_and_storage.sql`
+2. `supabase/migrations/0002_photos_and_user_settings.sql`
+3. `supabase/migrations/0003_ai_pipeline.sql`
 
-Frontend: `frontend/.env.local`
+What these migrations do:
+- create Better Auth tables in Postgres
+- create private `outfit-images` storage bucket
+- create app tables for photos, settings, jobs, outfits, items, and outfit-item joins
+- enable row-level security and owner-scoped policies
 
-```env
-NEXT_PUBLIC_API_BASE_URL=http://localhost:5000
-NEXT_PUBLIC_SUPABASE_URL=
-NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=
-```
+## Environment Setup
 
-Backend: `backend/.env`
+Frontend local env lives at `frontend/.env.local`. Start from `frontend/.env.example`.
 
-```env
-FLASK_ENV=development
-DEBUG=true
-PORT=5000
-CORS_ALLOWED_ORIGINS=http://localhost:3000
-RATE_LIMIT_STORAGE_URI=memory://
-MONTHLY_ANALYSIS_LIMIT=100
-ENABLE_BEDROCK_ANALYSIS=false
-APP_URL=http://localhost:3000
-BETTER_AUTH_URL=http://localhost:3000
-BETTER_AUTH_JWKS_URL=http://localhost:3000/api/auth/jwks
-BETTER_AUTH_JWT_ISSUER=http://localhost:3000
-BETTER_AUTH_JWT_AUDIENCE=http://localhost:3000
-SUPABASE_URL=
-SUPABASE_SECRET_KEY=
-SUPABASE_BUCKET=outfit-images
-GEMINI_API_KEY=
-GEMINI_MODEL=gemini-2.5-flash
-GEMINI_IMAGE_MODEL=gemini-2.5-flash-image
-GEMINI_INPUT_COST_PER_1M_TOKENS_USD=0
-GEMINI_OUTPUT_COST_PER_1M_TOKENS_USD=0
-GEMINI_TOKEN_ESTIMATOR_CHARS_PER_TOKEN=4
-GEMINI_TOKEN_ESTIMATOR_IMAGE_TILE_SIZE=768
-GEMINI_TOKEN_ESTIMATOR_IMAGE_TOKENS_PER_TILE=258
-SETTINGS_ENCRYPTION_KEY=
-DEFAULT_ANALYSIS_MODEL=gemini-2.5-flash
-```
+Important frontend vars:
+- `NEXT_PUBLIC_APP_URL`
+- `APP_URL`
+- `NEXT_PUBLIC_API_BASE_URL`
+- `DATABASE_URL`
+- `BETTER_AUTH_SECRET`
+- `GOOGLE_CLIENT_ID`
+- `GOOGLE_CLIENT_SECRET`
 
-Production defaults/safety:
-- Set `CORS_ALLOWED_ORIGINS` to your exact frontend domain(s), comma-separated.
-- For multi-instance deployments, use Redis for shared rate-limit state (for example, `RATE_LIMIT_STORAGE_URI=redis://...`).
-- `MONTHLY_ANALYSIS_LIMIT` enforces per-user monthly analyze quota (`0` disables the cap).
-- `ENABLE_BEDROCK_ANALYSIS=false` keeps analysis provider scope to Gemini-only. Set to `true` to re-enable Bedrock model options.
-- Keep `BETTER_AUTH_URL`, `BETTER_AUTH_JWT_ISSUER`, and `BETTER_AUTH_JWT_AUDIENCE` on the public app origin.
-- In Docker/Compose production, set `BETTER_AUTH_JWKS_URL=http://frontend:3000/api/auth/jwks` so the backend fetches JWKS from the internal frontend service instead of the public CDN path.
+Backend local env lives at `backend/.env`. Start from `backend/.env.example`.
 
-Production/shared Gemini configuration:
-- Store the single server-managed Gemini key only in the backend environment as `GEMINI_API_KEY`.
-- Do not ask users to provide personal Gemini API keys.
-- Trial defaults are 14 days and 5 AI actions per day (`TRIAL_DAYS`, `TRIAL_DAILY_AI_ACTION_LIMIT`).
+Important backend vars:
+- `APP_URL`
+- `BETTER_AUTH_URL`
+- `BETTER_AUTH_JWKS_URL`
+- `BETTER_AUTH_JWT_ISSUER`
+- `BETTER_AUTH_JWT_AUDIENCE`
+- `SUPABASE_URL`
+- `SUPABASE_SECRET_KEY`
+- `SUPABASE_BUCKET`
+- `GEMINI_API_KEY`
+- `GEMINI_MODEL`
+- `GEMINI_IMAGE_MODEL`
+- `SETTINGS_ENCRYPTION_KEY`
 
-User access roles:
-- `trial`: limited to the shared 14-day / daily-capped experience.
-- `premium`: unlimited AI usage in the current app logic.
-- `admin`: unlimited AI usage plus reserved for future admin-only tooling.
-- Roles are stored server-side in `public.user_settings.user_role`; normal user settings APIs do not allow self-promotion.
-- Apply the migration `supabase/migrations/20260306_000013_user_settings_roles.sql` before deploying role-based access changes.
+Production runtime env lives in top-level `.env.example`. That file is meant for `/etc/outfitsme/app.env` on the server.
 
-Generate `SETTINGS_ENCRYPTION_KEY` once (Fernet key) only if you still need encrypted server-side settings:
+## Prerequisites
 
-```bash
-python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
-```
+- Node.js suitable for Next.js 16
+- Python 3.10+
+- Supabase project
+- Google OAuth credentials
+- Gemini API key
 
 ## Run Locally
 
-### 1) Backend
+### 1. Start backend
 
 ```bash
 cd backend
@@ -114,11 +193,9 @@ pip install -r requirements.txt
 python run.py
 ```
 
-Backend: `http://localhost:5000`
+Backend runs on `http://localhost:5000`.
 
-### 2) Frontend
-
-In another terminal:
+### 2. Start frontend
 
 ```bash
 cd frontend
@@ -126,58 +203,42 @@ npm install
 npm run dev
 ```
 
-Frontend: `http://localhost:3000`
+Frontend runs on `http://localhost:3000`.
 
-## Infrastructure (Terraform)
+## API Summary
 
-Terraform templates are available in `infra/`:
-- `infra/aws` for AWS Bedrock Agent creation
-- `infra/aws-minimal` for low-cost AWS production app deployment (EC2 + Docker + TLS + optional CloudFront/WAF)
-- `infra/google` for Google Cloud setup template
-- `infra/openai` for OpenAI config template
-
-See `infra/README.md` for step-by-step usage (`init`, `plan`, `apply`), required variables, and outputs.
-
-## Production Runtime (Docker + Gunicorn)
-
-Production deploy assets:
-- `backend/Dockerfile` (Flask served by Gunicorn)
-- `frontend/Dockerfile` (Next.js production build/start)
-- `compose.yaml` (frontend + backend + nginx reverse proxy + certbot)
-- `proxy/nginx.http.conf` (HTTP-only bootstrap config for first certificate issuance)
-- `proxy/nginx.ssl.conf` (primary TLS reverse-proxy config)
-- `deploy/remote-deploy.sh` (server-side deploy script invoked by GitHub Actions over SSM)
-- `.env.example` (copy to `/etc/outfitsme/app.env` on the instance)
-- `deploy/deploy.env.example` (shape of `/etc/outfitsme/deploy.env`, updated automatically by deploys)
-
-The production deploy workflow now builds and pushes the frontend and backend images, updates `/etc/outfitsme/deploy.env` on the EC2 instance with the latest image tag, and runs `deploy/remote-deploy.sh`. Runtime secrets stay on the host in `/etc/outfitsme/app.env` instead of being bundled through GitHub Actions on every deploy. Certificate renewal is handled on the instance via cron rather than on every app deploy.
-
-Deploy workflow requirements:
-- Create `/etc/outfitsme/app.env` on the server from `.env.example` and lock it down with `chmod 600`.
-- Or run the manual `Bootstrap Production Runtime Env` workflow once to write `/etc/outfitsme/app.env` from GitHub Secrets over SSM.
-- Run the manual `Sync Production Deploy Assets` workflow whenever `compose.yaml`, nginx configs, or `deploy/remote-deploy.sh` change.
-- The regular `Production Deployment (SSM)` workflow only updates the image tag metadata and restarts services.
-
-## API Endpoints
+All `/api/*` routes require a Bearer token unless noted otherwise.
 
 - `GET /health`
-- `POST /api/analyze` (requires Bearer token + multipart `image`; enqueues async analyze job and returns `job_id`)
-- `GET /api/analyze/jobs/:job_id?wait_seconds=<0-20>` (requires Bearer token; long-poll job status/result)
-- `POST /api/similar` (requires Bearer token + JSON `items`)
-- `POST /api/outfits/compose` (requires Bearer token + JSON `item_ids`; creates a virtual/composed outfit from selected items)
-- `GET /api/wardrobe` (requires Bearer token; returns one row per detected outfit)
-- `GET /api/wardrobe/:photo_id/details?outfit_index=<n>` (requires Bearer token; returns signed original photo URL + selected outfit details)
-- `GET /api/items` (requires Bearer token; returns items plus `style_label` used by catalog filters)
-- `GET /api/stats` (requires Bearer token; returns dashboard metrics including photos analyzed, outfits saved, clothing vs accessories split, type/color breakdowns, and highlights)
-- `GET /api/limits` (requires Bearer token; returns per-user analysis quota usage and remaining monthly quota)
-- `DELETE /api/wardrobe/:outfit_id` (requires Bearer token; deletes a single outfit row and its related item rows only)
-- `GET /api/models` (requires Bearer token; returns model capability + per-user availability)
-- `GET /api/settings/model-keys` (requires Bearer token; returns masked model settings)
-- `PUT /api/settings/model-keys` (requires Bearer token; saves encrypted model credentials/preferences)
+- `POST /api/analyze`
+- `GET /api/analyze/jobs/<job_id>`
+- `POST /api/similar`
+- `POST /api/outfits/compose`
+- `GET /api/wardrobe`
+- `DELETE /api/delete-wardrobe`
+- `DELETE /api/wardrobe/<outfit_id>`
+- `PUT /api/wardrobe/<outfit_id>`
+- `GET /api/wardrobe/<photo_id>/details?outfit_index=<n>`
+- `POST /api/wardrobe/<photo_id>/outfitsme`
+- `GET /api/items`
+- `GET /api/history`
+- `GET /api/stats`
+- `GET /api/limits`
+- `GET /api/models`
+- `GET /api/settings/preferences`
+- `PUT /api/settings/preferences`
+- `GET /api/settings/costs`
+- `POST /api/settings/profile-photo`
 
-## Testing
+Notes:
+- `POST /api/analyze` queues async analysis work and returns `202`
+- `POST /api/outfits/compose` creates a new AI-generated outfit image from selected saved items
+- `POST /api/wardrobe/<photo_id>/outfitsme` generates a try-on preview using the user's profile photo
+- `POST /api/similar` is still placeholder/mock data today
 
-### Backend tests (pytest)
+## Testing And Checks
+
+Backend tests:
 
 ```bash
 cd backend
@@ -185,25 +246,51 @@ cd backend
 pytest
 ```
 
-### Frontend tests (vitest)
+Frontend checks:
 
 ```bash
 cd frontend
-npm test
+npm run lint
 ```
+
+There is currently no frontend `npm test` script in `frontend/package.json`.
+
+## Production Runtime
+
+Production deploy assets in this repo:
+- `compose.yaml`
+- `proxy/nginx.http.conf`
+- `proxy/nginx.ssl.conf`
+- `deploy/remote-deploy.sh`
+- `.env.example`
+
+Current production runtime shape:
+- `frontend` container
+- `backend` container
+- `proxy` nginx container
+- optional `certbot` container/profile
+
+`deploy/remote-deploy.sh` handles:
+- loading runtime and deploy env files
+- rendering nginx config
+- pulling new images
+- running Docker Compose
+- bootstrapping TLS certificates if needed
+- installing cert renewal cron
+
+GitHub Actions workflows in `.github/workflows/`:
+- `bootstrap-runtime-env.yml`
+- `deploy.yml`
+- `sync-deploy-assets.yml`
+
+## Infrastructure
+
+This repo currently includes AWS Terraform under `infra/aws/`.
 
 ## Security Notes
 
-- Frontend uses only `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`.
-- Backend uses `SUPABASE_SECRET_KEY` only on server.
-- Model keys are stored encrypted in `user_settings` with `SETTINGS_ENCRYPTION_KEY`.
-- Keep `.env` and `.env.local` out of git.
-- Use private bucket + RLS policies for user data isolation.
-
-## Next Steps
-
-1. Add a cleanup workflow for orphaned photos/analyses after outfit-level deletes (optional retention policy).
-2. Normalize and persist real similar-item search results.
-3. Add server-side pagination/filtering on wardrobe and items endpoints.
-4. Add richer wardrobe details and user actions (favorites, tags, notes).
-
+- Better Auth secrets stay server-side
+- Backend uses `SUPABASE_SECRET_KEY`; frontend does not
+- Storage bucket is private
+- RLS is enabled on app tables and storage access is scoped by user folder
+- Keep `.env`, `.env.local`, and server runtime env files out of git
