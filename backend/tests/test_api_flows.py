@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timedelta, timezone
 import io
 
 import app.routes.api as api_module
@@ -532,12 +533,14 @@ def test_settings_preferences_and_costs_flow(client, monkeypatch, auth_headers):
 
 
 def test_limits_and_models_reflect_trial_access_for_new_user(client, monkeypatch, auth_headers):
+    trial_started_at = (datetime.now(timezone.utc) - timedelta(days=2)).isoformat()
+
     monkeypatch.setattr(
         api_module,
         "get_user_access_snapshot",
         lambda user_id: {
             "user_role": "trial",
-            "account_created_at": "2026-03-24T05:00:00+00:00",
+            "account_created_at": trial_started_at,
         },
     )
     monkeypatch.setattr(

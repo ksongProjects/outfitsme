@@ -1,0 +1,103 @@
+name: Deploy Serverless Backend
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+env:
+  AWS_REGION: us-west-2
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    env:
+      AWS_ROLE_TO_ASSUME: ${{ secrets.AWS_ROLE_TO_ASSUME }}
+      API_ECR_REPOSITORY: ${{ secrets.SERVERLESS_API_ECR_REPOSITORY }}
+      WORKER_ECR_REPOSITORY: ${{ secrets.SERVERLESS_WORKER_ECR_REPOSITORY }}
+      API_FUNCTION_NAME: ${{ secrets.SERVERLESS_API_FUNCTION_NAME }}
+      WORKER_FUNCTION_NAME: ${{ secrets.SERVERLESS_WORKER_FUNCTION_NAME }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set immutable image tag
+        id: meta
+        run: echo "image_tag=${GITHUB_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Configure AWS credentials (OIDC)
+        if: ${{ env.AWS_ROLE_TO_ASSUME != '' }}
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ env.AWS_ROLE_TO_ASSUME }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Configure AWS credentials (access keys fallback)
+        if: ${{ env.AWS_ROLE_TO_ASSUME == '' }}
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Validate workflow inputs
+        run: |
+          set -euo pipefail
+          : "${API_ECR_REPOSITORY:?SERVERLESS_API_ECR_REPOSITORY is required}"
+          : "${WORKER_ECR_REPOSITORY:?SERVERLESS_WORKER_ECR_REPOSITORY is required}"
+          : "${API_FUNCTION_NAME:?SERVERLESS_API_FUNCTION_NAME is required}"
+          : "${WORKER_FUNCTION_NAME:?SERVERLESS_WORKER_FUNCTION_NAME is required}"
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Build and push API image
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          set -euo pipefail
+          API_IMAGE_URI="${REGISTRY}/${API_ECR_REPOSITORY}:${{ steps.meta.outputs.image_tag }}"
+          docker build \
+            -f backend/Dockerfile.lambda-api \
+            -t "${API_IMAGE_URI}" \
+            backend
+          docker push "${API_IMAGE_URI}"
+          echo "API_IMAGE_URI=${API_IMAGE_URI}" >> "$GITHUB_ENV"
+
+      - name: Build and push worker image
+        env:
+          REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+        run: |
+          set -euo pipefail
+          WORKER_IMAGE_URI="${REGISTRY}/${WORKER_ECR_REPOSITORY}:${{ steps.meta.outputs.image_tag }}"
+          docker build \
+            -f backend/Dockerfile.lambda-worker \
+            -t "${WORKER_IMAGE_URI}" \
+            backend
+          docker push "${WORKER_IMAGE_URI}"
+          echo "WORKER_IMAGE_URI=${WORKER_IMAGE_URI}" >> "$GITHUB_ENV"
+
+      - name: Update API Lambda image
+        run: |
+          set -euo pipefail
+          aws lambda update-function-code \
+            --function-name "${API_FUNCTION_NAME}" \
+            --image-uri "${API_IMAGE_URI}"
+
+      - name: Update worker Lambda image
+        run: |
+          set -euo pipefail
+          aws lambda update-function-code \
+            --function-name "${WORKER_FUNCTION_NAME}" \
+            --image-uri "${WORKER_IMAGE_URI}"
+
+      - name: Wait for Lambda updates to complete
+        run: |
+          set -euo pipefail
+          aws lambda wait function-updated --function-name "${API_FUNCTION_NAME}"
+          aws lambda wait function-updated --function-name "${WORKER_FUNCTION_NAME}"

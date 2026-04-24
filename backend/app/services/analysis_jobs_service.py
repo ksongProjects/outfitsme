@@ -10,6 +10,7 @@ import requests
 from PIL import Image, ImageOps
 
 from app.services.gemini_service import analyze_outfit_with_gemini, generate_item_sprite_with_gemini
+from app.services.job_queue_service import is_analysis_queue_configured, send_analysis_job_message
 from app.services.supabase_service import (
     claim_analysis_job,
     download_photo_bytes,
@@ -229,4 +230,7 @@ def process_analysis_job(job_id: str) -> None:
 
 
 def enqueue_analysis_job_processing(job_id: str) -> None:
+    if is_analysis_queue_configured():
+        send_analysis_job_message(job_id)
+        return
     _JOB_EXECUTOR.submit(process_analysis_job, job_id)

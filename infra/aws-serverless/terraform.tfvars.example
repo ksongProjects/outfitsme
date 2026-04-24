@@ -1,0 +1,26 @@
+aws_region  = "us-west-2"
+project_name = "outfitsme"
+environment = "prod"
+
+frontend_allowed_origins = [
+  "https://outfitsme.com",
+  "https://www.outfitsme.com",
+]
+
+app_url                 = "https://outfitsme.com"
+better_auth_url         = "https://outfitsme.com"
+better_auth_jwks_url    = "https://outfitsme.com/api/auth/jwks"
+better_auth_jwt_issuer  = "https://outfitsme.com"
+better_auth_jwt_audience = "https://outfitsme.com"
+
+supabase_url            = "https://<project-ref>.supabase.co"
+supabase_secret_key     = "<supabase-service-role-key>"
+supabase_bucket         = "outfit-images"
+gemini_api_key          = "<gemini-api-key>"
+gemini_model            = "gemini-2.5-flash"
+gemini_image_model      = "gemini-2.5-flash-image"
+settings_encryption_key = "<settings-encryption-key>"
+default_analysis_model  = "gemini-2.5-flash"
+
+api_image_uri    = "123456789012.dkr.ecr.us-west-2.amazonaws.com/outfitsme-prod-backend-api:latest"
+worker_image_uri = "123456789012.dkr.ecr.us-west-2.amazonaws.com/outfitsme-prod-backend-worker:latest"

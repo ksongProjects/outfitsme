@@ -31,10 +31,12 @@ def _split_csv(value: str) -> list[str]:
 class Settings:
     FLASK_ENV = _clean_env(os.getenv("FLASK_ENV", "development"), "development").lower()
     IS_PRODUCTION = FLASK_ENV == "production"
+    AWS_REGION = _clean_env(os.getenv("AWS_REGION", os.getenv("AWS_DEFAULT_REGION", "us-west-2")), "us-west-2")
     PORT = int(_clean_env(os.getenv("PORT", "5000"), "5000") or "5000")
     DEBUG = _to_bool(os.getenv("DEBUG", ""), default=(FLASK_ENV != "production"))
     CORS_ALLOWED_ORIGINS = _split_csv(_clean_env(os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:3000")))
     RATE_LIMIT_STORAGE_URI = _clean_env(os.getenv("RATE_LIMIT_STORAGE_URI", "memory://"), "memory://")
+    ANALYSIS_QUEUE_URL = _clean_env(os.getenv("ANALYSIS_QUEUE_URL", ""))
     # Legacy single-tier limit; kept for backwards compatibility.
     MONTHLY_ANALYSIS_LIMIT = int(_clean_env(os.getenv("MONTHLY_ANALYSIS_LIMIT", "100"), "100") or "100")
     # Per-tier limits. Free users default to 5 analyses/month; premium users
