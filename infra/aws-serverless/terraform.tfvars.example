@@ -21,6 +21,7 @@ gemini_model            = "gemini-2.5-flash"
 gemini_image_model      = "gemini-2.5-flash-image"
 settings_encryption_key = "<settings-encryption-key>"
 default_analysis_model  = "gemini-2.5-flash"
+upload_max_bytes        = 4194304
 
 api_image_uri    = "123456789012.dkr.ecr.us-west-2.amazonaws.com/outfitsme-prod-backend-api:latest"
 worker_image_uri = "123456789012.dkr.ecr.us-west-2.amazonaws.com/outfitsme-prod-backend-worker:latest"

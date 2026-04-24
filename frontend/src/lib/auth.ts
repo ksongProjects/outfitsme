@@ -3,6 +3,7 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { jwt } from "better-auth/plugins/jwt";
 import { sql } from "drizzle-orm";
 
+import { buildTrustedOrigins, getAppUrl } from "@/lib/app-url";
 import * as authSchema from "@/lib/auth-schema";
 import { getDb } from "@/lib/db";
 
@@ -13,38 +14,6 @@ function getRequiredEnv(name: string): string {
   }
 
   return value;
-}
-
-function buildTrustedOrigins(appUrl: string): string[] {
-  const candidates = [
-    appUrl,
-    process.env.APP_URL || "",
-    process.env.NEXT_PUBLIC_APP_URL || "",
-    process.env.BETTER_AUTH_URL || "",
-  ];
-  const origins = new Set<string>();
-
-  for (const candidate of candidates) {
-    const value = candidate.trim();
-    if (!value) {
-      continue;
-    }
-
-    try {
-      const parsed = new URL(value);
-      origins.add(parsed.origin);
-
-      if (parsed.hostname.startsWith("www.")) {
-        origins.add(`${parsed.protocol}//${parsed.hostname.slice(4)}${parsed.port ? `:${parsed.port}` : ""}`);
-      } else {
-        origins.add(`${parsed.protocol}//www.${parsed.hostname}${parsed.port ? `:${parsed.port}` : ""}`);
-      }
-    } catch {
-      continue;
-    }
-  }
-
-  return Array.from(origins);
 }
 
 async function ensureDefaultAppUserRows(userId: string) {
@@ -78,7 +47,7 @@ async function ensureDefaultAppUserRows(userId: string) {
 }
 
 function createAuth() {
-  const appUrl = (process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000").trim();
+  const appUrl = getAppUrl();
   const googleClientId = getRequiredEnv("GOOGLE_CLIENT_ID");
   const googleClientSecret = getRequiredEnv("GOOGLE_CLIENT_SECRET");
   const authSecret = getRequiredEnv("BETTER_AUTH_SECRET");
@@ -119,7 +88,7 @@ function createAuth() {
     session: {
       expiresIn: 60 * 60,
     },
-    trustedOrigins: buildTrustedOrigins(appUrl),
+    trustedOrigins: buildTrustedOrigins(),
     baseURL: appUrl,
     basePath: "/api/auth",
     secret: authSecret,

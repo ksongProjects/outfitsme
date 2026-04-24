@@ -29,7 +29,7 @@ variable "lambda_architecture" {
 }
 
 variable "frontend_allowed_origins" {
-  description = "Allowed browser origins for backend CORS and Lambda Function URL CORS."
+  description = "Allowed browser origins for backend CORS and Lambda Function URL CORS. These must be exact origins."
   type        = list(string)
 }
 
@@ -103,6 +103,12 @@ variable "default_analysis_model" {
   description = "Default analysis model stored in ai_jobs."
   type        = string
   default     = "gemini-2.5-flash"
+}
+
+variable "upload_max_bytes" {
+  description = "Maximum accepted request body size for backend uploads."
+  type        = number
+  default     = 4194304
 }
 
 variable "api_image_uri" {

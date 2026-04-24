@@ -20,5 +20,6 @@ locals {
     GEMINI_IMAGE_MODEL       = var.gemini_image_model
     SETTINGS_ENCRYPTION_KEY  = var.settings_encryption_key
     DEFAULT_ANALYSIS_MODEL   = var.default_analysis_model
+    UPLOAD_MAX_BYTES         = tostring(var.upload_max_bytes)
   }
 }

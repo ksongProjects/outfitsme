@@ -54,3 +54,13 @@ jobs:
       - name: Terraform apply
         working-directory: ${{ env.TERRAFORM_DIR }}
         run: terraform apply -auto-approve
+
+      - name: Terraform outputs
+        working-directory: ${{ env.TERRAFORM_DIR }}
+        run: |
+          {
+            echo "## Serverless Outputs"
+            echo '```'
+            terraform output
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

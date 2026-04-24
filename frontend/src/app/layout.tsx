@@ -1,14 +1,13 @@
 import type { Metadata, Viewport } from "next";
 
 import { AppProviders } from "@/components/providers/app-providers";
+import { getAppUrl } from "@/lib/app-url";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: "OutfitsMe",
   description: "Analyze outfits, build a wardrobe, and preview new looks from your own photos.",
-  metadataBase: new URL(
-    process.env.APP_URL || process.env.NEXT_PUBLIC_APP_URL || "http://localhost:3000"
-  ),
+  metadataBase: new URL(getAppUrl()),
 };
 
 export const viewport: Viewport = {

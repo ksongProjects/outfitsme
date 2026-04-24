@@ -263,6 +263,8 @@ Frontend remains Next.js on Vercel.
 - `NEXT_PUBLIC_API_BASE_URL` points to Lambda URL or API Gateway URL
 - Google OAuth redirect URIs updated to Vercel domain
 - Better Auth issuer/audience values point to Vercel origin, not EC2 origin
+- Better Auth trusted origins should be explicit via `BETTER_AUTH_TRUSTED_ORIGINS`
+- preview auth should use stable branch/preview aliases because Google OAuth redirect allowlists are exact-match
 
 ### No nginx needed
 
@@ -329,6 +331,7 @@ This avoids using Terraform for every image tag rollout.
 - `BETTER_AUTH_JWKS_URL`
 - `BETTER_AUTH_JWT_ISSUER`
 - `BETTER_AUTH_JWT_AUDIENCE`
+- `BETTER_AUTH_TRUSTED_ORIGINS`
 - `CORS_ALLOWED_ORIGINS`
 - `SUPABASE_URL`
 - `SUPABASE_SECRET_KEY`
@@ -338,6 +341,7 @@ This avoids using Terraform for every image tag rollout.
 - `GEMINI_IMAGE_MODEL`
 - `SETTINGS_ENCRYPTION_KEY`
 - `DEFAULT_ANALYSIS_MODEL`
+- `UPLOAD_MAX_BYTES`
 - `DATABASE_URL`
 - `BETTER_AUTH_SECRET`
 - `GOOGLE_CLIENT_ID`
