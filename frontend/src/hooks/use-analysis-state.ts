@@ -18,6 +18,12 @@ const DEFAULT_MODEL_ID = "gemini-2.5-flash";
 const MODELS_STALE_MS = 5 * 60 * 1000;
 const LIMITS_STALE_MS = 30 * 1000;
 const ANALYSIS_JOB_POLL_MS = 2_000;
+const MAX_ANALYZE_IMAGE_SIDE = 1024;
+const MIN_ANALYZE_IMAGE_SIDE = 384;
+const ANALYZE_UPLOAD_TARGET_BYTES = 1_500_000;
+const ANALYZE_UPLOAD_HARD_MAX_BYTES = 4 * 1024 * 1024;
+const ANALYZE_JPEG_QUALITIES = [0.88, 0.82, 0.76, 0.7, 0.64];
+const ANALYZE_OUTPUT_TYPE = "image/jpeg";
 
 type SimilarResultsPayload = {
   results?: Array<{
@@ -50,6 +56,12 @@ type AnalyzeJobPayload = {
   updated_at?: string | null;
 };
 
+type PreparedAnalyzeFile = {
+  file: File;
+  usedCrop: boolean;
+  wasOptimized: boolean;
+};
+
 export function useAnalysisState({
   accessToken,
   onAnalysisSaved,
@@ -58,7 +70,6 @@ export function useAnalysisState({
   onAnalysisSaved?: () => void;
 }) {
   const MAX_CONCURRENT_ANALYSIS_JOBS = 5;
-  const MAX_ANALYZE_IMAGE_SIDE = 1024;
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState("");
   const [cropArea, setCropArea] = useState<CropArea | null>(null);
@@ -388,6 +399,13 @@ export function useAnalysisState({
 
   const toUserFriendlyAnalyzeError = (message: string) => {
     const raw = String(message || "").toLowerCase();
+    if (
+      raw.includes("prepared image is still too large") ||
+      raw.includes("image upload is too large") ||
+      raw.includes("payload too large")
+    ) {
+      return "This image is still too large for serverless analysis. Crop it tighter or choose a smaller photo.";
+    }
     if (raw.includes("unable to process input image")) {
       return "We couldn't process this image. Please try another JPG, PNG, or WEBP file.";
     }
@@ -459,7 +477,15 @@ export function useAnalysisState({
       image.src = url;
     });
 
-  const buildCroppedFile = async (candidate: File, crop: CropArea | null) => {
+  const encodeCanvasToBlob = (canvas: HTMLCanvasElement, quality: number) =>
+    new Promise<Blob | null>((resolve) => {
+      canvas.toBlob((value) => resolve(value), ANALYZE_OUTPUT_TYPE, quality);
+    });
+
+  const buildPreparedAnalyzeFile = async (
+    candidate: File,
+    crop: CropArea | null
+  ): Promise<PreparedAnalyzeFile> => {
     let objectUrl = "";
     try {
       objectUrl = URL.createObjectURL(candidate);
@@ -482,51 +508,114 @@ export function useAnalysisState({
         const cropY = Math.max(0, Math.min(1, Number(crop.y) || 0));
         const cropWidth = Math.max(0, Math.min(1 - cropX, Number(crop.width) || 0));
         const cropHeight = Math.max(0, Math.min(1 - cropY, Number(crop.height) || 0));
-        if (cropWidth <= 0 || cropHeight <= 0) {
-          return candidate;
-        }
-        srcX = Math.max(0, Math.round(cropX * originalWidth));
-        srcY = Math.max(0, Math.round(cropY * originalHeight));
-        srcWidth = Math.max(1, Math.round(cropWidth * originalWidth));
-        srcHeight = Math.max(1, Math.round(cropHeight * originalHeight));
-      } else {
-        const longestOriginalSide = Math.max(originalWidth, originalHeight);
-        if (longestOriginalSide <= MAX_ANALYZE_IMAGE_SIDE) {
-          return candidate;
+        if (cropWidth > 0 && cropHeight > 0) {
+          srcX = Math.max(0, Math.round(cropX * originalWidth));
+          srcY = Math.max(0, Math.round(cropY * originalHeight));
+          srcWidth = Math.max(1, Math.round(cropWidth * originalWidth));
+          srcHeight = Math.max(1, Math.round(cropHeight * originalHeight));
         }
       }
 
       const longestSide = Math.max(srcWidth, srcHeight);
-      const scale =
-        longestSide > MAX_ANALYZE_IMAGE_SIDE ? MAX_ANALYZE_IMAGE_SIDE / longestSide : 1;
-      const outputWidth = Math.max(1, Math.round(srcWidth * scale));
-      const outputHeight = Math.max(1, Math.round(srcHeight * scale));
-
-      const canvas = document.createElement("canvas");
-      canvas.width = outputWidth;
-      canvas.height = outputHeight;
-      const context = canvas.getContext("2d");
-      if (!context) {
-        throw new Error("Unable to initialize image crop context.");
+      if (
+        !hasCrop &&
+        longestSide <= MAX_ANALYZE_IMAGE_SIDE &&
+        candidate.type === ANALYZE_OUTPUT_TYPE &&
+        candidate.size > 0 &&
+        candidate.size <= ANALYZE_UPLOAD_TARGET_BYTES
+      ) {
+        return {
+          file: candidate,
+          usedCrop: false,
+          wasOptimized: false,
+        };
       }
 
-      context.drawImage(image, srcX, srcY, srcWidth, srcHeight, 0, 0, outputWidth, outputHeight);
-      const outputType =
-        candidate.type && candidate.type.startsWith("image/") ? candidate.type : "image/jpeg";
-      const blob = await new Promise<Blob | null>((resolve) => {
-        canvas.toBlob((value) => resolve(value), outputType, 0.9);
-      });
+      const initialScale =
+        longestSide > MAX_ANALYZE_IMAGE_SIDE ? MAX_ANALYZE_IMAGE_SIDE / longestSide : 1;
+      let outputWidth = Math.max(1, Math.round(srcWidth * initialScale));
+      let outputHeight = Math.max(1, Math.round(srcHeight * initialScale));
 
-      if (!blob) {
+      const canvas = document.createElement("canvas");
+      let bestBlob: Blob | null = null;
+      let bestWidth = outputWidth;
+      let bestHeight = outputHeight;
+
+      while (true) {
+        canvas.width = outputWidth;
+        canvas.height = outputHeight;
+        const context = canvas.getContext("2d");
+        if (!context) {
+          throw new Error("Unable to initialize image crop context.");
+        }
+
+        context.clearRect(0, 0, outputWidth, outputHeight);
+        context.fillStyle = "#ffffff";
+        context.fillRect(0, 0, outputWidth, outputHeight);
+        context.imageSmoothingEnabled = true;
+        context.imageSmoothingQuality = "high";
+        context.drawImage(image, srcX, srcY, srcWidth, srcHeight, 0, 0, outputWidth, outputHeight);
+
+        for (const quality of ANALYZE_JPEG_QUALITIES) {
+          const blob = await encodeCanvasToBlob(canvas, quality);
+          if (!blob) {
+            continue;
+          }
+
+          if (!bestBlob || blob.size < bestBlob.size) {
+            bestBlob = blob;
+            bestWidth = outputWidth;
+            bestHeight = outputHeight;
+          }
+
+          if (blob.size <= ANALYZE_UPLOAD_TARGET_BYTES) {
+            bestBlob = blob;
+            bestWidth = outputWidth;
+            bestHeight = outputHeight;
+            break;
+          }
+        }
+
+        if (bestBlob && bestBlob.size <= ANALYZE_UPLOAD_TARGET_BYTES) {
+          break;
+        }
+
+        if (Math.max(outputWidth, outputHeight) <= MIN_ANALYZE_IMAGE_SIDE) {
+          break;
+        }
+
+        const currentLongestSide = Math.max(outputWidth, outputHeight);
+        const nextLongestSide = Math.max(MIN_ANALYZE_IMAGE_SIDE, Math.round(currentLongestSide * 0.85));
+        const nextScale = nextLongestSide / currentLongestSide;
+        outputWidth = Math.max(1, Math.round(outputWidth * nextScale));
+        outputHeight = Math.max(1, Math.round(outputHeight * nextScale));
+      }
+
+      if (!bestBlob) {
         throw new Error("Failed to encode resized image.");
+      }
+
+      if (bestBlob.size > ANALYZE_UPLOAD_HARD_MAX_BYTES) {
+        throw new Error(
+          "Prepared image is still too large for serverless analysis. Please crop the photo tighter or choose a smaller image."
+        );
       }
 
       const fileName = candidate.name || "image";
       const dotIndex = fileName.lastIndexOf(".");
       const baseName = dotIndex > 0 ? fileName.slice(0, dotIndex) : fileName;
-      const extension =
-        outputType === "image/png" ? "png" : outputType === "image/webp" ? "webp" : "jpg";
-      return new File([blob], `${baseName}-prepared.${extension}`, { type: outputType });
+      return {
+        file: new File([bestBlob], `${baseName}-prepared.jpg`, {
+          type: ANALYZE_OUTPUT_TYPE,
+        }),
+        usedCrop: hasCrop,
+        wasOptimized:
+          hasCrop ||
+          bestWidth !== originalWidth ||
+          bestHeight !== originalHeight ||
+          candidate.type !== ANALYZE_OUTPUT_TYPE ||
+          bestBlob.size !== candidate.size,
+      };
     } finally {
       if (objectUrl) {
         URL.revokeObjectURL(objectUrl);
@@ -634,9 +723,12 @@ export function useAnalysisState({
       let shouldReleaseSlot = true;
 
       try {
-        const fileToAnalyze = await buildCroppedFile(file, cropArea);
-        if (fileToAnalyze !== file) {
+        const prepared = await buildPreparedAnalyzeFile(file, cropArea);
+        const fileToAnalyze = prepared.file;
+        if (prepared.usedCrop) {
           setInfo("Using selected crop area for analysis.");
+        } else if (prepared.wasOptimized) {
+          setInfo("Optimized image for faster analysis.");
         }
         const analyzePayload = await analyzeMutation.mutateAsync({ fileToAnalyze, modelId: selectedModel });
 

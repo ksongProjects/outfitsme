@@ -37,6 +37,7 @@ class Settings:
     CORS_ALLOWED_ORIGINS = _split_csv(_clean_env(os.getenv("CORS_ALLOWED_ORIGINS", "http://localhost:3000")))
     RATE_LIMIT_STORAGE_URI = _clean_env(os.getenv("RATE_LIMIT_STORAGE_URI", "memory://"), "memory://")
     ANALYSIS_QUEUE_URL = _clean_env(os.getenv("ANALYSIS_QUEUE_URL", ""))
+    UPLOAD_MAX_BYTES = int(_clean_env(os.getenv("UPLOAD_MAX_BYTES", str(4 * 1024 * 1024))) or str(4 * 1024 * 1024))
     # Legacy single-tier limit; kept for backwards compatibility.
     MONTHLY_ANALYSIS_LIMIT = int(_clean_env(os.getenv("MONTHLY_ANALYSIS_LIMIT", "100"), "100") or "100")
     # Per-tier limits. Free users default to 5 analyses/month; premium users

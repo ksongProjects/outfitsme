@@ -144,6 +144,26 @@ def test_analyze_flow_submit_and_status(client, monkeypatch, auth_headers):
     }
 
 
+def test_analyze_rejects_oversized_upload_with_json_413(client, auth_headers):
+    client.application.config["MAX_CONTENT_LENGTH"] = 1024
+
+    response = client.post(
+        "/api/analyze",
+        data={
+            "analysis_model": "gemini-2.5-flash",
+            "image": (io.BytesIO(b"x" * 4096), "oversized.jpg"),
+        },
+        headers=auth_headers,
+        content_type="multipart/form-data",
+    )
+    print_exchange("Analyze Oversized Upload", "POST", "/api/analyze", {"image": "oversized.jpg"}, response)
+
+    assert response.status_code == 413
+    assert response.get_json() == {
+        "error": "Image upload is too large. Keep uploads under 1 KB."
+    }
+
+
 def test_compose_outfit_uses_profile_and_item_images(client, monkeypatch, auth_headers):
     generation_call: dict[str, object] = {}
     saved_paths: list[str] = []
